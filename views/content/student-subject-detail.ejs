@@ -1,0 +1,135 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-subject-detail.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <div class="panel-card">
+    <div class="panel-card-head"><h2><%= assignment.subject_name %></h2></div>
+    <p><strong>Tutor:</strong> <%= assignment.tutor_name %></p>
+    <p><strong>Time Schedule:</strong> <%= assignment.time_slot || '-' %></p>
+    <% if (tutor) { %>
+      <a class="limited-profile-card" href="/student/tutors/<%= tutor.id %>">
+        <img src="<%= tutor.image_path || '/assets/logo.png' %>" alt="Tutor avatar" class="profile-avatar" />
+        <div>
+          <strong><%= tutor.first_name %> <%= tutor.last_name %></strong>
+          <p>Email: <%= tutor.email || '-' %></p>
+          <p>Contact: <%= tutor.contact_number || '-' %></p>
+        </div>
+      </a>
+    <% } %>
+  </div>
+
+  <% if (typeof activeCycle !== 'undefined' && activeCycle) { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Current Learning Cycle — Round <%= activeCycle.round_number %></h3></div>
+    <div class="billing-summary-grid">
+      <article class="stat-card"><h3>Status</h3><strong><%= activeCycle.status.replace(/_/g, ' ') %></strong></article>
+      <article class="stat-card"><h3>Module</h3><strong><%= activeCycle.resource_title || '-' %></strong></article>
+      <% if (activeCycle.result_level) { %>
+        <article class="stat-card gradient"><h3>Last Level</h3><strong><%= activeCycle.result_level %></strong></article>
+      <% } %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Modules</h3></div>
+    <div class="list-stack">
+      <% if (!(modules || []).length) { %>
+        <p class="empty-state">No modules available for your education level yet.</p>
+      <% } %>
+      <% (modules || []).forEach((resource) => {
+        const reqsForModule = (typeof assessmentRequests !== 'undefined' ? assessmentRequests : []).filter((r) => Number(r.resource_id) === Number(resource.id) && Number(r.subject_id) === Number(assignment.subject_id));
+        const pendingReq = reqsForModule.find((r) => r.status === 'pending');
+        const acceptedReq = reqsForModule.find((r) => r.status === 'accepted');
+        const declinedReq = reqsForModule.find((r) => r.status === 'declined' && !acceptedReq && !pendingReq);
+        const completedForModule = (typeof completedAssessments !== 'undefined' ? completedAssessments : []).find((a) => Number(a.source_resource_id) === Number(resource.id));
+      %>
+        <article class="list-card">
+          <div>
+            <strong><%= resource.title %></strong>
+            <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
+            <% if (resource.module_origin === 'ai_generated') { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
+            <% if (resource.is_read) { %><span class="badge badge-success" style="margin-left:4px;">✓ Read</span><% } %>
+            <p><%= resource.description || 'No description' %></p>
+            <% if (resource.content_text) { %>
+              <details style="margin-top:8px;">
+                <summary>View Module Content</summary>
+                <div class="module-content-text" style="margin-top:8px;padding:12px;background:var(--bg-2);border-radius:8px;white-space:pre-wrap;"><%= resource.content_text %></div>
+              </details>
+            <% } %>
+            <% if (resource.file_path) { %>
+              <a href="<%= resource.file_path %>" target="_blank">Open file</a>
+            <% } %>
+          </div>
+          <div class="row-actions" style="flex-direction:column;gap:6px;">
+            <% if (completedForModule) { %>
+              <div style="text-align:center;padding:8px;background:var(--bg-2);border-radius:8px;">
+                <span class="badge badge-success" style="font-size:12px;margin-bottom:4px;">✅ Assessment Completed</span><br>
+                <small><strong>Score:</strong> <%= completedForModule.score %>/<%= completedForModule.total_questions %> (<%= completedForModule.percentage %>%)</small><br>
+                <small><strong>Level:</strong> <%= completedForModule.level %></small><br>
+                <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= completedForModule.id %>" style="margin-top:6px;">View Result</a>
+              </div>
+            <% } else if (!resource.is_read) { %>
+              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/read">
+                <button class="btn btn-primary btn-sm" type="submit">Mark as Read</button>
+              </form>
+            <% } else if (acceptedReq) { %>
+              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/generate-assessment" data-confirm-message="Generate a 20-item AI assessment based on this module?">
+                <button class="btn btn-primary btn-sm" type="submit">Take Assessment</button>
+              </form>
+              <span class="badge badge-success" style="font-size:11px;">✓ Tutor Approved</span>
+            <% } else if (pendingReq) { %>
+              <span class="badge badge-warning" style="font-size:11px;">⏳ Awaiting Tutor Approval</span>
+            <% } else if (declinedReq) { %>
+              <span class="badge badge-danger" style="font-size:11px;margin-bottom:4px;">✗ Declined</span>
+              <% if (declinedReq.tutor_message) { %><small style="color:var(--text-soft);"><%= declinedReq.tutor_message %></small><% } %>
+              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/request-assessment" data-confirm-message="Request tutor approval to take this assessment?">
+                <button class="btn btn-secondary btn-sm" type="submit">Request Again</button>
+              </form>
+            <% } else { %>
+              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/request-assessment" data-confirm-message="Request tutor approval to take this assessment?">
+                <button class="btn btn-primary btn-sm" type="submit">Request Assessment</button>
+              </form>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <% if (typeof resources !== 'undefined' && resources.length) { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Tutor-Shared Files</h3></div>
+    <div class="list-stack">
+      <% resources.forEach((resource) => { %>
+        <article class="list-card">
+          <div>
+            <strong><%= resource.title %></strong>
+            <p><%= resource.description || 'No description' %></p>
+            <% if (resource.file_path) { %>
+              <a href="<%= resource.file_path %>" target="_blank">Open file</a>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Attendance</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Status</th><th>Tutor</th></tr></thead>
+        <tbody>
+          <% if (!(attendanceLogs || []).length) { %><tr><td colspan="3">No attendance record yet.</td></tr><% } %>
+          <% (attendanceLogs || []).forEach((item) => { %>
+          <tr>
+            <td><%= formatDate(item.attendance_date) %></td>
+            <td><%= item.status %></td>
+            <td><%= [item.tutor_first_name, item.tutor_middle_name, item.tutor_last_name].filter(Boolean).join(' ') || '-' %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

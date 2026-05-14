@@ -1,0 +1,36 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/verify-otp.ejs | Purpose: UI template/view used by the system. %>
+<!DOCTYPE html>
+<html lang="en">
+<%- include('partials/head', { pageTitle, pageCss: '/css/auth/login.css' }) %>
+<body class="auth-login-page plain-page login-page design-auth-page">
+  <section class="login-shell">
+    <div class="login-panel login-form-panel">
+      <div class="login-brand">Verify OTP</div>
+      <form action="<%= mode === 'login' ? '/login/verify' : `/register/${type}/verify` %>" method="post" class="login-form-grid">
+        <p style="margin:0 0 8px;color:#d7e5f1;">Enter the 4-digit OTP sent to <strong><%= email %></strong>.</p>
+        <label>
+          <span>OTP <span class="required-mark">*</span></span>
+          <input type="text" name="otp" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required />
+        </label>
+        <button type="submit" class="login-submit-btn">Verify OTP</button>
+      </form>
+      <div class="login-link-row">
+        <% if (mode === 'login') { %>
+          <form action="/login/resend-otp" method="post"><button type="submit" class="login-submit-btn" style="padding:10px 50px;">Resend OTP</button></form>
+          <a href="/login">Back</a>
+        <% } else { %>
+          <a href="/register/<%= type %>">Back</a>
+        <% } %>
+      </div>
+    </div>
+    <div class="login-panel login-info-panel">
+      <img src="/assets/logo.jpeg" alt="Logo" />
+      <h1>EMAIL<br>VERIFICATION</h1>
+      <p>OTP is sent only after a correct login on an approved account.</p>
+      
+    </div>
+  </section>
+  <%- include('partials/flash-modal', { flash }) %>
+  <script src="/js/main.js"></script>
+</body>
+</html>

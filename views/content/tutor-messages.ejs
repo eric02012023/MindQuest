@@ -1,0 +1,241 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-messages.ejs | Purpose: UI template/view used by the system. %>
+<%
+  const sharedItems = [];
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  (conversation || []).forEach((message) => {
+    if (message.file_path) {
+      sharedItems.push({
+        type: (message.file_type || '').startsWith('image/') ? 'image' : (message.file_type || '').startsWith('video/') ? 'video' : 'file',
+        url: message.file_path,
+        label: message.file_original_name || 'Attachment',
+        created_at: message.created_at,
+        sender_id: message.sender_id,
+        message_id: message.id
+      });
+    }
+    const matches = String(message.body || '').match(urlRegex) || [];
+    matches.forEach((link, index) => {
+      sharedItems.push({
+        type: 'link',
+        url: link,
+        label: link,
+        created_at: message.created_at,
+        sender_id: message.sender_id,
+        message_id: `${message.id}-link-${index}`
+      });
+    });
+  });
+  const contactSubjects = Array.isArray(activeContact?.subjects) ? activeContact.subjects : safeJsonArray(activeContact?.subjects_json || []);
+%>
+<section class="mq-chat" data-chat-app data-chat-role="<%= currentUser?.role || '' %>">
+  <aside class="mq-chat-sidebar">
+    <div class="mq-chat-sidebar-top">
+      <div>
+        <h2>Chats</h2>
+        <p>Message your tutors and classmates.</p>
+      </div>
+      <div class="mq-chat-menu-wrap">
+        <button class="icon-btn mq-chat-menu-btn" type="button" data-chat-menu-toggle aria-label="Chat menu">⋯</button>
+        <div class="mq-chat-menu" data-chat-menu>
+          <button type="button" data-groupchat-disabled>Create group chat</button>
+        </div>
+      </div>
+    </div>
+
+    <form method="get" action="<%= basePath %>/messages" class="search-form mq-chat-search">
+      <input type="text" name="search" value="<%= search %>" placeholder="Search users" />
+      <% if (activeContact) { %><input type="hidden" name="contact" value="<%= activeContact.id %>" /><% } %>
+    </form>
+
+    <div class="contact-list mq-contact-list">
+      <% if (!contacts.length) { %>
+        <div class="empty-state mq-contact-empty"><%= search ? 'No user found.' : 'No conversations yet. Search a user to start chatting.' %></div>
+      <% } %>
+      <% contacts.forEach((contact) => { %>
+        <a class="contact-item mq-contact-item <%= activeContact && activeContact.id === contact.id ? 'active' : '' %>" href="<%= basePath %>/messages?contact=<%= contact.id %><%= search ? `&search=${encodeURIComponent(search)}` : '' %>">
+          <img src="<%= contact.image_path || '/assets/logo.png' %>" alt="Contact" class="profile-avatar" />
+          <div class="mq-contact-copy">
+            <strong><%= contact.first_name %> <%= contact.last_name %></strong>
+            <span><%= contact.role %></span>
+          </div>
+        </a>
+      <% }) %>
+    </div>
+  </aside>
+
+  <section class="mq-chat-main">
+    <% if (activeContact) { %>
+      <header class="mq-chat-head">
+        <button type="button" class="mq-chat-head-main" data-open-profile>
+          <img src="<%= activeContact.image_path || '/assets/logo.png' %>" alt="Contact" class="profile-avatar" />
+          <div>
+            <strong><%= activeContact.first_name %> <%= activeContact.last_name %></strong>
+            <div class="mq-chat-subtitle"><%= activeContact.role %></div>
+          </div>
+        </button>
+        <div class="row-actions mq-chat-head-actions">
+          <button type="button" class="mq-head-link" data-open-shared>Shared files</button>
+          <button type="button" class="icon-btn" data-start-call="voice" data-target-user="<%= activeContact.id %>" aria-label="Voice call">📞</button>
+          <button type="button" class="icon-btn" data-start-call="video" data-target-user="<%= activeContact.id %>" aria-label="Video call">🎥</button>
+        </div>
+      </header>
+
+      <div class="conversation-box mq-conversation-box" data-conversation-box>
+        <% if (!conversation.length) { %>
+          <p class="empty-state centered">No messages yet. Start the conversation below.</p>
+        <% } %>
+        <% conversation.forEach((message) => { const mine = Number(message.sender_id) === Number(currentUser.id); %>
+          <article class="chat-bubble mq-bubble <%= mine ? 'mine' : 'theirs' %> <%= message.is_unsent ? 'unsent' : '' %>">
+            <div class="mq-bubble-inner">
+              <% if (message.body) { %>
+                <p><%= message.body %></p>
+              <% } else if (message.is_unsent) { %>
+                <p><em>Message unsent.</em></p>
+              <% } %>
+
+              <% if (message.file_path) { %>
+                <% if ((message.file_type || '').startsWith('image/')) { %>
+                  <a href="<%= message.file_path %>" target="_blank" class="mq-attachment mq-image-attachment"><img src="<%= message.file_path %>" alt="Attachment" /></a>
+                <% } else if ((message.file_type || '').startsWith('video/')) { %>
+                  <video controls class="mq-inline-video"><source src="<%= message.file_path %>" type="<%= message.file_type %>"></video>
+                <% } else { %>
+                  <a href="<%= message.file_path %>" target="_blank" class="mq-file-chip">📎 <%= message.file_original_name || 'Attachment' %></a>
+                <% } %>
+              <% } %>
+
+              <div class="mq-bubble-meta">
+                <span><%= formatDateTime(message.created_at) %></span>
+                <% if (message.edited_at) { %><span>Edited</span><% } %>
+              </div>
+            </div>
+
+            <% if (mine && !message.is_unsent) { %>
+              <details class="mq-message-actions">
+                <summary>⋯</summary>
+                <div class="mq-message-actions-card">
+                  <button type="button" data-edit-message data-message-id="<%= message.id %>" data-message-body="<%= JSON.stringify(message.body || '') %>">Edit</button>
+                  <form method="post" action="<%= basePath %>/messages/<%= message.id %>/unsend" data-confirm-message="Unsend this message?">
+                    <input type="hidden" name="contact_id" value="<%= activeContact.id %>" />
+                    <button type="submit">Unsend</button>
+                  </form>
+                </div>
+              </details>
+            <% } %>
+          </article>
+        <% }) %>
+      </div>
+
+      <form method="post" action="<%= basePath %>/messages/send" enctype="multipart/form-data" class="mq-compose" data-compose-form>
+        <input type="hidden" name="receiver_id" value="<%= activeContact.id %>" />
+        <input type="file" name="attachment" hidden data-attachment-input />
+        <div class="mq-compose-preview" data-compose-preview hidden>
+          <div class="mq-compose-preview-media" data-preview-media></div>
+          <div class="mq-compose-preview-meta"><strong data-upload-name></strong></div>
+        </div>
+        <div class="mq-compose-row">
+          <button class="mq-circle-action" type="button" title="Send file" data-open-file><span>＋</span></button>
+          <button class="mq-circle-action" type="button" title="Take photo or video" data-open-camera><span>📷</span></button>
+          <button class="mq-circle-action" type="button" title="Open gallery" data-open-gallery><span>🖼️</span></button>
+          <div class="mq-compose-input-wrap">
+            <textarea name="body" rows="1" placeholder="Type a message" data-chat-textarea></textarea>
+            <button type="submit" class="btn btn-primary btn-sm">Send</button>
+          </div>
+        </div>
+      </form>
+
+      <dialog class="mq-edit-dialog" data-edit-dialog>
+        <div class="mq-edit-shell">
+          <div class="mq-edit-head">
+            <h3>Edit message</h3>
+            <button type="button" class="icon-btn" data-edit-close>✕</button>
+          </div>
+          <form method="post" class="stack-form" data-edit-form>
+            <input type="hidden" name="contact_id" value="<%= activeContact.id %>" />
+            <textarea name="body" rows="4" data-edit-textarea></textarea>
+            <div class="row-actions">
+              <button type="button" class="btn btn-secondary" data-edit-close>Cancel</button>
+              <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+          </form>
+        </div>
+      </dialog>
+
+      <dialog class="mq-info-dialog" data-shared-dialog>
+        <div class="mq-info-shell">
+          <div class="mq-edit-head">
+            <h3>Shared files, pictures, videos and links</h3>
+            <button type="button" class="icon-btn" data-close-info>✕</button>
+          </div>
+          <div class="mq-shared-panel">
+            <% if (!sharedItems.length) { %>
+              <p class="empty-state">No shared item yet.</p>
+            <% } %>
+            <% sharedItems.slice().reverse().forEach((item) => { %>
+              <div class="mq-shared-card">
+                <div class="mq-shared-card-copy">
+                  <strong><%= item.type === 'link' ? 'Shared link' : item.label %></strong>
+                  <span><%= formatDateTime(item.created_at) %></span>
+                </div>
+                <% if (item.type === 'image') { %>
+                  <a href="<%= item.url %>" target="_blank"><img src="<%= item.url %>" alt="Shared image" class="mq-shared-thumb" /></a>
+                <% } else if (item.type === 'video') { %>
+                  <video controls class="mq-shared-video"><source src="<%= item.url %>"></video>
+                <% } else { %>
+                  <a href="<%= item.url %>" target="_blank" class="mq-file-chip"><%= item.type === 'link' ? '🔗 Open link' : '📎 Open file' %></a>
+                <% } %>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog class="mq-info-dialog" data-profile-dialog>
+        <div class="mq-info-shell">
+          <div class="mq-edit-head">
+            <h3>Profile</h3>
+            <button type="button" class="icon-btn" data-close-info>✕</button>
+          </div>
+          <div class="mq-profile-card">
+            <img src="<%= activeContact.image_path || '/assets/logo.png' %>" alt="Profile" class="mq-profile-big" />
+            <h4><%= activeContact.first_name %> <%= activeContact.middle_name || '' %> <%= activeContact.last_name %></h4>
+            <div class="mq-chat-subtitle"><%= activeContact.role %></div>
+            <div class="mq-profile-grid full">
+              <div><span>User ID</span><strong><%= activeContact.user_id || 'N/A' %></strong></div>
+              <div><span>Branch</span><strong><%= activeContact.branch_name || 'N/A' %></strong></div>
+              <div><span>Year Level</span><strong><%= activeContact.year_level || 'N/A' %></strong></div>
+              <% if (activeContact.role === 'student') { %>
+                <div><span>Grade Level</span><strong><%= activeContact.grade_level || 'N/A' %></strong></div>
+              <% } %>
+              <div><span>Email</span><strong><%= activeContact.email || activeContact.parent_email || 'Private' %></strong></div>
+              <div><span>Contact</span><strong><%= activeContact.contact_number || activeContact.parent_contact_number || 'Private' %></strong></div>
+              <div class="full-span"><span>Subjects</span><strong class="mq-profile-subjects"><%= contactSubjects.length ? contactSubjects.join('\n') : 'No subject listed yet.' %></strong></div>
+            </div>
+            <p class="mq-profile-note">Limited profile details only. Full account data stays private.</p>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog class="mq-camera-dialog" data-camera-dialog>
+        <div class="mq-camera-shell">
+          <div class="mq-edit-head">
+            <h3>Camera</h3>
+            <button type="button" class="icon-btn" data-camera-close>✕</button>
+          </div>
+          <div class="mq-camera-stage">
+            <video class="mq-camera-video" data-camera-video autoplay playsinline muted></video>
+            <canvas data-camera-canvas hidden></canvas>
+            <p class="mq-camera-hint">Take a photo or record a short video. The preview will be placed in the chat so you can send it or remove it.</p>
+          </div>
+          <div class="mq-camera-actions">
+            <button type="button" class="btn btn-secondary" data-camera-close>Cancel</button>
+            <button type="button" class="btn btn-secondary" data-take-photo>Take photo</button>
+            <button type="button" class="btn btn-primary" data-start-video-recording>Record video</button>
+            <button type="button" class="btn btn-primary" data-stop-video-recording hidden>Stop recording</button>
+          </div>
+        </div>
+      </dialog>
+    <% } else { %>
+      <div class="empty-state centered mq-empty-chat"><%= search ? 'Select the searched user to open the chat box.' : 'Search a user or open an existing conversation.' %></div>
+    <% } %>
+  </section>
+</section>

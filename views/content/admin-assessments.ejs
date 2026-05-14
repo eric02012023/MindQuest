@@ -1,0 +1,190 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-assessments.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <% const templateMatches = typeof templateStudentMap === 'object' && templateStudentMap ? templateStudentMap : {}; %>
+  <% const safeGradeLevelMap = typeof gradeLevelMap !== 'undefined' && gradeLevelMap ? gradeLevelMap : {}; %>
+  <% const gradeMapJson = JSON.stringify(safeGradeLevelMap); %>
+  <% const showTemplates = typeof showAssessmentTemplates !== 'undefined' ? showAssessmentTemplates : true; %>
+  <% const canCreate = typeof canCreateTemplate !== 'undefined' ? canCreateTemplate : false; %>
+  <div class="toolbar-card split compact-top-actions">
+    <div class="row-actions wrap-row-actions">
+      <% if (canCreate) { %><button type="button" class="btn btn-primary" data-modal-target="#create-assessment-modal">Create Assessment</button><% } %>
+      <button type="button" class="btn btn-secondary" data-modal-target="#assessment-history-modal">View Assessment History</button>
+    </div>
+  </div>
+
+  <% if (showTemplates) { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Assessment Templates</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Title</th><th>Subject</th><th>Type</th><th>Target Level</th><th>Questions</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <% if (!(templates || []).length) { %><tr><td colspan="6">No assessment templates yet.</td></tr><% } %>
+          <% (templates || []).forEach((template) => { %>
+            <% const targetYears = (template.target_year_levels || []).join(', ') || '-'; %>
+            <% const targetGrades = (template.target_grade_levels || []).join(', ') || '-'; %>
+            <tr>
+              <td><%= template.title %></td>
+              <td><%= template.subject_name || '-' %></td>
+              <td>Assessment</td>
+              <td><strong><%= targetYears %></strong><br /><span class="empty-state"><%= targetGrades %></span></td>
+              <td><%= template.total_questions || 0 %></td>
+              <td>
+                <% if (!viewOnly && !canCreate) { %>
+                  <button type="button" class="btn btn-primary btn-sm" data-modal-target="#assign-template-<%= template.id %>">Send to Students</button>
+                <% } else { %>
+                  <span class="empty-state">Auto send on create</span>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <% } %>
+
+  <% if (showTemplates && !viewOnly && !canCreate) { %>
+    <% (templates || []).forEach((template) => { %>
+      <% const matchingStudents = templateMatches[String(template.id)] || []; %>
+      <div class="global-modal" id="assign-template-<%= template.id %>">
+        <div class="global-modal-card wide modal-scroll-box" style="max-height:85vh;overflow:auto;">
+          <button type="button" class="modal-close" data-close-modal>&times;</button>
+          <h3>Send <%= template.title %></h3>
+          <p class="empty-state">Only students matching the selected subject, year level, and grade level are listed here.</p>
+          <form method="post" action="<%= basePath %>/assessments/templates/<%= template.id %>/assign" class="stack-form">
+            <div class="list-stack" style="max-height:260px;overflow:auto;">
+              <% if (!matchingStudents.length) { %>
+                <p class="empty-state">No matching students found for this template yet.</p>
+              <% } %>
+              <% matchingStudents.forEach((student) => { %>
+                <label class="checkbox-card"><input type="checkbox" name="assigned_student_ids" value="<%= student.student_id || student.id %>" /> <span><strong><%= student.full_name || (student.first_name + ' ' + student.last_name) %></strong> - <%= student.subject_name || template.subject_name %> - <%= student.year_level || '-' %><%= student.grade_level ? ' / ' + student.grade_level : '' %></span></label>
+              <% }) %>
+            </div>
+            <button type="submit" class="btn btn-primary" <%= matchingStudents.length ? '' : 'disabled' %>>Send Assessment</button>
+          </form>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Sent Assessments</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Title</th><th>Subject</th><th>Student</th><th>Score</th><th>Result</th><th>Taken At</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <% if (!assessments.length) { %><tr><td colspan="7">No assessments yet.</td></tr><% } %>
+          <% assessments.forEach((assessment) => { %>
+            <tr>
+              <td><%= assessment.title %></td>
+              <td><%= assessment.subject_name || '-' %></td>
+              <td><%= assessment.first_name %> <%= assessment.last_name %></td>
+              <td><%= assessment.score != null ? `${assessment.score} / ${assessment.total_questions}` : '-' %></td>
+              <td><%= (assessment.level === 'Balance' ? 'Intermediate' : (assessment.level || 'Pending')) %></td>
+              <td><%= formatDateTime(assessment.taken_at) %></td>
+              <td>
+                <div class="row-actions wrap-row-actions">
+                  <a class="btn btn-secondary btn-sm" href="<%= basePath %>/assessments/<%= assessment.id %>">View</a>
+                  <% if (!viewOnly && assessment.taken_at) { %>
+                    <form method="post" action="<%= basePath %>/assessments/<%= assessment.id %>/done" data-confirm-message="Move this finished assessment to history?">
+                      <button class="btn btn-primary btn-sm" type="submit">Done</button>
+                    </form>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="global-modal" id="assessment-history-modal">
+    <div class="global-modal-card extra-wide modal-scroll-box" style="max-height:85vh;overflow:auto;">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Assessment History</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Title</th><th>Subject</th><th>Student</th><th>Score</th><th>Result</th><th>Taken At</th><th>Action</th></tr></thead>
+          <tbody>
+            <% if (!(assessmentHistory || []).length) { %><tr><td colspan="7">No done assessments yet.</td></tr><% } %>
+            <% (assessmentHistory || []).forEach((assessment) => { %>
+              <tr>
+                <td><%= assessment.title %></td>
+                <td><%= assessment.subject_name || '-' %></td>
+                <td><%= assessment.first_name %> <%= assessment.last_name %></td>
+                <td><%= assessment.score != null ? `${assessment.score} / ${assessment.total_questions}` : '-' %></td>
+                <td><%= assessment.level || '-' %></td>
+                <td><%= formatDateTime(assessment.taken_at) %></td>
+                <td>
+                  <div class="row-actions wrap-row-actions">
+                    <% if (!viewOnly) { %>
+                    <form method="post" action="<%= basePath %>/assessments/<%= assessment.id %>/recover" data-confirm-message="Recover this assessment back to active list?"><button class="btn btn-secondary btn-sm" type="submit">Recover</button></form>
+                    <a class="btn btn-secondary btn-sm" href="<%= basePath %>/assessments/<%= assessment.id %>">View</a>
+                    <% } else { %>
+                    <span class="empty-state">View only</span>
+                    <% } %>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <% if (showTemplates && canCreate) { %>
+  <div class="global-modal" id="create-assessment-modal">
+    <div class="global-modal-card wide modal-scroll-box" style="max-height:85vh;overflow:auto;">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Create Subject Assessment Template</h3>
+      <form method="post" action="<%= basePath %>/assessments/create" class="stack-form" data-assessment-builder data-grade-map='<%- gradeMapJson %>'>
+        <div class="form-grid two-col">
+          <label>Subject
+            <select name="subject_id" data-primary-subject-input required>
+              <option value="">Select subject</option>
+              <% (subjects || []).forEach((subject) => { %>
+                <option value="<%= subject.id %>"><%= subject.name %></option>
+              <% }) %>
+            </select>
+            <input type="hidden" name="target_subject_ids" value="" data-primary-subject-mirror />
+          </label>
+          <label>Type of Test<input type="text" name="assessment_type_display" value="Assessment" readonly /><input type="hidden" name="assessment_type" value="assessment" /></label>
+          <label>Year Level
+            <select name="target_year_levels" data-year-filter-select required>
+              <option value="">Select year level</option>
+              <% (yearLevelOptions || []).forEach((level) => { %>
+                <option value="<%= level %>"><%= level %></option>
+              <% }) %>
+            </select>
+          </label>
+          <label>Grade Level
+            <select name="target_grade_levels" data-grade-filter-select required>
+              <option value="">Select year level first</option>
+            </select>
+          </label>
+          <div class="full-span"><label>Type of Assessment</label><div class="checkbox-list tall" data-type-of-assessment-list><label><input type="checkbox" name="type_of_assessment" value="Fill in the Blank" /> <span>Fill in the Blank</span></label><label><input type="checkbox" name="type_of_assessment" value="True or False" /> <span>True or False</span></label><label><input type="checkbox" name="type_of_assessment" value="Multiple Choice" checked /> <span>Multiple Choice</span></label><label><input type="checkbox" name="type_of_assessment" value="Identification" /> <span>Identification</span></label></div><input type="hidden" name="title" value="Assessment Template" /></div>
+        </div>
+        <div class="question-stack" data-question-stack>
+          <div class="assessment-question-card" data-question-card>
+            <div class="question-card-head">
+              <strong>Question 1</strong>
+            </div>
+            <div class="question-type-picker" data-question-type-picker></div>
+            <label>Question<textarea name="question_text" rows="2" required></textarea></label>
+            <input type="hidden" name="question_type" value="Multiple Choice" />
+            <div class="question-dynamic-fields" data-question-dynamic-fields></div>
+          </div>
+        </div>
+        <div class="row-actions assessment-action-row"><button type="button" class="btn btn-secondary" data-add-question>Add Question</button><button type="submit" class="btn btn-primary">Create Assessment</button></div>
+      </form>
+    </div>
+  </div>
+  <% } %>
+</section>

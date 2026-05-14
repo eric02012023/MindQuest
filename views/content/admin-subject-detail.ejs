@@ -1,0 +1,149 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-subject-detail.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <div class="toolbar-card split">
+    <h2><%= subject ? subject.name : 'Subject' %></h2>
+  </div>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Upload Module</h3></div>
+    <% if (currentUser.role === 'admin') { %>
+      <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/resources" enctype="multipart/form-data" class="stack-form">
+        <label>Type of Module
+          <select name="type_of_module" required>
+            <option value="">— Select Education Level —</option>
+            <option value="Pre School Level">Pre School</option>
+            <option value="Primary Level">Primary</option>
+            <option value="Junior High Level">Junior High</option>
+            <option value="Senior High Level">Senior High</option>
+          </select>
+        </label>
+        <label>Module Title<input type="text" name="title" required /></label>
+        <label>Description<textarea name="description" rows="3"></textarea></label>
+        <label>Attachment<input type="file" name="attachment" /></label>
+        <button type="submit" class="btn btn-primary">Upload Module</button>
+      </form>
+    <% } else { %>
+      <p class="empty-state">Assistant admin can view modules only.</p>
+    <% } %>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>List of Modules</h3></div>
+    <div class="list-stack">
+      <% if (!adminResources.length) { %><p class="empty-state">No modules uploaded yet.</p><% } %>
+      <% adminResources.forEach((resource) => { %>
+        <article class="list-card">
+          <div>
+            <strong><%= resource.title %></strong>
+            <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
+            <% if (resource.module_origin === 'ai_generated') { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
+            <p><%= resource.description || 'No description' %></p>
+            <p><strong>Uploaded by:</strong> <%= resource.tutor_name %></p>
+            <% if (resource.difficulty_level) { %><p><strong>Difficulty:</strong> <%= resource.difficulty_level %></p><% } %>
+            <% if (resource.file_path) { %><a href="<%= resource.file_path %>" target="_blank">Open file</a><% } %>
+            <% if (resource.is_archived) { %><span class="badge badge-danger" style="margin-left:8px;">Archived</span><% } %>
+          </div>
+          <% if (currentUser.role === 'admin') { %>
+            <div class="row-actions">
+              <% if (!resource.is_archived) { %>
+                <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/resources/<%= resource.id %>/archive" data-confirm-message="Archive this module?">
+                  <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
+                </form>
+              <% } else { %>
+                <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/resources/<%= resource.id %>/recover" data-confirm-message="Recover this module?">
+                  <button class="btn btn-primary btn-sm" type="submit">Recover</button>
+                </form>
+              <% } %>
+            </div>
+          <% } %>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Enrolled Students</h3></div>
+    <div class="list-stack">
+      <% const uniqueStudents = []; const seenStudentIds = new Set(); %>
+      <% students.forEach((s) => { if (!seenStudentIds.has(Number(s.student_id || s.id))) { seenStudentIds.add(Number(s.student_id || s.id)); uniqueStudents.push(s); } }) %>
+      <% if (!uniqueStudents.length) { %><p class="empty-state">No students enrolled yet.</p><% } %>
+      <% uniqueStudents.forEach((student) => { %>
+        <a class="list-card compact student-link-card" href="<%= basePath %>/subjects/<%= subject.id %>/students/<%= student.student_id || student.id %>/analytics">
+          <div>
+            <strong><%= student.full_name %></strong>
+            <span><%= student.year_level || '-' %> <%= student.grade_level || '' %></span>
+            <span style="margin-left:12px;"><%= student.tutor_name || 'No tutor assigned' %></span>
+            <% if (student.time_slot) { %><span style="margin-left:8px;">(<%= student.time_slot %>)</span><% } %>
+          </div>
+        </a>
+      <% }) %>
+    </div>
+  </section>
+
+  <% if (tutors.length) { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Tutors</h3></div>
+    <div class="subject-member-grid">
+      <% tutors.forEach((tutor) => { %>
+        <% const tutorFullName = [tutor.first_name, tutor.middle_name, tutor.last_name].filter(Boolean).join(' '); %>
+        <% const tutorBranchLabels = [...new Set(safeJsonArray(tutor.extra?.branch_ids || []).map((id) => { const hit = (branches || []).find((branch) => Number(branch.id) === Number(id)); return hit ? hit.name : ''; }).filter(Boolean))]; %>
+        <% const tutorYearLabels = [...new Set(safeJsonArray(tutor.extra?.year_levels || (tutor.year_level || '').split(',')).map((item) => String(item || '').trim()).filter(Boolean))]; %>
+        <% const assignedStudents = (students || []).filter((student) => Number(student.tutor_id || student.tutor_profile_id || 0) === Number(tutor.id)); %>
+        <article class="subject-member-card">
+          <div class="subject-member-card-head">
+            <strong><%= tutorFullName %></strong>
+            <span class="subject-role-chip">Tutor</span>
+          </div>
+          <div class="subject-member-meta">
+            <div><span>Name</span><strong><%= tutorFullName %></strong></div>
+            <div><span>Branch</span><strong><%= tutorBranchLabels.join(', ') || tutor.branch_name || '-' %></strong></div>
+            <div><span>Role</span><strong>Tutor</strong></div>
+            <div><span>Year Level</span><strong><%= tutorYearLabels.join(', ') || tutor.year_level || '-' %></strong></div>
+            <div><span>Assign Student</span><strong><%= assignedStudents.length ? assignedStudents.map((student) => student.full_name).join(', ') : 'No assigned students yet' %></strong></div>
+            <div><span>Time Schedule</span><strong><%= tutor.time_slot || tutor.available_time_slots || '-' %></strong></div>
+          </div>
+          <div class="subject-member-actions">
+            <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/tutors/<%= tutor.id %>/archive" data-confirm-message="Archive this tutor from the subject?">
+              <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
+            </form>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Archived Enrolled Users</h3></div>
+    <div class="table-wrap max-modal-table">
+      <table>
+        <thead><tr><th>Name</th><th>Branch</th><th>Role</th><th>Year Level</th><th>Time Schedule</th><th>Recover</th></tr></thead>
+        <tbody>
+          <% if (!archivedAssignments.length && !archivedTutors.length) { %>
+            <tr><td colspan="6">No archived enrolled users.</td></tr>
+          <% } %>
+          <% archivedAssignments.forEach((assignment) => { %>
+            <tr>
+              <td><%= assignment.first_name %> <%= assignment.last_name %></td>
+              <td><%= assignment.branch_name || '-' %></td>
+              <td><%= assignment.role || 'student' %></td>
+              <td><%= assignment.year_level || '-' %><%= assignment.grade_level ? ' / ' + assignment.grade_level : '' %></td>
+              <td><%= assignment.time_slot || '-' %></td>
+              <td><form method="post" action="<%= basePath %>/subjects/assignments/<%= assignment.id %>/recover" data-confirm-message="Recover this archived enrolled user?"><button class="btn btn-primary btn-sm" type="submit">Recover</button></form></td>
+            </tr>
+          <% }) %>
+          <% archivedTutors.forEach((tutor) => { %>
+            <tr>
+              <td><%= tutor.first_name %> <%= tutor.last_name %></td>
+              <td><%= tutor.branch_name || '-' %></td>
+              <td>tutor</td>
+              <td><%= tutor.year_level || '-' %></td>
+              <td><%= tutor.time_slot || '-' %></td>
+              <td><form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/tutors/<%= tutor.id %>/recover" data-confirm-message="Recover this archived tutor into the subject?"><button class="btn btn-primary btn-sm" type="submit">Recover</button></form></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

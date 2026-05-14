@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+[object Promise]
+<body class="auth-login-page plain-page login-page design-auth-page">
+  <section class="login-shell">
+    <div class="login-panel login-form-panel">
+      <div class="login-brand">Login</div>
+      <form action="/login" method="post" class="login-form-grid">
+        <label>
+          <span>Email</span>
+          <input type="email" name="email" required />
+        </label>
+        <label>
+          <span>Password</span>
+          <div class="password-input-wrap">
+            <input type="password" name="password" required data-password-toggle-target="login-password" />
+            <button type="button" class="password-eye-btn" data-password-toggle="login-password" aria-label="Show password">👁</button>
+          </div>
+        </label>
+        <button type="submit" class="login-submit-btn">Login</button>
+      </form>
+      <div class="login-link-row">
+        <a href="/">Go Back</a>
+      </div>
+    </div>
+    <div class="login-panel login-info-panel">
+      <h1>WELCOME<br>BACK!</h1>
+      <p>We are happy to have you with us again. If you need anything, we are here to help.</p>
+      <img src="assets/logo.jpeg" alt="Logo" />
+    </div>
+  </section>
+  [object Promise]
+  <script src="/js/main.js"></script>
+  <script>
+    document.querySelectorAll('[data-password-toggle]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-password-toggle');
+        const input = document.querySelector(`[data-password-toggle-target=\"${key}\"]`);
+        if (!input) return;
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.textContent = showing ? '👁' : '🙈';
+      });
+    });
+  </script>
+</body>
+</html>

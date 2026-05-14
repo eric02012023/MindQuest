@@ -1,0 +1,12 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/partials/flash-modal.ejs | Purpose: UI template/view used by the system. %>
+<% if (flash) { %>
+<div class="global-modal is-open" data-flash-modal>
+  <div class="global-modal-card small">
+    <button type="button" class="modal-close" data-close-modal>&times;</button>
+    <div class="status-badge <%= flash.type %>"><%= flash.type %></div>
+    <h3><%= flash.type === 'success' ? 'Done' : 'Notice' %></h3>
+    <p><%= flash.message %></p>
+    <button type="button" class="btn btn-primary" data-close-modal>OK</button>
+  </div>
+</div>
+<% } %>

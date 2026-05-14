@@ -1,0 +1,39 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-dashboard.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <article class="hero-dashboard-card gradient">
+    <div>
+      <h2>Welcome, <%= dashboard.user.first_name %>!</h2>
+      <p>View your students, upload subject files, mark attendance, and chat with students or tutors.</p>
+    </div>
+    <img src="<%= dashboard.user.image_path || '/assets/logo.png' %>" alt="Tutor avatar" class="profile-avatar large" />
+  </article>
+  <div class="dashboard-two-grid">
+    <section class="panel-card"><div class="panel-card-head"><h3>My Students</h3></div><strong class="huge-number"><%= dashboard.totalStudents %></strong></section>
+    <section class="panel-card"><div class="panel-card-head"><h3>My Subjects</h3></div><strong class="huge-number"><%= dashboard.subjects.length %></strong></section>
+  </div>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Additional Academic Support</h3></div>
+    <% const tutorSupports = Array.isArray(dashboard.user.supports) ? dashboard.user.supports : safeJsonArray(dashboard.user.support_json || []); %>
+    <% if (!tutorSupports.length) { %>
+      <p class="empty-state">No additional academic support selected yet.</p>
+    <% } else { %>
+      <div class="bubble-row">
+        <% tutorSupports.forEach((support) => { %>
+          <div class="mini-bubble"><span><%= support %></span></div>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Attendance Check</h3><a class="btn btn-primary btn-sm" href="/tutor/attendance">Open Attendance</a></div>
+    <p>Use attendance check to mark present or absent for your students. It will automatically reflect on the student dashboard.</p>
+  </section>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Subject Overview</h3></div>
+    <div class="subject-list-cards">
+      <% dashboard.subjects.forEach((subject) => { %>
+        <a class="subject-list-card" href="/tutor/subjects/<%= subject.subject_id %>"><div><strong><%= subject.subject_name %></strong><span><%= subject.total_students %> students</span></div></a>
+      <% }) %>
+    </div>
+  </section>
+</section>

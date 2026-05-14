@@ -1,0 +1,45 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-branch-detail.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head"><h2><%= branch.name %></h2></div>
+    <p>Click a student or tutor name to view the full profile and registration data.</p>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Students in this branch</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>User ID</th><th>Name</th><th>Year Level</th><th>Grade Level</th></tr></thead>
+        <tbody>
+          <% if (!students.length) { %><tr><td colspan="4">No students in this branch.</td></tr><% } %>
+          <% students.forEach((user) => { %>
+            <tr>
+              <td><%= user.user_id %></td>
+              <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= user.first_name %> <%= user.last_name %></a></td>
+              <td><%= user.year_level || '-' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Tutors in this branch</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>User ID</th><th>Name</th><th>Year Level</th></tr></thead>
+        <tbody>
+          <% if (!tutors.length) { %><tr><td colspan="3">No tutors in this branch.</td></tr><% } %>
+          <% tutors.forEach((user) => { %>
+            <tr>
+              <td><%= user.user_id %></td>
+              <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= user.first_name %> <%= user.last_name %></a></td>
+              <td><%= user.year_level || '-' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

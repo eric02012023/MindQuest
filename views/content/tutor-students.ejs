@@ -1,0 +1,15 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-students.ejs | Purpose: UI template/view used by the system. %>
+<section class="panel-card">
+  <div class="panel-card-head"><h2>My Students</h2></div>
+  <div class="list-stack">
+    <% if (!students.length) { %><p class="empty-state">No students assigned yet.</p><% } %>
+    <% students.forEach((student) => { %>
+      <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>/analytics">
+        <div>
+          <strong><%= student.full_name %></strong>
+          <span><%= student.subject_name %> - <%= student.year_level %> <%= student.grade_level %></span>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+</section>

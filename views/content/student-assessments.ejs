@@ -1,0 +1,23 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-assessments.ejs | Purpose: UI template/view used by the system. %>
+<section class="panel-card">
+  <div class="panel-card-head"><h2>My Assessments</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Title</th><th>Type</th><th>Result</th><th>Taken At</th><th>Action</th></tr></thead>
+      <tbody>
+        <% if (!assessments.length) { %>
+          <tr><td colspan="5">No assessments assigned yet.</td></tr>
+        <% } %>
+        <% assessments.forEach((assessment) => { %>
+          <tr>
+            <td><%= assessment.title %></td>
+            <td><%= assessment.assessment_origin === 'ai_generated' ? 'AI Generated' : assessment.assessment_type %></td>
+            <td><%= assessment.level || 'Pending' %></td>
+            <td><%= formatDateTime(assessment.taken_at) %></td>
+            <td><a class="btn btn-secondary btn-sm" href="/student/assessments/<%= assessment.id %>"><%= assessment.level ? 'View Result' : 'Take Exam' %></a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

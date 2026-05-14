@@ -1,0 +1,291 @@
+/* ANNOTATED COPY FOR DEFENSE REVIEW | File: public/css/tutor/theme.css | Purpose: Stylesheet used by the MindQuest UI. */
+.tutor-dashboard-page,
+.tutor-students-page,
+.tutor-subjects-page,
+.tutor-assessments-page,
+.tutor-attendance-page,
+.tutor-messages-page,
+.tutor-profile-page,
+.tutor-analytics-page {
+  background:
+    radial-gradient(circle at top left, rgba(11, 15, 245, 0.1), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(8, 82, 178, 0.1), transparent 34%),
+    linear-gradient(180deg, #f2f4ff 0%, #f1f2fb 100%);
+}
+
+.tutor-dashboard-page .sidebar,
+.tutor-students-page .sidebar,
+.tutor-subjects-page .sidebar,
+.tutor-assessments-page .sidebar,
+.tutor-attendance-page .sidebar,
+.tutor-messages-page .sidebar,
+.tutor-profile-page .sidebar,
+.tutor-analytics-page .sidebar {
+  background: linear-gradient(180deg, #020034 0%, #072177 52%, #2f43c9 100%);
+}
+
+.tutor-dashboard-page .dashboard-topbar,
+.tutor-students-page .dashboard-topbar,
+.tutor-subjects-page .dashboard-topbar,
+.tutor-assessments-page .dashboard-topbar,
+.tutor-attendance-page .dashboard-topbar,
+.tutor-messages-page .dashboard-topbar,
+.tutor-profile-page .dashboard-topbar,
+.tutor-analytics-page .dashboard-topbar {
+  background: rgba(255,255,255,.9);
+  border-bottom-color: rgba(245,158,11,.10);
+}
+
+.tutor-dashboard-page .sidebar-nav a.active,
+.tutor-dashboard-page .sidebar-nav a:hover,
+.tutor-students-page .sidebar-nav a.active,
+.tutor-students-page .sidebar-nav a:hover,
+.tutor-subjects-page .sidebar-nav a.active,
+.tutor-subjects-page .sidebar-nav a:hover,
+.tutor-assessments-page .sidebar-nav a.active,
+.tutor-assessments-page .sidebar-nav a:hover,
+.tutor-attendance-page .sidebar-nav a.active,
+.tutor-attendance-page .sidebar-nav a:hover,
+.tutor-messages-page .sidebar-nav a.active,
+.tutor-messages-page .sidebar-nav a:hover,
+.tutor-profile-page .sidebar-nav a.active,
+.tutor-profile-page .sidebar-nav a:hover,
+.tutor-analytics-page .sidebar-nav a.active,
+.tutor-analytics-page .sidebar-nav a:hover {
+  background: rgba(255,255,255,.18);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.10);
+}
+
+.tutor-dashboard-page .panel-card,
+.tutor-students-page .panel-card,
+.tutor-subjects-page .panel-card,
+.tutor-assessments-page .panel-card,
+.tutor-attendance-page .panel-card,
+.tutor-messages-page .panel-card,
+.tutor-profile-page .panel-card,
+.tutor-analytics-page .panel-card {
+  border-color: rgba(245,158,11,.10);
+  box-shadow: 0 18px 38px rgba(124,45,18,.07);
+}
+
+.tutor-dashboard-page .subject-list-card,
+.tutor-subjects-page .subject-list-card,
+.tutor-dashboard-page .mini-bubble,
+.tutor-dashboard-page .attendance-box {
+  border-color: rgba(245,158,11,.12);
+}
+
+.tutor-dashboard-page .calendar-widget,
+.tutor-students-page .calendar-widget,
+.tutor-profile-page .calendar-widget,
+.tutor-messages-page .calendar-widget {
+  border: 1px solid rgba(11, 89, 245, 0.16);
+  background: linear-gradient(180deg, #f8f8ff 0%, #f7fafc 100%);
+}
+
+.tutor-dashboard-page .calendar-shell,
+.tutor-students-page .calendar-shell,
+.tutor-profile-page .calendar-shell,
+.tutor-messages-page .calendar-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.tutor-dashboard-page .calendar-top,
+.tutor-students-page .calendar-top,
+.tutor-profile-page .calendar-top,
+.tutor-messages-page .calendar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tutor-dashboard-page .calendar-badge,
+.tutor-students-page .calendar-badge,
+.tutor-profile-page .calendar-badge,
+.tutor-messages-page .calendar-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(11, 23, 245, 0.14);
+  color: #12209a;
+  font-weight: 800;
+}
+
+.tutor-dashboard-page .calendar-meta,
+.tutor-students-page .calendar-meta,
+.tutor-profile-page .calendar-meta,
+.tutor-messages-page .calendar-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tutor-dashboard-page .calendar-today-label,
+.tutor-students-page .calendar-today-label,
+.tutor-profile-page .calendar-today-label,
+.tutor-messages-page .calendar-today-label {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.tutor-dashboard-page .calendar-nav,
+.tutor-students-page .calendar-nav,
+.tutor-profile-page .calendar-nav,
+.tutor-messages-page .calendar-nav {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.tutor-dashboard-page .calendar-nav button,
+.tutor-students-page .calendar-nav button,
+.tutor-profile-page .calendar-nav button,
+.tutor-messages-page .calendar-nav button {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(245,158,11,.16);
+  background: #fff;
+  color: #9a3412;
+  font-weight: 800;
+}
+
+.tutor-dashboard-page .calendar-grid,
+.tutor-students-page .calendar-grid,
+.tutor-profile-page .calendar-grid,
+.tutor-messages-page .calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tutor-dashboard-page .calendar-cell,
+.tutor-students-page .calendar-cell,
+.tutor-profile-page .calendar-cell,
+.tutor-messages-page .calendar-cell {
+  min-height: 72px;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.96);
+  border: 1px solid rgba(245,158,11,.10);
+  display: grid;
+  align-content: space-between;
+}
+
+.tutor-dashboard-page .calendar-cell.is-weekday,
+.tutor-students-page .calendar-cell.is-weekday,
+.tutor-profile-page .calendar-cell.is-weekday,
+.tutor-messages-page .calendar-cell.is-weekday {
+  min-height: auto;
+  border-radius: 14px;
+  background: rgba(11, 70, 245, 0.08);
+  color: #122d9a;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  padding: 10px 8px;
+}
+
+.tutor-dashboard-page .calendar-cell.is-muted,
+.tutor-students-page .calendar-cell.is-muted,
+.tutor-profile-page .calendar-cell.is-muted,
+.tutor-messages-page .calendar-cell.is-muted {
+  opacity: .45;
+}
+
+.tutor-dashboard-page .calendar-cell.today,
+.tutor-students-page .calendar-cell.today,
+.tutor-profile-page .calendar-cell.today,
+.tutor-messages-page .calendar-cell.today {
+  background: linear-gradient(180deg, rgba(245,158,11,.18), rgba(255,255,255,.98));
+  border-color: rgba(245,158,11,.28);
+  box-shadow: 0 12px 26px rgba(245,158,11,.16);
+}
+
+.tutor-dashboard-page .calendar-cell .calendar-date,
+.tutor-students-page .calendar-cell .calendar-date,
+.tutor-profile-page .calendar-cell .calendar-date,
+.tutor-messages-page .calendar-cell .calendar-date {
+  font-weight: 800;
+}
+
+.tutor-dashboard-page .calendar-pill,
+.tutor-students-page .calendar-pill,
+.tutor-profile-page .calendar-pill,
+.tutor-messages-page .calendar-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(16,185,129,.12);
+  color: #047857;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tutor-dashboard-page .calendar-summary,
+.tutor-students-page .calendar-summary,
+.tutor-profile-page .calendar-summary,
+.tutor-messages-page .calendar-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tutor-dashboard-page .calendar-summary-card,
+.tutor-students-page .calendar-summary-card,
+.tutor-profile-page .calendar-summary-card,
+.tutor-messages-page .calendar-summary-card {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.96);
+  border: 1px solid rgba(245,158,11,.10);
+}
+
+.tutor-dashboard-page .calendar-summary-card span,
+.tutor-students-page .calendar-summary-card span,
+.tutor-profile-page .calendar-summary-card span,
+.tutor-messages-page .calendar-summary-card span {
+  display: block;
+  color: #6b7280;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.tutor-dashboard-page .calendar-summary-card strong,
+.tutor-students-page .calendar-summary-card strong,
+.tutor-profile-page .calendar-summary-card strong,
+.tutor-messages-page .calendar-summary-card strong {
+  font-size: 22px;
+}
+
+@media (max-width: 760px) {
+  .tutor-dashboard-page .calendar-grid,
+  .tutor-students-page .calendar-grid,
+  .tutor-profile-page .calendar-grid,
+  .tutor-messages-page .calendar-grid {
+    gap: 6px;
+  }
+
+  .tutor-dashboard-page .calendar-cell,
+  .tutor-students-page .calendar-cell,
+  .tutor-profile-page .calendar-cell,
+  .tutor-messages-page .calendar-cell {
+    min-height: 60px;
+    border-radius: 14px;
+    padding: 8px;
+  }
+
+  .tutor-dashboard-page .calendar-summary,
+  .tutor-students-page .calendar-summary,
+  .tutor-profile-page .calendar-summary,
+  .tutor-messages-page .calendar-summary {
+    grid-template-columns: 1fr;
+  }
+}

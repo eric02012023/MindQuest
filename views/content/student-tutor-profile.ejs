@@ -1,0 +1,17 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-tutor-profile.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head"><h2>Tutor Profile</h2></div>
+    <div class="limited-profile-card">
+      <img src="<%= tutor.image_path || '/assets/logo.png' %>" alt="Tutor avatar" class="profile-avatar large" />
+      <div>
+        <h3><%= tutor.first_name %> <%= tutor.last_name %></h3>
+        <p><strong>Email:</strong> <%= tutor.email || '-' %></p>
+        <p><strong>Contact:</strong> <%= tutor.contact_number || '-' %></p>
+        <p><strong>Year Level:</strong> <%= tutor.year_level || '-' %></p>
+        <p><strong>Grade Level:</strong> <%= tutor.grade_level || '-' %></p>
+        <p><strong>Address:</strong> <%= tutor.address || '-' %></p>
+      </div>
+    </div>
+  </section>
+</section>

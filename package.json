@@ -1,0 +1,25 @@
+{
+  "name": "mindquest-sqlserver-ejs",
+  "version": "1.0.0",
+  "description": "MindQuest Tutorial Center web system using Node.js, Express, EJS, SQL Server, CSS, and JavaScript.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "init-db": "node scripts/init-db.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.6.1",
+    "ejs": "^3.1.10",
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "method-override": "^3.0.0",
+    "mssql": "^11.0.1",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^8.0.5",
+    "socket.io": "^4.8.0",
+    "uuid": "^10.0.0"
+  }
+}

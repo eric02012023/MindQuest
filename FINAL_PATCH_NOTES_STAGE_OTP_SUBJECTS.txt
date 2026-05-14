@@ -1,0 +1,10 @@
+Updated files:
+- lib/otp.js
+- lib/data.js
+- views/content/admin-billing.ejs
+- views/content/admin-assessments.ejs
+- views/content/admin-subject-detail.ejs
+- views/register.ejs
+- public/js/dashboard.js
+- public/css/admin/subjects.css
+- sql/incremental_trusted_device_fullbill.sql

@@ -1,0 +1,53 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/login.ejs | Purpose: UI template/view used by the system. %>
+<!DOCTYPE html>
+<html lang="en">
+<%- include('partials/head', { pageTitle, pageCss: '/css/auth/login.css' }) %>
+<body class="auth-login-page plain-page login-page design-auth-page">
+  <section class="login-shell">
+    <div class="login-panel login-form-panel">
+      <div class="login-brand">Login</div>
+      <form action="/login" method="post" class="login-form-grid">
+        <label>
+          <span>Email <span class="required-mark">*</span></span>
+          <input type="email" name="email" required />
+        </label>
+        <label>
+          <span>Password <span class="required-mark">*</span></span>
+          <div class="password-input-wrap">
+            <input type="password" name="password" required data-password-toggle-target="login-password" />
+            <button type="button" class="password-eye-btn" data-password-toggle="login-password" aria-label="Show password">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+            </button>
+          </div>
+        </label>
+        <button type="submit" class="login-submit-btn">Login</button>
+      </form>
+      <div class="login-link-row">
+        <a href="/">Go Back</a>
+      </div>
+    </div>
+    <div class="login-panel login-info-panel">
+      <img src="assets/logo.jpeg" alt="Logo" />
+      <h1>WELCOME!</h1>
+      <p>Unlocking Minds, One Quest At A Time!</p>
+    </div>
+  </section>
+  <%- include('partials/flash-modal', { flash }) %>
+  <script src="/js/main.js"></script>
+  <script>
+    document.querySelectorAll('[data-password-toggle]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-password-toggle');
+        const input = document.querySelector(`[data-password-toggle-target="${key}"]`);
+        if (!input) return;
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      });
+    });
+  </script>
+</body>
+</html>

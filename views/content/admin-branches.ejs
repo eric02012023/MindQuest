@@ -1,0 +1,64 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-branches.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <div class="toolbar-card split compact-top-actions">
+    <div class="row-actions">
+      <button type="button" class="btn btn-secondary" data-modal-target="#archived-branches">View Archive Branch</button>
+      <button type="button" class="btn btn-primary" data-modal-target="#add-branch">Add Branch</button>
+    </div>
+
+    <section class="panel-card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Branch Name</th><th>Created</th><th>Action</th></tr></thead>
+        <tbody>
+          <% if (!branches.length) { %><tr><td colspan="3">No branches found.</td></tr><% } %>
+          <% branches.forEach((branch) => { if (Number(branch.is_archived || 0) === 0) { %>
+            <tr>
+              <td><a href="<%= basePath %>/branches/<%= branch.id %>"><%= branch.name %></a></td>
+              <td><%= formatDate(branch.created_at) %></td>
+              <td><form method="post" action="<%= basePath %>/branches/<%= branch.id %>/archive" data-confirm-message="Archive this branch?"><button class="btn btn-secondary btn-sm" type="submit">Archive</button></form></td>
+            </tr>
+          <% } }) %>
+        </tbody>
+      </table>
+    </div>
+
+    
+  </section>
+  </div>
+
+  
+
+  <div class="global-modal" id="archived-branches">
+    <div class="global-modal-card wide">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Archived Branches</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Branch Name</th><th>View</th><th>Recover</th></tr></thead>
+          <tbody>
+            <% if (!archivedBranches.length) { %><tr><td colspan="3">No archived branches.</td></tr><% } %>
+            <% archivedBranches.forEach((branch) => { %>
+              <tr>
+                <td><a href="<%= basePath %>/branches/<%= branch.id %>"><%= branch.name %></a></td>
+                <td><a class="btn btn-secondary btn-sm" href="<%= basePath %>/branches/<%= branch.id %>">View</a></td>
+                <td><form method="post" action="<%= basePath %>/branches/<%= branch.id %>/recover" data-confirm-message="Recover this branch?"><button class="btn btn-primary btn-sm" type="submit">Recover</button></form></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="global-modal" id="add-branch">
+    <div class="global-modal-card small">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Add Branch</h3>
+      <form method="post" action="<%= basePath %>/branches/add" class="stack-form">
+        <label>Branch Name<input type="text" name="name" required oninput="this.value=this.value.toUpperCase()" pattern="[A-Za-z0-9\s]+BRANCH" title="Use uppercase letters/numbers/spaces only and end with BRANCH" /></label>
+        <button class="btn btn-primary" type="submit">Save Branch</button>
+      </form>
+    </div>
+  </div>
+</section>

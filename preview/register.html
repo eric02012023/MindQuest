@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+[object Promise]
+<body class="auth-register-page plain-page registration-design-page">
+  <section class="registration-modal-shell">
+    <form action="/register/student/details" method="post" enctype="multipart/form-data" class="registration-design-card" data-registration-form data-registration-type="student">
+      <a href="/" class="big-close-link" aria-label="Go back">×</a>
+
+      <div class="registration-design-header">
+        <img src="/assets/logo.jpeg" alt="MindQuest Logo" class="registration-logo" />
+        <div>
+          <h1>Learner Registration Form</h1>
+          <p>Enter your information below</p>
+        </div>
+      </div>
+
+      <div class="registration-top-divider"></div>
+
+      
+      <div class="registration-two-column-grid student-layout">
+        <div class="column-stack">
+          <div class="field-block full-row-name">
+            <label class="group-label">Name:</label>
+            <div class="triple-input-row">
+              <input type="text" name="first_name" placeholder="First Name" value="" required />
+              <input type="text" name="middle_name" placeholder="Middle Name" value="" />
+              <input type="text" name="last_name" placeholder="Last Name" value="" required />
+            </div>
+          </div>
+
+          <div class="double-field-row uneven">
+            <div class="field-block compact">
+              <label>Birth of Date:</label>
+              <input type="date" name="birth_date" value="" data-birthdate required />
+            </div>
+            <div class="field-block compact radio-field">
+              <label>Gender:</label>
+              <div class="bullet-options">
+                <label><input type="radio" name="gender" value="Male" required  /> Male</label>
+                <label><input type="radio" name="gender" value="Female"  /> Female</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="double-field-row">
+            <div class="field-block compact">
+              <label>Age:</label>
+              <input type="number" name="age" min="1" value="" data-age readonly />
+            </div>
+            <div class="field-block compact">
+              <label>Select Branch:</label>
+              <select name="branch_id" required>
+                <option value="" disabled selected>Select branch</option>
+                
+                  <option value="1" >Main Branch</option>
+                
+                  <option value="2" >Fatima Branch</option>
+                
+              </select>
+            </div>
+          </div>
+
+          <div class="field-block">
+            <label>Parent/Guardian Name:</label>
+            <input type="text" name="parent_guardian_name" value="" />
+          </div>
+
+          <div class="field-block">
+            <label>Parent/Student Contact Number:</label>
+            <input type="text" name="parent_contact_number" placeholder="09xxxxxxxxx" value="" required />
+          </div>
+
+          <div class="field-block checklist-block">
+            <label>Select Subject Field:</label>
+            <div class="bullet-options checkbox-options multi-column-list">
+              
+                <label><input type="checkbox" name="subjects" value="Math" data-subject-checkbox checked /> Math</label>
+              
+                <label><input type="checkbox" name="subjects" value="English" data-subject-checkbox  /> English</label>
+              
+                <label><input type="checkbox" name="subjects" value="Science" data-subject-checkbox  /> Science</label>
+              
+                <label><input type="checkbox" name="subjects" value="Filipino" data-subject-checkbox  /> Filipino</label>
+              
+            </div>
+          </div>
+        </div>
+
+        <div class="column-stack">
+          <div class="field-block full-row-name hide-on-mobile-space">
+            <label class="group-label">&nbsp;</label>
+            <div class="triple-input-row ghost-row"></div>
+          </div>
+
+          <div class="field-block">
+            <label>Parent/Student Facebook Account:</label>
+            <input type="text" name="parent_facebook" value="" />
+          </div>
+
+
+          <div class="field-block">
+            <label>Address:</label>
+            <input type="text" name="address" placeholder="Where do you live?" value="" required />
+          </div>
+
+          <div class="field-block">
+            <label>&nbsp;</label>
+            <select name="year_level" data-year-level required>
+              <option value="" disabled selected>What year level are you right now?</option>
+              <option value="Pre School Level" >Pre School Level</option>
+              <option value="Primary Level" >Primary Level</option>
+              <option value="Junior High Level" >Junior High Level</option>
+              <option value="Senior High Level" >Senior High Level</option>
+            </select>
+          </div>
+
+          <div class="field-block">
+            <label>&nbsp;</label>
+            <select name="grade_level" data-grade-level data-selected-value="" required>
+              <option value="" disabled selected>What grade level are you right now?</option>
+            </select>
+          </div>
+
+          <div class="field-block checklist-block">
+            <label>Select Additional Academic Support:</label>
+            <div class="bullet-options checkbox-options">
+              <label><input type="checkbox" name="supports" value="Exam Preparation & Reviews" data-support-checkbox  /> Exam Preparation & Reviews</label>
+              <label><input type="checkbox" name="supports" value="Homework Assistance" data-support-checkbox checked /> Homework Assistance</label>
+              <label><input type="checkbox" name="supports" value="Project Guidance" data-support-checkbox  /> Project Guidance</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+
+      <div class="registration-account-block">
+        
+          <div class="field-block account-field account-field-email">
+            <label>Email:</label>
+            <input type="email" name="email" placeholder="example@example.com" value="" required />
+          </div>
+        
+
+        <div class="field-block account-field">
+          <label>Password:</label>
+          <div class="password-input-wrap create-password-wrap">
+            <input type="password" name="password" placeholder="Password" required data-password-toggle-target="pw-main" />
+            <button type="button" class="password-eye-btn" data-password-toggle="pw-main" aria-label="Show password">👁</button>
+          </div>
+        </div>
+
+        <div class="field-block account-field">
+          <label>Confirm Password:</label>
+          <div class="password-input-wrap create-password-wrap">
+            <input type="password" name="confirm_password" placeholder="Confirm Password" required data-password-toggle-target="cpw-main" />
+            <button type="button" class="password-eye-btn" data-password-toggle="cpw-main" aria-label="Show confirm password">👁</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="registration-bottom-row">
+        <div class="upload-block">
+          <label>Upload Image:</label>
+          <label class="fake-upload-box" data-upload-preview-box>
+            <input type="file" name="image" accept="image/*" data-image-preview-input />
+            <input type="hidden" name="existing_image_path" value="" />
+            <img src="" alt="Preview" class="upload-preview-image " data-upload-preview-image />
+            <span class="upload-placeholder ">Add photo here</span>
+            <strong class="upload-plus ">+</strong>
+          </label>
+        </div>
+        <button type="submit" class="next-gradient-btn">Submit</button>
+      </div>
+    </form>
+  </section>
+
+  [object Promise]
+  <script src="/js/main.js"></script>
+  <script src="/js/registration.js"></script>
+</body>
+</html>

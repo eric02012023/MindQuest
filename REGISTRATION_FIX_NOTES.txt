@@ -1,0 +1,19 @@
+Registration fixes applied:
+- Restored Student Grade Level field in registration form.
+- Restored Tutor Year Level field in registration form.
+- Removed broken old tutor year-level expertise validation that caused false popup errors.
+- Updated client-side validation:
+  - Student now requires both year level and grade level.
+  - Tutor now requires a single year level selection.
+- Updated server-side validation to require:
+  - student grade_level
+  - tutor year_level
+- Applied the same fixes in both root app and nested mindquest-final copy.
+
+Files changed:
+- views/register.ejs
+- public/js/registration.js
+- routes/public.js
+- mindquest-final/views/register.ejs
+- mindquest-final/public/js/registration.js
+- mindquest-final/routes/public.js

@@ -1,0 +1,57 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/create-account.ejs | Purpose: UI template/view used by the system. %>
+<!DOCTYPE html>
+<html lang="en">
+<%- include('partials/head', { pageTitle, pageCss: '/css/auth/register.css' }) %>
+<body class="auth-create-account-page plain-page registration-design-page">
+  <div class="registration-modal-shell narrow-account-shell single-page-account">
+    <section class="create-account-card-design">
+      <button type="button" class="modal-close top-corner" onclick="window.location.href='/'">&times;</button>
+      <div class="registration-design-header create-account-header">
+        <img src="/assets/logo.png" alt="MindQuest" class="registration-logo" />
+        
+        <div><h1>Create Account</h1></div>
+      </div>
+
+      <div class="registration-top-divider"></div>
+      <form class="stack-form create-account-fields" method="post" action="/register/<%= type %>/account">
+        <label>Email:
+          <input type="email" name="email" placeholder="Email" required />
+        </label>
+
+        <label>Password:
+          <div class="password-input-wrap create-password-wrap">
+            <input type="password" name="password" placeholder="Password" required data-password-toggle-target="pw" />
+            <button type="button" class="password-eye-btn" data-password-toggle="pw" aria-label="Show password">👁</button>
+          </div>
+        </label>
+
+        <label>Confirm Password:
+          <div class="password-input-wrap create-password-wrap">
+            <input type="password" name="confirm_password" placeholder="Confirm Password" required data-password-toggle-target="cpw" />
+            <button type="button" class="password-eye-btn" data-password-toggle="cpw" aria-label="Show confirm password">👁</button>
+          </div>
+        </label>
+
+        <div class="create-account-actions single-action-center">
+          <button type="submit" class="next-gradient-btn submit-btn">Submit</button>
+        </div>
+        <p class="create-account-note">Please screenshot your account, Thank you!</p>
+      </form>
+    </section>
+  </div>
+  <%- include('partials/flash-modal', { flash }) %>
+  <script src="/js/main.js"></script>
+  <script>
+    document.querySelectorAll('[data-password-toggle]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-password-toggle');
+        const input = document.querySelector(`[data-password-toggle-target="${key}"]`);
+        if (!input) return;
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.textContent = showing ? '👁' : '🙈';
+      });
+    });
+  </script>
+</body>
+</html>

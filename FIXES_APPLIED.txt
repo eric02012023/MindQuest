@@ -1,0 +1,47 @@
+MindQuest patch notes (April 2, 2026)
+
+Applied fixes:
+1. Fixed admin users page crash in routes/adminFactory.js
+   - Removed invalid reference to undefined variable `user`.
+   - Section is now set safely to `users`.
+
+2. Fixed registration submission crash in lib/data.js
+   - Added missing declarations for `canonicalSubjects` and `nextSupports` inside createSubmission().
+   - Registration flow now normalizes subjects/supports before insert.
+
+3. Fixed misleading startup credentials output in server.js
+   - Console output now matches the bootstrap default admin credentials.
+
+4. Updated README default admin login text for consistency.
+
+Notes:
+- This patch directly addresses the runtime errors reported in the conversation.
+- I did a syntax/smoke check on the edited JS files after patching.
+- As with any full web app, I cannot honestly guarantee there are zero remaining issues without running end-to-end tests against your actual SQL Server environment.
+
+Additional fixes applied in this update:
+5. Fixed tutor-to-student assignment matching
+   - Assignment matching now more reliably checks same branch and same year level, including fallback matching by branch names and raw year/grade labels.
+
+6. Added login password visibility toggle
+   - Login page password field now has an eye icon to show/hide the password.
+
+7. Strengthened learner and tutor registration validation
+   - Learner: minimum age is now 3 years old.
+   - Tutor: minimum age is now 18 years old.
+   - Learner required fields enforced before submit.
+   - Tutor required fields enforced before submit, except upload photo, additional academic support, and middle name.
+   - Subject selection is now required on both registration forms.
+
+8. Added client-side validation support
+   - Registration form now blocks submit when required selections are missing or age rules are not met.
+
+
+2026-04-09 update:
+- Registration OTP removed; OTP now sends only on approved student/tutor login after correct email and password.
+- Registration required fields updated for student and tutor.
+- Upload photo moved to top of registration form.
+- Strong password validation added.
+- Tutor year level expertise added as multi-select and synced to tutor_year_levels table.
+- Assessment answer checking hardened with trimming and case-insensitive matching.
+- SQL schema updated with tutor_year_levels and otps tables and approved user status.

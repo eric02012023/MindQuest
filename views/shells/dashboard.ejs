@@ -1,0 +1,41 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/shells/dashboard.ejs | Purpose: UI template/view used by the system. %>
+<!DOCTYPE html>
+<html lang="en">
+<%
+  const roleFolder = basePath === '/assistant' ? 'assistant-admin' : String(basePath || '').replace(/^\//, '') || 'public';
+  const sectionMap = {
+    archive_notifications: 'notification-archives',
+    notification_history: 'notification-history',
+    payment_history: 'payment-history'
+  };
+  const sectionSlug = sectionMap[section] || String(section || 'dashboard').replace(/_/g, '-');
+  const roleThemeCss = `/css/${roleFolder}/theme.css`;
+  const shellPageCss = `/css/${roleFolder}/${sectionSlug}.css`;
+  const shellPageClass = `${roleFolder}-${sectionSlug}-page`;
+  const shellStyles = [roleThemeCss, shellPageCss];
+%>
+<%- include('../partials/head', { pageTitle, pageCss: shellStyles }) %>
+<body class="dashboard-body <%= shellPageClass %>">
+  <div class="dashboard-shell">
+    <%- include('../partials/sidebar', { basePath, section, roleName, currentUser }) %>
+    <div class="sidebar-overlay" data-sidebar-overlay></div>
+    <div class="dashboard-main">
+      <%- include('../partials/dashboard-topbar', { basePath, pageTitle, currentUser, notificationCount: typeof notificationCount === 'undefined' ? 0 : notificationCount, inboxNotifications: typeof inboxNotifications === 'undefined' ? [] : inboxNotifications }) %>
+      <main class="dashboard-content">
+        <div class="page-wrapper <%= shellPageClass %>-wrapper">
+          <%- include(contentView) %>
+        </div>
+      </main>
+    </div>
+  </div>
+  <%- include('../partials/flash-modal', { flash }) %>
+  <script>
+    window.mqtcUser = <%- JSON.stringify(currentUser || null) %>;
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/dashboard.js"></script>
+  <script src="/js/messages.js"></script>
+  <script src="/js/calls.js"></script>
+</body>
+</html>

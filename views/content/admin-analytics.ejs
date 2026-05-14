@@ -1,0 +1,69 @@
+<%# File: views/content/admin-analytics.ejs | Purpose: Analytics & Reports page for Admin/Assistant Admin %>
+<section class="page-stack">
+  <div class="toolbar-card split">
+    <h2>Analytics & Reports</h2>
+    <form class="search-form inline-row" method="get" action="">
+      <input type="text" name="search" value="<%= search || '' %>" placeholder="Search by name or ID..." />
+      <button class="btn btn-primary btn-sm" type="submit">Search</button>
+      <% if (search) { %><a class="btn btn-secondary btn-sm" href="<%= basePath %>/analytics">Clear</a><% } %>
+    </form>
+  </div>
+
+  <div class="billing-summary-grid">
+    <article class="stat-card gradient"><h3>Total Students</h3><strong><%= summary.totalStudents %></strong></article>
+    <article class="stat-card"><h3>In Progress</h3><strong><%= summary.inProgress %></strong></article>
+    <article class="stat-card"><h3>Advanced</h3><strong><%= summary.advanced %></strong></article>
+    <article class="stat-card"><h3>Not Started</h3><strong><%= summary.notStarted %></strong></article>
+  </div>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Student Progress Overview</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>ID</th>
+            <th>Branch</th>
+            <th>Subjects</th>
+            <th>Tutor</th>
+            <th>Level</th>
+            <th>Score</th>
+            <th>Modules</th>
+            <th>Assessments</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!students.length) { %><tr><td colspan="11">No students found.</td></tr><% } %>
+          <% students.forEach((student) => { %>
+            <tr>
+              <td><strong><%= student.full_name %></strong></td>
+              <td><%= student.user_id %></td>
+              <td><%= student.branch_name || '-' %></td>
+              <td><%= student.subjects %></td>
+              <td><%= student.tutor_name %></td>
+              <td>
+                <span class="badge badge-<%= student.current_level === 'Advance' ? 'success' : student.current_level === 'Intermediate' ? 'info' : 'warning' %>">
+                  <%= student.current_level %>
+                </span>
+              </td>
+              <td><%= student.avg_score %></td>
+              <td><%= student.modules_read %></td>
+              <td><%= student.assessments_completed %> / <%= student.assessments_total %></td>
+              <td>
+                <span class="badge badge-<%= student.progress_status === 'Advanced' ? 'success' : student.progress_status === 'In Progress' ? 'info' : 'warning' %>">
+                  <%= student.progress_status %>
+                </span>
+              </td>
+              <td>
+                <a class="btn btn-primary btn-sm" href="<%= basePath %>/profile/<%= student.id %>">View Profile</a>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

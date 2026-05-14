@@ -1,0 +1,14 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/error.ejs | Purpose: UI template/view used by the system. %>
+<!DOCTYPE html>
+<html lang="en">
+<%- include('partials/head', { pageTitle, pageCss: '/css/public/home.css' }) %>
+<body class="public-error-page plain-page">
+  <section class="simple-center-card">
+    <img src="/assets/logo.png" alt="MindQuest Logo" class="error-logo" />
+    <h1><%= pageTitle %></h1>
+    <p><%= message %></p>
+    <a class="btn btn-primary" href="/">Back to Home</a>
+  </section>
+  <script src="/js/main.js"></script>
+</body>
+</html>

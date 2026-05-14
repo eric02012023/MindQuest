@@ -1,0 +1,22 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-notification-archives.ejs | Purpose: UI template/view used by the system. %>
+<section class="panel-card">
+  <div class="panel-card-head">
+    <h2>Archived Notifications</h2>
+  </div>
+  <div class="list-stack">
+    <% if (!archivedNotifications.length) { %>
+      <p class="empty-state">No archived notifications.</p>
+    <% } %>
+    <% archivedNotifications.forEach((item) => { %>
+      <article class="list-card compact">
+        <div>
+          <h3><%= item.title %></h3>
+          <p><%= item.first_name %> <%= item.last_name %> - <%= item.branch_name || '-' %></p>
+        </div>
+        <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/recover">
+          <button type="submit" class="btn btn-primary btn-sm">Recover</button>
+        </form>
+      </article>
+    <% }) %>
+  </div>
+</section>

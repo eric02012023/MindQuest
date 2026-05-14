@@ -1,0 +1,51 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-profile.ejs | Purpose: UI template/view used by the system. %>
+<%
+const userSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : safeJsonArray(profileUser.subjects_json || []);
+const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
+%>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="profile-header-card">
+      <img src="<%= profileUser.image_path || '/assets/logo.png' %>" alt="Profile image" class="profile-avatar large" />
+      <div>
+        <h2><%= profileUser.first_name %> <%= profileUser.middle_name || '' %> <%= profileUser.last_name %></h2>
+        <p>User ID: <%= profileUser.user_id %> · <%= profileUser.branch_name || '-' %></p>
+      </div>
+    </div>
+    <form method="post" action="/student/profile" enctype="multipart/form-data" class="form-grid three-col">
+      <label>User ID<input type="text" value="<%= profileUser.user_id %>" readonly /></label>
+      <label>Email<input type="text" value="<%= profileUser.email || '' %>" readonly /></label>
+      <label>Branch<input type="text" value="<%= profileUser.branch_name || '' %>" readonly /></label>
+      <label>First Name<input type="text" name="first_name" value="<%= profileUser.first_name %>" /></label>
+      <label>Middle Name<input type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" /></label>
+      <label>Last Name<input type="text" name="last_name" value="<%= profileUser.last_name %>" /></label>
+      <label>Birth Date<input type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" /></label>
+      <label>Age<input type="number" name="age" value="<%= profileUser.age || '' %>" /></label>
+      <label>Gender<input type="text" name="gender" value="<%= profileUser.gender || '' %>" /></label>
+      <label>Contact Number<input type="text" name="contact_number" value="<%= profileUser.contact_number || '' %>" /></label>
+      <label>Parent/Student Email<input type="email" name="parent_email" value="<%= profileUser.parent_email || profileUser.email || '' %>" /></label>
+      <label>Parent/Student Facebook<input type="text" name="parent_facebook" value="<%= profileUser.parent_facebook || profileUser.facebook_account || '' %>" /></label>
+      <label>Parent/Guardian Name<input type="text" name="parent_guardian_name" value="<%= profileUser.parent_guardian_name || '' %>" /></label>
+      <label>Parent Contact<input type="text" name="parent_contact_number" value="<%= profileUser.parent_contact_number || '' %>" /></label>
+      <label>Year Level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
+      <label>Grade Level<input type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" /></label>
+      <label class="full-width">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>
+      <label class="full-width">Subjects<textarea rows="4" readonly><%= userSubjects.join('\n') %></textarea></label>
+      <label class="full-width">Additional Academic Support<textarea rows="3" readonly><%= userSupports.join('\n') %></textarea></label>
+      <label>Upload Profile Image<input type="file" name="image" accept="image/*" /></label>
+      <div class="form-actions right full-width"><button class="btn btn-primary" type="submit">Save Changes</button></div>
+    </form>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Assigned Tutors</h3></div>
+    <div class="list-stack">
+      <% if (!assignments.length) { %><p class="empty-state">Tutor will appear once assigned.</p><% } %>
+      <% assignments.forEach((item) => { %>
+        <article class="list-card compact"><strong><%= item.subject_name %></strong><span><%= item.tutor_name %></span></article>
+      <% }) %>
+    </div>
+  </section>
+</section>
+
+<% if (typeof limitedView !== 'undefined' && limitedView) { %><p class="mq-profile-note">Limited profile details only.</p><% } %>

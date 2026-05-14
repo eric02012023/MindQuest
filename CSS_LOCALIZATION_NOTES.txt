@@ -1,0 +1,7 @@
+CSS localization changes
+
+- Removed the automatic /css/global.css import from views/partials/head.ejs.
+- Copied the previous global/base styles into each individual page/section CSS file.
+- global.css is now only a note file and is not loaded by the EJS head partial.
+- Shared student/tutor theme.css files were left as role-theme files only; the old global styles are in the page CSS files instead.
+- Edit the matching CSS file for the page or dashboard section you want to redesign so other pages will not be affected.

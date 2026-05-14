@@ -1,0 +1,70 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-billing.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head"><h2>My Billing</h2></div>
+    <% if (billingView.bill) { %>
+      <div class="billing-summary-grid">
+        <article class="stat-card"><h3>Full Bill</h3><strong><%= money(billingView.bill.full_bill) %></strong></article>
+        <article class="stat-card"><h3>Partial Payment</h3><strong><%= money(billingView.bill.partial_payment) %></strong></article>
+        <article class="stat-card gradient"><h3>For Settlement</h3><strong><%= money(billingView.bill.for_settlement) %></strong></article>
+        <article class="stat-card"><h3>Payment Due</h3><strong><%= formatDate(billingView.bill.payment_due) %></strong></article>
+      </div>
+      <% if (Number(billingView.bill.for_settlement || 0) > 0) { %>
+        <div style="margin-top:16px;padding:16px;background:var(--bg-2);border-radius:8px;">
+          <h4 style="margin:0 0 12px;">💳 Pay Online</h4>
+          <form method="post" action="/student/billing/pay-online" class="stack-form" data-confirm-message="Proceed with online payment?">
+            <label>Amount to Pay (min ₱100)
+              <input type="number" name="amount" min="100" max="<%= billingView.bill.for_settlement %>" step="0.01" required placeholder="Enter amount" />
+            </label>
+            <button type="submit" class="btn btn-primary">Pay Now</button>
+            <p class="empty-state" style="margin-top:8px;">Secure payment via PayMongo (GCash, GrabPay, Card, Maya) or MindQuest Mock Pay.</p>
+          </form>
+        </div>
+      <% } %>
+    <% } else { %>
+      <p class="empty-state">No current unpaid bill. Paid bills are moved to Payment History.</p>
+    <% } %>
+
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h2>Posted SOA / Billing Data</h2></div>
+    <div class="list-stack">
+      <% if (!billingView.statements.length) { %>
+        <p class="empty-state">No posted SOA yet.</p>
+      <% } %>
+      <% billingView.statements.forEach((item) => { %>
+        <article class="list-card">
+          <div>
+            <strong><%= item.student_full_name %></strong>
+            <p>SOA Type: <%= item.soa_type || 'Regular SOA' %></p><p>Statement Date: <%= formatDateTime(item.statement_date) %></p>
+            <p>Full Bill: <%= money(item.full_bill) %> | Partial: <%= money(item.partial_payment) %> | Settlement: <%= money(item.for_settlement) %></p>
+            <p>Payment Due: <%= formatDate(item.payment_due) %></p>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h2>Payment History</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Amount</th><th>Status</th><th>Date & Time</th></tr></thead>
+        <tbody>
+          <% if (!billingView.paymentHistory.length) { %>
+            <tr><td colspan="3">No payment history yet.</td></tr>
+          <% } %>
+          <% billingView.paymentHistory.forEach((item) => { %>
+            <tr>
+              <td><%= money(item.amount) %></td>
+              <td><%= item.payment_status || '-' %></td>
+              <td><%= formatDateTime(item.paid_at) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</section>

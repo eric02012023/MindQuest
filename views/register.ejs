@@ -1,0 +1,202 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/register.ejs | Purpose: UI template/view used by the system. %>
+<!DOCTYPE html>
+<html lang="en">
+<%- include('partials/head', { pageTitle, pageCss: '/css/auth/register.css' }) %>
+<body class="auth-register-page plain-page registration-design-page">
+  <section class="registration-modal-shell">
+    <form action="/register/<%= type %>/details" method="post" enctype="multipart/form-data" class="registration-design-card" data-registration-form data-registration-type="<%= type %>">
+      <a href="/" class="big-close-link" aria-label="Go back">×</a>
+
+      <div class="registration-design-header">
+        <img src="/assets/logo.jpeg" alt="MindQuest Logo" class="registration-logo" />
+        <div>
+          <h1><%= type === 'student' ? 'Learner Registration Form' : 'Tutor Registration Form' %></h1>
+          <p>Fields marked with <span class="required-mark">*</span> are required.</p>
+        </div>
+      </div>
+
+      <div class="registration-top-divider"></div>
+
+      <div class="top-upload-block">
+        <div class="upload-block upload-block-top">
+          <label>Upload Photo</label>
+          <label class="fake-upload-box" data-upload-preview-box>
+            <input type="file" name="image" accept="image/*" data-image-preview-input />
+            <input type="hidden" name="existing_image_path" value="<%= formData.image_path || '' %>" />
+            <img src="<%= formData.image_path || '' %>" alt="Preview" class="upload-preview-image <%= formData.image_path ? 'has-image' : '' %>" data-upload-preview-image />
+            <span class="upload-placeholder <%= formData.image_path ? 'is-hidden' : '' %>">Add photo here</span>
+            <strong class="upload-plus <%= formData.image_path ? 'is-hidden' : '' %>">+</strong>
+          </label>
+        </div>
+
+        <div class="field-block full-row-name">
+            <label class="group-label">Name <span class="required-mark">*</span></label>
+            <div class="triple-input-row">
+              <input type="text" name="first_name" placeholder="First Name" value="<%= formData.first_name || '' %>" required />
+              <input type="text" name="middle_name" placeholder="Middle Name" value="<%= formData.middle_name || '' %>" />
+              <input type="text" name="last_name" placeholder="Last Name" value="<%= formData.last_name || '' %>" required />
+            </div>
+
+            
+          </div>
+
+          <div class="double-field-row">
+            <div class="field-block compact">
+              <label>Birthdate <span class="required-mark">*</span></label>
+              <input type="date" name="birth_date" value="<%= formData.birth_date || '' %>" data-birthdate required />
+            </div>
+            <div class="field-block compact">
+              <label>Age</label>
+              <input type="number" name="age" min="1" value="<%= formData.age || '' %>" data-age readonly />
+            </div>
+          </div>
+
+      </div>
+
+      <% const tutorYearSelections = Array.isArray(formData.tutor_year_levels) ? formData.tutor_year_levels : ((formData.extra && Array.isArray(formData.extra.year_levels)) ? formData.extra.year_levels : []); %>
+      <% const subjectSelections = Array.isArray(formData.subjects) ? formData.subjects : []; %>
+      <% if (type === 'student') { %>
+      <div class="registration-two-column-grid student-layout">
+        <div class="column-stack">
+          <div class="field-block">
+            <label>Select Branch <span class="required-mark">*</span></label>
+            <select name="branch_id" required>
+              <option value="" disabled <%= !formData.branch_id ? 'selected' : '' %>>Select branch</option>
+              <% branches.forEach((branch) => { %>
+                <option value="<%= branch.id %>" <%= String(formData.branch_id || '') === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="field-block">
+            <label>Guardian Name <span class="required-mark">*</span></label>
+            <input type="text" name="parent_guardian_name" value="<%= formData.parent_guardian_name || '' %>" required />
+          </div>
+
+          <div class="field-block">
+            <label>Contact Number <span class="required-mark">*</span></label>
+            <input type="text" name="contact_number" placeholder="09xxxxxxxxx" value="<%= formData.contact_number || formData.parent_contact_number || '' %>" required />
+          </div>
+        </div>
+
+        <div class="column-stack">
+          <div class="field-block">
+            <label>Year Level <span class="required-mark">*</span></label>
+            <select name="year_level" data-year-level required>
+              <option value="" disabled <%= !formData.year_level ? 'selected' : '' %>>Select year level</option>
+              <option value="Pre School Level" <%= formData.year_level === 'Pre School Level' ? 'selected' : '' %>>Pre School Level</option>
+              <option value="Primary Level" <%= formData.year_level === 'Primary Level' ? 'selected' : '' %>>Primary Level</option>
+              <option value="Junior High Level" <%= formData.year_level === 'Junior High Level' ? 'selected' : '' %>>Junior High Level</option>
+              <option value="Senior High Level" <%= formData.year_level === 'Senior High Level' ? 'selected' : '' %>>Senior High Level</option>
+            </select>
+          </div>
+
+          <div class="field-block">
+            <label>Grade Level <span class="required-mark">*</span></label>
+            <select name="grade_level" data-grade-level data-selected-value="<%= formData.grade_level || '' %>" required>
+              <option value="" disabled <%= !formData.grade_level ? 'selected' : '' %>>Select grade level</option>
+            </select>
+          </div>
+
+          <div class="field-block checklist-block">
+            <label>Subject Field <span class="required-mark">*</span></label>
+            <div class="bullet-options checkbox-options multi-column-list">
+              <% subjects.filter((subject) => !['Exam Preparation & Reviews', 'Homework Assistance', 'Project Guidance'].includes(subject.name)).forEach((subject) => { %>
+                <label><input type="checkbox" name="subjects" value="<%= subject.name %>" data-subject-checkbox <%= subjectSelections.includes(subject.name) ? 'checked' : '' %> /> <%= subject.name %></label>
+              <% }) %>
+            </div>
+          </div>
+        </div>
+      </div>
+      <% } else { %>
+      <div class="registration-two-column-grid tutor-layout">
+        <div class="column-stack">
+          <div class="field-block">
+            <label>Address <span class="required-mark">*</span></label>
+            <input type="text" name="address" value="<%= formData.address || '' %>" required />
+          </div>
+          <div class="field-block">
+            <label>Select Branch <span class="required-mark">*</span></label>
+            <select name="branch_id" required>
+              <option value="" disabled <%= !formData.branch_id ? 'selected' : '' %>>Select branch</option>
+              <% branches.forEach((branch) => { %>
+                <option value="<%= branch.id %>" <%= String(formData.branch_id || '') === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="field-block">
+            <label>Contact Number <span class="required-mark">*</span></label>
+            <input type="text" name="contact_number" placeholder="09xxxxxxxxx" value="<%= formData.contact_number || '' %>" required />
+          </div>
+        </div>
+
+        <div class="column-stack">
+          <div class="field-block">
+            <label>Year Level <span class="required-mark">*</span></label>
+            <select name="tutor_year_levels" data-tutor-year-level-select required>
+              <option value="" disabled <%= !tutorYearSelections.length ? 'selected' : '' %>>Select year level</option>
+              <option value="Preschool" <%= tutorYearSelections.includes('Preschool') ? 'selected' : '' %>>Preschool</option>
+              <option value="Primary School" <%= tutorYearSelections.includes('Primary School') ? 'selected' : '' %>>Primary School</option>
+              <option value="Junior High School" <%= tutorYearSelections.includes('Junior High School') ? 'selected' : '' %>>Junior High School</option>
+              <option value="Senior High School" <%= tutorYearSelections.includes('Senior High School') ? 'selected' : '' %>>Senior High School</option>
+            </select>
+          </div>
+
+          <div class="field-block checklist-block">
+            <label>Subject Field <span class="required-mark">*</span></label>
+            <div class="bullet-options checkbox-options multi-column-list">
+              <% subjects.filter((subject) => !['Exam Preparation & Reviews', 'Homework Assistance', 'Project Guidance'].includes(subject.name)).forEach((subject) => { %>
+                <label><input type="checkbox" name="subjects" value="<%= subject.name %>" data-subject-checkbox <%= subjectSelections.includes(subject.name) ? 'checked' : '' %> /> <%= subject.name %></label>
+              <% }) %>
+            </div>
+          </div>
+        </div>
+      </div>
+      <% } %>
+
+      <div class="registration-account-block">
+        <div class="field-block account-field">
+          <label>Email <span class="required-mark">*</span></label>
+          <input type="email" name="email" placeholder="example@gmail.com" value="<%= formData.email || '' %>" required />
+        </div>
+
+        <div class="field-block account-field">
+          <label>Password <span class="required-mark">*</span></label>
+          <div class="password-input-wrap create-password-wrap">
+            <input type="password" name="password" placeholder="Create Password" required data-password-strength-input data-password-toggle-target="pw-main" />
+            <button type="button" class="password-eye-btn" data-password-toggle="pw-main" aria-label="Show password">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+            </button>
+          </div>
+          <p class="password-hint">Minimum 8 characters with uppercase, lowercase, number, and special character.</p>
+        </div>
+
+        <div class="field-block account-field">
+          <label>Confirm Password <span class="required-mark">*</span></label>
+          <div class="password-input-wrap create-password-wrap">
+            <input type="password" name="confirm_password" placeholder="Confirm Password" required data-password-toggle-target="cpw-main" />
+            <button type="button" class="password-eye-btn" data-password-toggle="cpw-main" aria-label="Show confirm password">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="registration-bottom-row">
+        <button type="submit" class="next-gradient-btn">Submit</button>
+      </div>
+    </form>
+  </section>
+
+  <%- include('partials/flash-modal', { flash }) %>
+  <script src="/js/main.js"></script>
+  <script src="/js/registration.js"></script>
+</body>
+</html>

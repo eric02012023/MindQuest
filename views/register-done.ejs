@@ -1,0 +1,17 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/register-done.ejs | Purpose: UI template/view used by the system. %>
+<!DOCTYPE html>
+<html lang="en">
+<%- include('partials/head', { pageTitle, pageCss: '/css/auth/register.css' }) %>
+<body class="auth-register-done-page plain-page registration-design-page">
+  <div class="global-modal is-open always-open-done">
+    <div class="global-modal-card done-card-design">
+      <a href="/login" class="big-close-link inside-modal" aria-label="Go to login">×</a>
+      <div class="done-title">Done!</div>
+      <p class="done-subtitle">Wait for the response, thank you!</p>
+      <div class="registration-top-divider short"></div>
+      <p class="done-footer-text">Thank you for choosing MindQuest Tutorial Center</p>
+    </div>
+  </div>
+  <script src="/js/main.js"></script>
+</body>
+</html>

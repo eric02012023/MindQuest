@@ -1,0 +1,189 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-users.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack user-management-clean">
+  <div class="toolbar-card split sticky-toolbar">
+    <form method="get" action="<%= basePath %>/users" class="inline-form multi wrap-search-form">
+      <% if (currentUser.role === 'admin') { %>
+      <label>Branch
+        <select name="branch_id" onchange="this.form.submit()">
+          <option value="all">All branches</option>
+          <% branches.forEach((branch) => { %>
+            <option value="<%= branch.id %>" <%= Number(effectiveBranchId) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <% } %>
+      <label>Role
+        <select name="role" onchange="this.form.submit()">
+          <option value="all" <%= selectedRole === 'all' ? 'selected' : '' %>>All role</option>
+          <option value="student" <%= selectedRole === 'student' ? 'selected' : '' %>>Student</option>
+          <option value="tutor" <%= selectedRole === 'tutor' ? 'selected' : '' %>>Tutor</option>
+        </select>
+      </label>
+      <label>Search<input type="text" name="search" value="<%= search || '' %>" placeholder="Search student or tutor name" /></label>
+      <button class="btn btn-secondary btn-sm" type="submit">Search</button>
+    </form>
+    <div class="row-actions">
+      <button type="button" class="btn btn-secondary" data-modal-target="#archived-users-modal">View Archive</button>
+      <% if (currentUser.role === 'admin') { %>
+        <button type="button" class="btn btn-primary" data-modal-target="#assistant-modal">Branch Account Management</button><button type="button" class="btn btn-secondary" data-modal-target="#archived-assistant-modal">View Archived Assistant Accounts</button>
+      <% } %>
+    </div>
+  </div>
+
+  <section class="panel-card scroll-panel medium-scroll">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>User ID</th>
+            <th>Name</th>
+            <th>Branch</th>
+            <th>Role</th>
+            <th>Date</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!users.length) { %>
+            <tr><td colspan="6">No users found.</td></tr>
+          <% } %>
+          <% users.forEach((user) => { %>
+            <tr>
+              <td><%= user.user_id %></td>
+              <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= titleCaseName(user.first_name) %> <%= titleCaseName(user.last_name) %></a><% if (user.role === "tutor") { const expertise = [...new Set([...(String(user.year_level || "").split(",").map((item) => item.trim()).filter(Boolean)), ...safeJsonArray(user.extra?.year_levels || [])])].filter(Boolean); if (expertise.length) { %><div style="font-size:12px;color:#5b6d80;margin-top:4px;">Year Level Expertise: <%= expertise.join(", ") %></div><% } } %></td>
+              <td><%= user.branch_name || '-' %></td>
+              <td><%= user.role %></td>
+              <td><%= formatDate(user.created_at) %></td>
+              <td>
+                <form method="post" action="<%= basePath %>/users/<%= user.id %>/archive" data-confirm-message="Archive this user?">
+                  <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  
+
+  <div class="global-modal" id="archived-users-modal">
+    <div class="global-modal-card wide">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Archived Users</h3>
+      <div class="table-wrap max-modal-table">
+        <table>
+          <thead><tr><th>User ID</th><th>Name</th><th>Role</th><th>Recover</th></tr></thead>
+          <tbody>
+            <% if (!archivedUsers.length) { %>
+              <tr><td colspan="4">No archived users.</td></tr>
+            <% } %>
+            <% archivedUsers.forEach((user) => { %>
+              <tr>
+                <td><%= user.user_id %></td>
+                <td><%= user.first_name %> <%= user.last_name %></td>
+                <td><%= user.role %></td>
+                <td>
+                  <form method="post" action="<%= basePath %>/users/<%= user.id %>/recover" data-confirm-message="Recover this archived user?">
+                    <button class="btn btn-primary btn-sm" type="submit">Recover</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+
+  <% if (currentUser.role === 'admin') { %>
+  <div class="global-modal" id="archived-assistant-modal">
+    <div class="global-modal-card wide">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Archived Assistant Accounts</h3>
+      <div class="table-wrap max-modal-table">
+        <table>
+          <thead><tr><th>Assistant Admin Name</th><th>Email</th><th>Branch</th><th>View</th><th>Recover</th></tr></thead>
+          <tbody>
+            <% if (!(archivedAssistantAccounts || []).length) { %>
+              <tr><td colspan="5">No archived assistant accounts.</td></tr>
+            <% } %>
+            <% (archivedAssistantAccounts || []).forEach((assistant) => { %>
+              <tr>
+                <td><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></td>
+                <td><%= assistant.email %></td>
+                <td><%= assistant.branch_name || '-' %></td>
+                <td><a class="btn btn-secondary btn-sm" href="<%= basePath %>/profile/<%= assistant.id %>">View</a></td>
+                <td>
+                  <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/recover" data-confirm-message="Recover this archived assistant account?">
+                    <button class="btn btn-primary btn-sm" type="submit">Recover</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <% } %>
+
+  <% if (currentUser.role === 'admin') { %>
+  <div class="global-modal" id="assistant-modal">
+    <div class="global-modal-card small">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Create Branch Admin Assistant Account</h3>
+      <form method="post" action="<%= basePath %>/assistant-accounts" class="stack-form">
+        <label>Branch
+          <select name="branch_id" required>
+            <% ((typeof availableAssistantBranches !== 'undefined' && availableAssistantBranches.length ? availableAssistantBranches : branches) || []).forEach((branch) => { %>
+              <option value="<%= branch.id %>"><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label>Assistant Admin Name
+          <input type="text" name="assistant_name" required />
+        </label>
+        <label>Email
+          <input type="email" name="email" required />
+        </label>
+        <label>Password
+          <input type="password" name="password" required />
+        </label>
+        <button class="btn btn-primary" type="submit">Save Account</button>
+      </form>
+    </div>
+  </div>
+  <% } %>
+
+</section>
+
+<section>
+  <% if (currentUser.role === 'admin') { %>
+  <section class="panel-card scroll-panel small-scroll">
+    <div class="panel-card-head"><h2>Branch Assistant Accounts</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Assistant Admin Name</th><th>Email</th><th>Password</th><th>Branch</th><th>Date</th><th>Action</th></tr></thead>
+        <tbody>
+          <% if (!assistantAccounts.length) { %>
+            <tr><td colspan="6">No assistant accounts yet.</td></tr>
+          <% } %>
+          <% assistantAccounts.forEach((assistant) => { %>
+            <tr>
+              <td><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></td>
+              <td><%= assistant.email %></td>
+              <td><%= '******' %></td>
+              <td><%= assistant.branch_name %></td>
+              <td><%= formatDate(assistant.created_at) %></td>
+              <td><div class="row-actions"><a class="btn btn-secondary btn-sm" href="<%= basePath %>/profile/<%= assistant.id %>">View</a><form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/archive" data-confirm-message="Archive this assistant account?"><button class="btn btn-secondary btn-sm" type="submit">Archive</button></form></div></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <% } %>
+</section>

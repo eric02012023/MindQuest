@@ -1,0 +1,62 @@
+<%# File: views/content/student-analytics.ejs | Purpose: Student analytics and reports page %>
+<section class="page-stack">
+  <div class="toolbar-card"><h2>Analytics & Reports</h2></div>
+
+  <% if (!subjects || !subjects.length) { %>
+    <section class="panel-card">
+      <p class="empty-state">No enrolled subjects yet. Enroll in a subject to see your analytics.</p>
+    </section>
+  <% } else { %>
+    <% subjects.forEach((subjectData) => { %>
+      <section class="panel-card">
+        <div class="panel-card-head"><h3><%= subjectData.subject.name %></h3></div>
+        <div class="billing-summary-grid">
+          <article class="stat-card"><h3>Modules Read</h3><strong><%= subjectData.stats.totalModulesRead %></strong></article>
+          <article class="stat-card"><h3>Assessments</h3><strong><%= subjectData.stats.completedAssessments %> / <%= subjectData.stats.totalAssessments %></strong></article>
+          <article class="stat-card gradient"><h3>Avg Score</h3><strong><%= subjectData.stats.avgPercentage %>%</strong></article>
+          <article class="stat-card"><h3>Level</h3><strong><%= subjectData.stats.currentLevel %></strong></article>
+          <article class="stat-card"><h3>Round</h3><strong><%= subjectData.stats.currentRound %></strong></article>
+          <article class="stat-card"><h3>Violations</h3><strong><%= subjectData.stats.totalViolations %></strong></article>
+        </div>
+
+        <% if (subjectData.assessments.length) { %>
+          <div class="table-wrap" style="margin-top:12px;">
+            <table>
+              <thead><tr><th>Assessment</th><th>Score</th><th>%</th><th>Level</th><th>Taken</th></tr></thead>
+              <tbody>
+                <% subjectData.assessments.forEach((a) => { %>
+                  <tr>
+                    <td><%= a.title %></td>
+                    <td><%= a.score != null ? a.score + '/' + a.total_questions : '-' %></td>
+                    <td><%= a.percentage != null ? a.percentage + '%' : '-' %></td>
+                    <td><%= a.level || '-' %></td>
+                    <td><%= a.taken_at ? formatDateTime(a.taken_at) : 'Not taken' %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+
+        <% if (subjectData.learningCycles.length) { %>
+          <div class="table-wrap" style="margin-top:12px;">
+            <table>
+              <thead><tr><th>Round</th><th>Module</th><th>Status</th><th>Level</th><th>Started</th></tr></thead>
+              <tbody>
+                <% subjectData.learningCycles.forEach((c) => { %>
+                  <tr>
+                    <td><%= c.round_number %></td>
+                    <td><%= c.resource_title || '-' %></td>
+                    <td><span class="badge badge-<%= c.status === 'completed' ? 'success' : 'info' %>"><%= c.status.replace(/_/g, ' ') %></span></td>
+                    <td><%= c.result_level || '-' %></td>
+                    <td><%= formatDateTime(c.started_at) %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </section>
+    <% }) %>
+  <% } %>
+</section>

@@ -1,0 +1,20 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-payment-history.ejs | Purpose: UI template/view used by the system. %>
+<section class="panel-card">
+  <div class="panel-card-head"><h2>Payment History</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Student</th><th>Amount</th><th>Status</th><th>Date & Time</th></tr></thead>
+      <tbody>
+  <% if (!paymentHistory.length) { %><tr><td colspan="4">No payment history yet.</td></tr><% } %>
+  <% paymentHistory.forEach((item) => { %>
+    <tr>
+      <td><%= item.first_name %> <%= item.middle_name || '' %> <%= item.last_name %></td>
+      <td><%= money(item.amount) %></td>
+      <td><%= item.payment_status || '-' %></td>
+      <td><%= formatDateTime(item.paid_at) %></td>
+    </tr>
+  <% }) %>
+</tbody>
+    </table>
+  </div>
+</section>

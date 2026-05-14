@@ -1,0 +1,64 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-dashboard.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <article class="hero-dashboard-card gradient">
+    <div>
+      <h2>Welcome, <%= dashboard.user.first_name %>!</h2>
+      <p>Your subjects, tutors, assessments, and billing details are available here.</p>
+    </div>
+    <img src="<%= dashboard.user.image_path || '/assets/logo.png' %>" alt="Student avatar" class="profile-avatar large" />
+  </article>
+
+  <div class="dashboard-three-grid">
+    <section class="panel-card">
+      <div class="panel-card-head"><h3>Subject Tutors</h3></div>
+      <div class="bubble-row">
+        <% if (!dashboard.tutors.length) { %><p class="empty-state">No tutor assigned yet.</p><% } %>
+        <% dashboard.tutors.forEach((item) => { %>
+          <div class="mini-bubble"><span><%= item.tutor_name %></span></div>
+        <% }) %>
+      </div>
+    </section>
+    <section class="panel-card">
+      <div class="panel-card-head"><h3>Latest SOA</h3></div>
+      <% if (dashboard.latestSoa) { %>
+        <p><strong>Statement Date:</strong> <%= formatDateTime(dashboard.latestSoa.statement_date || dashboard.latestSoa.created_at) %></p>
+        <p><strong>Full Bill:</strong> <%= money(dashboard.latestSoa.full_bill || 0) %></p>
+        <p><strong>For Settlement:</strong> <%= money(dashboard.latestSoa.for_settlement || 0) %></p>
+      <% } else { %>
+        <p class="empty-state">No SOA posted yet.</p>
+      <% } %>
+    </section>
+  </div>
+
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Additional Academic Support</h3></div>
+    <% const studentSupports = Array.isArray(dashboard.user.supports) ? dashboard.user.supports : safeJsonArray(dashboard.user.support_json || []); %>
+    <% if (!studentSupports.length) { %>
+      <p class="empty-state">No additional academic support selected yet.</p>
+    <% } else { %>
+      <div class="bubble-row">
+        <% studentSupports.forEach((support) => { %>
+          <div class="mini-bubble"><span><%= support %></span></div>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>My Subjects</h3></div>
+    <div class="subject-list-cards">
+      <% if (!dashboard.assignments.length) { %>
+        <p class="empty-state">No accepted subject assignments yet.</p>
+      <% } %>
+      <% dashboard.assignments.forEach((item) => { %>
+        <a class="subject-list-card" href="/student/subjects/<%= item.subject_id %>">
+          <div>
+            <strong><%= item.subject_name %></strong>
+            <span><%= item.tutor_name %></span>
+          </div>
+          <span>Status: <%= formatDate(item.enrolled_at) %></span>
+        </a>
+      <% }) %>
+    </div>
+  </section>
+</section>

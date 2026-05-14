@@ -1,0 +1,126 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-subjects.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Enrolled Subjects</h2>
+      <% if (assignments.length) { %>
+        <button type="button" class="btn btn-primary btn-sm" data-modal-target="#select-tutor-modal">Select Tutor</button>
+      <% } %>
+    </div>
+    <div class="subject-list-cards">
+      <% if (!assignments.length) { %>
+        <p class="empty-state">No enrolled subjects yet.</p>
+      <% } %>
+      <% assignments.forEach((assignment) => { %>
+        <div class="subject-list-card">
+          <div>
+            <strong><%= assignment.subject_name %></strong>
+            <span><%= assignment.tutor_name %></span>
+          </div>
+          <span>Status: Enrolled <%= formatDate(assignment.enrolled_at) %></span>
+          <div class="row-actions wrap-row-actions">
+            <a class="btn btn-secondary btn-sm" href="/student/subjects/<%= assignment.subject_id %>">View Subject</a>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+
+  <%# Single Select Tutor modal — applies to ALL enrolled subjects %>
+  <% if (assignments.length) { %>
+  <div class="global-modal" id="select-tutor-modal">
+    <div class="global-modal-card wide modal-scroll-box" style="max-height:85vh;overflow:auto;">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Select Tutor</h3>
+      <p class="empty-state">Only tutors from the same branch as you are shown here. The selected tutor and schedule will apply to all your enrolled subjects.</p>
+      <div class="list-stack">
+        <% if (!(tutorOptions || []).length) { %>
+          <p class="empty-state">No tutor is currently available in your branch.</p>
+        <% } %>
+        <% (tutorOptions || []).forEach((availableTutor) => { %>
+          <article class="list-card">
+            <div>
+              <strong><%= availableTutor.first_name %> <%= availableTutor.last_name %></strong>
+              <p>Branch: <%= availableTutor.branch_name || '-' %></p>
+              <p>Year Level: <%= availableTutor.year_level || '-' %></p>
+              <div class="stack-small">
+                <div>
+                  <strong>Available Time Slots</strong>
+                  <div class="bubble-row">
+                    <% if (!(availableTutor.available_slots || []).length) { %>
+                      <span class="empty-state">No available time slots.</span>
+                    <% } %>
+                    <% (availableTutor.available_slots || []).forEach((slot) => { %>
+                      <form method="post" action="/student/apply-tutor" class="inline-form" data-confirm-message="Apply to this tutor and schedule for all of your enrolled subjects?">
+                        <input type="hidden" name="tutor_id" value="<%= availableTutor.id %>" />
+                        <input type="hidden" name="time_slot" value="<%= slot %>" />
+                        <button class="btn btn-secondary btn-sm" type="submit"><%= slot %></button>
+                      </form>
+                    <% }) %>
+                  </div>
+                </div>
+                <div>
+                  <strong>Unavailable Time Slots</strong>
+                  <div class="bubble-row">
+                    <% if (!(availableTutor.unavailable_slots || []).length) { %>
+                      <span class="empty-state">No unavailable time slots.</span>
+                    <% } %>
+                    <% (availableTutor.unavailable_slots || []).forEach((slot) => { %>
+                      <span class="pill unpaid"><%= slot %></span>
+                    <% }) %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h2>All Subjects</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Subject</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!(allSubjects || []).length) { %>
+            <tr><td colspan="3">No subjects available.</td></tr>
+          <% } %>
+          <% (allSubjects || []).forEach((subject) => { %>
+            <tr>
+              <td><strong><%= subject.name %></strong></td>
+              <td>
+                <% if (subject.is_enrolled) { %>
+                  <span class="pill paid">Enrolled</span>
+                <% } else if (subject.has_pending_request) { %>
+                  <span class="pill partial">Pending Approval</span>
+                <% } else { %>
+                  <span class="pill unpaid">Not Enrolled</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (subject.is_enrolled) { %>
+                  <a class="btn btn-secondary btn-sm" href="/student/subjects/<%= subject.id %>">View Subject</a>
+                <% } else if (subject.has_pending_request) { %>
+                  <button type="button" class="btn btn-secondary btn-sm" disabled>Request Sent</button>
+                <% } else { %>
+                  <form method="post" action="/student/subjects/<%= subject.id %>/enroll" data-confirm-message="Send enrollment request for this subject?">
+                    <button class="btn btn-primary btn-sm" type="submit">Enroll Subject</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

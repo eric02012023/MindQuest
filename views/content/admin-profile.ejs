@@ -1,0 +1,192 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-profile.ejs | Purpose: UI template/view used by the system. %>
+<%
+const userSubjects = safeJsonArray(profileUser.subjects_json || profileUser.subjects || []);
+const userSupports = safeJsonArray(profileUser.support_json || profileUser.supports || []);
+const archivedSubjects = safeJsonArray(profileUser.extra?.archived_subjects || []);
+const subjectRows = Math.max(2, userSubjects.length || 1);
+const supportRows = Math.max(2, userSupports.length || 1);
+const isStudent = profileUser.role === 'student';
+const isTutor = profileUser.role === 'tutor';
+const canShowParent = isStudent;
+const canReassignBranch = currentUser.role === 'admin' && ['student', 'tutor'].includes(profileUser.role);
+const activeBranches = (branches || []).filter((branch) => Number(branch.is_archived || 0) === 0);
+const selectedBranchIds = [...new Set((isTutor ? [profileUser.branch_id, ...safeJsonArray(profileUser.extra?.branch_ids || [])] : [profileUser.branch_id]).map((id) => Number(id)).filter(Boolean))];
+const selectedBranchNames = activeBranches.filter((branch) => selectedBranchIds.includes(Number(branch.id))).map((branch) => branch.name);
+const branchLabel = selectedBranchNames.join(', ') || profileUser.branch_name || '';
+const yearLevelOptions = ['Pre School Level', 'Primary Level', 'Junior High Level', 'Senior High Level'];
+const selectedYearLevels = isTutor ? [...new Set([...(profileUser.year_level || '').split(','), ...safeJsonArray(profileUser.extra?.year_levels || [])].map((item) => String(item || '').trim()).filter(Boolean))] : [profileUser.year_level || ''].filter(Boolean);
+%>
+<section class="page-stack">
+  <div class="panel-card">
+    <div class="profile-header-card">
+      <img src="<%= profileUser.image_path || '/assets/logo.png' %>" alt="Profile image" class="profile-avatar large" />
+      <div>
+        <h2><%= profileUser.first_name %> <%= profileUser.middle_name || '' %> <%= profileUser.last_name %></h2>
+        <p><%= profileUser.role %> - <%= branchLabel || '-' %></p>
+      </div>
+    </div>
+    <div class="row-actions wrap-row-actions" style="margin-bottom:16px;">
+      <button type="button" class="btn btn-secondary" data-profile-edit-toggle="#profile-form">Edit</button>
+      <button type="button" class="btn btn-primary" data-modal-target="#manage-subjects-modal">Manage Subject</button>
+    </div>
+    <form id="profile-form" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>" enctype="multipart/form-data" class="form-grid three-col">
+            <label>Branch
+        <% if (canReassignBranch && isTutor) { %>
+          <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select branch(es)">
+            <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= branchLabel || 'Select branch(es)' %></span></button>
+            <div class="multi-select-menu">
+              <% activeBranches.forEach((branch) => { %>
+                <label><input type="checkbox" name="branch_ids" value="<%= branch.id %>" <%= selectedBranchIds.includes(Number(branch.id)) ? 'checked' : '' %> disabled /> <%= branch.name %></label>
+              <% }) %>
+            </div>
+          </div>
+          <input type="hidden" name="branch_id" value="<%= selectedBranchIds[0] || profileUser.branch_id || '' %>" data-primary-branch-input />
+        <% } else if (canReassignBranch) { %>
+          <select data-profile-editable name="branch_id" disabled>
+            <% activeBranches.forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= Number(profileUser.branch_id) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        <% } else { %>
+          <input type="text" value="<%= branchLabel %>" readonly />
+        <% } %>
+      </label>
+      <label>First Name<input data-profile-editable type="text" name="first_name" value="<%= profileUser.first_name %>" readonly /></label>
+      <label>Middle Name<input data-profile-editable type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" readonly /></label>
+      <label>Last Name<input data-profile-editable type="text" name="last_name" value="<%= profileUser.last_name %>" readonly /></label>
+      <label>Birth Date<input data-profile-editable type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" data-auto-age-birth readonly /></label>
+      <label>Age<input data-profile-editable type="number" name="age" value="<%= profileUser.age || '' %>" data-auto-age-target readonly /></label>
+      <label>Gender<input data-profile-editable type="text" name="gender" value="<%= profileUser.gender || '' %>" readonly /></label>
+      <label>Contact Number<input data-profile-editable type="text" name="contact_number" value="<%= profileUser.contact_number || profileUser.parent_contact_number || '' %>" readonly /></label>
+      <% if (isStudent) { %>
+      <label>Parent/Student Email<input data-profile-editable type="text" name="parent_email" value="<%= profileUser.parent_email || profileUser.email || '' %>" readonly /></label>
+      <label>Parent/Student Facebook<input data-profile-editable type="text" name="parent_facebook" value="<%= profileUser.parent_facebook || profileUser.facebook_account || '' %>" readonly /></label>
+      <label>Parent/Guardian Name<input data-profile-editable type="text" name="parent_guardian_name" value="<%= profileUser.parent_guardian_name || '' %>" readonly /></label>
+      <label>Parent Contact<input data-profile-editable type="text" name="parent_contact_number" value="<%= profileUser.parent_contact_number || '' %>" readonly /></label>
+      <% } else { %>
+      <label>Facebook Account<input data-profile-editable type="text" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" readonly /></label>
+      <% } %>
+      <label>Year Level
+        <% if (isTutor) { %>
+          <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select year level(s)">
+            <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= selectedYearLevels.join(', ') || 'Select year level(s)' %></span></button>
+            <div class="multi-select-menu">
+              <% yearLevelOptions.forEach((level) => { %>
+                <label><input type="checkbox" name="year_levels" value="<%= level %>" <%= selectedYearLevels.includes(level) ? 'checked' : '' %> disabled /> <%= level %></label>
+              <% }) %>
+            </div>
+          </div>
+          <input type="hidden" name="year_level" value="<%= selectedYearLevels.join(', ') %>" data-year-level-display-input />
+        <% } else { %>
+          <input data-profile-editable type="text" name="year_level" value="<%= profileUser.year_level || '' %>" readonly />
+        <% } %>
+      </label>
+      <% if (isStudent) { %><label>Grade Level<input data-profile-editable type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" readonly /></label><% } %>
+      <label class="full-width">Address<input data-profile-editable type="text" name="address" value="<%= profileUser.address || '' %>" readonly /></label>
+            <label class="full-width">Subjects
+        <% if (isTutor) { %>
+          <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select subject(s)">
+            <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= userSubjects.join(', ') || 'Select subject(s)' %></span></button>
+            <div class="multi-select-menu tall">
+              <% (subjectOptions || []).forEach((subject) => { if (!archivedSubjects.includes(subject.name)) { %>
+                <label><input type="checkbox" name="subjects" value="<%= subject.name %>" <%= userSubjects.includes(subject.name) ? 'checked' : '' %> disabled /> <%= subject.name %></label>
+              <% } }) %>
+            </div>
+          </div>
+        <% } else { %>
+          <textarea class="expanding-display" data-auto-expand rows="<%= subjectRows %>" readonly><%= userSubjects.join('\n') %></textarea>
+        <% } %>
+      </label>
+      <label class="full-width">Additional Academic Support<textarea class="expanding-display" data-auto-expand rows="<%= supportRows %>" readonly><%= userSupports.join('\n') %></textarea></label>
+      <label>Upload Profile Image<input data-profile-editable type="file" name="image" accept="image/*" disabled /></label>
+      <% if (!canReassignBranch) { %><input type="hidden" name="branch_id" value="<%= profileUser.branch_id || "" %>" /><% } %>
+      <% if (!isTutor) { %><input type="hidden" name="subjects" value="<%= userSubjects.join(',') %>" /><% } %>
+      <input type="hidden" name="supports" value="<%= userSupports.join(',') %>" />
+      <div class="form-actions right full-width"><button class="btn btn-primary" type="submit">Update</button></div>
+    </form>
+  </div>
+
+  <section class="panel-card"><div class="panel-card-head"><h2><%= profileUser.role === 'student' ? 'List of Tutor' : 'List of Students' %></h2></div><div class="list-stack"><% if (profileUser.role === 'student') { %><% if (!studentAssignments.length) { %><p class="empty-state">Tutor will appear here once assigned by admin.</p><% } %><% studentAssignments.forEach((item) => { %><article class="list-card compact"><strong><%= item.subject_name %></strong><span><%= item.tutor_name %></span></article><% }) %><% } else { %><% if (!tutorAssignments.length) { %><p class="empty-state">Students will appear here once assigned by admin.</p><% } %><% tutorAssignments.forEach((item) => { %><article class="list-card compact"><strong><%= item.subject_name %></strong><span><%= item.student_name %></span></article><% }) %><% } %></div></section>
+
+  <div class="global-modal" id="manage-subjects-modal">
+    <div class="global-modal-card wide modal-scroll-box" style="max-height:85vh;overflow:auto;">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Manage Subject</h3>
+      <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>" class="stack-form" data-confirm-message="Save subject changes for this user?">
+        <input type="hidden" name="first_name" value="<%= profileUser.first_name %>" />
+        <input type="hidden" name="middle_name" value="<%= profileUser.middle_name || '' %>" />
+        <input type="hidden" name="last_name" value="<%= profileUser.last_name %>" />
+        <input type="hidden" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" />
+        <input type="hidden" name="age" value="<%= profileUser.age || '' %>" />
+        <input type="hidden" name="gender" value="<%= profileUser.gender || '' %>" />
+        <input type="hidden" name="contact_number" value="<%= profileUser.contact_number || profileUser.parent_contact_number || '' %>" />
+        <input type="hidden" name="email" value="<%= profileUser.email || '' %>" />
+        <input type="hidden" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" />
+        <input type="hidden" name="parent_guardian_name" value="<%= profileUser.parent_guardian_name || '' %>" />
+        <input type="hidden" name="parent_contact_number" value="<%= profileUser.parent_contact_number || '' %>" />
+        <input type="hidden" name="parent_email" value="<%= profileUser.parent_email || '' %>" />
+        <input type="hidden" name="parent_facebook" value="<%= profileUser.parent_facebook || '' %>" />
+        <input type="hidden" name="year_level" value="<%= selectedYearLevels.join(', ') || profileUser.year_level || '' %>" />
+        <input type="hidden" name="grade_level" value="<%= profileUser.grade_level || '' %>" />
+        <input type="hidden" name="address" value="<%= profileUser.address || '' %>" />
+        <% if (canReassignBranch && isTutor) { %>
+        <label>Branch</label>
+        <div class="checkbox-list tall">
+          <% activeBranches.forEach((branch) => { %>
+            <label><input type="checkbox" name="branch_ids" value="<%= branch.id %>" <%= selectedBranchIds.includes(Number(branch.id)) ? 'checked' : '' %> /> <%= branch.name %></label>
+          <% }) %>
+        </div>
+        <input type="hidden" name="branch_id" value="<%= selectedBranchIds[0] || profileUser.branch_id || '' %>" />
+        <label>Year Level</label>
+        <div class="checkbox-list tall">
+          <% yearLevelOptions.forEach((level) => { %>
+            <label><input type="checkbox" name="year_levels" value="<%= level %>" <%= selectedYearLevels.includes(level) ? 'checked' : '' %> /> <%= level %></label>
+          <% }) %>
+        </div>
+        <% } else if (canReassignBranch) { %>
+        <label>Branch
+          <select name="branch_id" required>
+            <% activeBranches.forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= Number(profileUser.branch_id) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+        <% } else { %>
+        <input type="hidden" name="branch_id" value="<%= profileUser.branch_id || '' %>" />
+        <% } %>
+        <label>Subjects</label>
+        <div class="checkbox-list tall">
+          <% (subjectOptions || []).forEach((subject) => { if (!archivedSubjects.includes(subject.name)) { %>
+            <label><input type="checkbox" name="subjects" value="<%= subject.name %>" <%= userSubjects.includes(subject.name) ? 'checked' : '' %> /> <%= subject.name %></label>
+          <% } }) %>
+        </div>
+        <label>Additional Academic Support</label>
+        <div class="checkbox-list tall">
+          <% (supportOptions || []).forEach((support) => { %>
+            <label><input type="checkbox" name="supports" value="<%= support %>" <%= userSupports.includes(support) ? 'checked' : '' %> /> <%= support %></label>
+          <% }) %>
+        </div>
+        <div class="form-actions right"><button class="btn btn-primary" type="submit">Confirm</button></div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<% if (Number(currentUser.id) === Number(profileUser.id) && ['admin','admin_assistant'].includes(currentUser.role)) { %>
+<section class="page-stack">
+  <div class="panel-card">
+    <div class="section-heading">
+      <div>
+        <h3>Change Password</h3>
+        <p>Update your current admin password inside the system.</p>
+      </div>
+    </div>
+    <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/password" class="form-grid three-col">
+      <label>Current Password<input type="password" name="current_password" required /></label>
+      <label>New Password<input type="password" name="new_password" minlength="8" required /></label>
+      <label>Confirm New Password<input type="password" name="confirm_password" minlength="8" required /></label>
+      <div class="form-actions right full-span"><button class="btn btn-primary" type="submit">Save New Password</button></div>
+    </form>
+  </div>
+</section>
+<% } %>

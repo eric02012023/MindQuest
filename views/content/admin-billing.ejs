@@ -1,0 +1,49 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-billing.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head between-line">
+      <h2>Student Payment Information</h2>
+      <div class="row-actions wrap-row-actions">
+        <a href="<%= basePath %>/payments/history" class="btn btn-secondary btn-sm">Payment History</a>
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-target="#reenroll-students-modal">Reenroll Student</button>
+      </div>
+    </div>
+    <div class="table-wrap scroll-table-box">
+      <table>
+        <thead><tr><th>Student Name</th><th>Full Bill</th><th>Partial Payment</th><th>For Settlement</th><th>Payment Due Date</th><th>Payment Status</th><th>Actions</th></tr></thead>
+        <tbody>
+        <% if (!billingRows.length) { %><tr><td colspan="7">No student payment rows available.</td></tr><% } %>
+        <% billingRows.forEach((row) => { %>
+          <tr>
+            <td><%= titleCaseName(row.first_name) %> <%= titleCaseName(row.middle_name || '') %> <%= titleCaseName(row.last_name) %></td>
+            <td><%= money(row.full_bill) %></td>
+            <td><%= money(row.partial_payment) %></td>
+            <td><%= money(row.for_settlement) %></td>
+            <td><%= formatDate(row.payment_due) %></td>
+            <td><span class="pill <%= row.payment_status %>"><%= row.payment_status %></span></td>
+            <td><div class="row-actions wrap-row-actions"><button type="button" class="btn btn-secondary btn-sm" onclick="openBillingModal('edit-bill-<%= row.student_id %>'); return false;">Edit</button><button type="button" class="btn btn-secondary btn-sm" onclick="openBillingModal('bill-<%= row.student_id %>'); return false;">Student Payment Information</button></div></td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <% billingRows.forEach((row) => { %>
+    <div class="global-modal <%= String(openEditStudentId || '') === String(row.student_id) ? 'is-open' : '' %>" id="edit-bill-<%= row.student_id %>" <%= String(openEditStudentId || '') === String(row.student_id) ? 'data-force-open="true"' : '' %>><div class="global-modal-card extra-wide billing-modal-card"><button type="button" class="modal-close" data-close-modal>&times;</button><h3>Edit Billing</h3><form class="stack-form billing-edit-form" method="post" action="<%= basePath %>/billing/<%= row.student_id %>/update"><input type="hidden" name="student_id" value="<%= row.student_id %>" /><input type="hidden" name="billing_student_id" value="<%= row.student_id %>" /><input type="hidden" name="user_id" value="<%= row.user_id %>" /><div class="form-grid two-col billing-edit-grid"><label>User ID<input type="text" value="<%= row.user_id %>" readonly /></label><label>Student Name<input type="text" value="<%= titleCaseName(row.first_name) %> <%= titleCaseName(row.middle_name || '') %> <%= titleCaseName(row.last_name) %>" readonly /></label><label>Full Bill<input data-full-bill type="number" step="0.01" min="0" name="full_bill" value="<%= row.full_bill %>" required /></label><label>Partial Payment<input data-partial-payment type="number" step="0.01" min="500" name="partial_payment" value="<%= row.partial_payment %>" required /></label><label>SOA Type<select name="soa_type"><option value="Regular SOA">Regular SOA</option><option value="Promissory SOA">Promissory SOA</option></select></label><label>For Settlement<input data-for-settlement type="number" step="0.01" value="<%= row.for_settlement %>" readonly /></label><label>Payment Due Date<input type="date" name="payment_due" value="<%= toInputDate(row.payment_due) %>" required /></label></div><div class="form-actions right wrap-row-actions"><button class="btn btn-primary" type="submit">Save</button></div></form></div></div>
+    <div class="global-modal <%= String(openInfoStudentId || '') === String(row.student_id) ? 'is-open' : '' %>" id="bill-<%= row.student_id %>" <%= String(openInfoStudentId || '') === String(row.student_id) ? 'data-force-open="true"' : '' %>><div class="global-modal-card extra-wide billing-modal-card"><button type="button" class="modal-close" data-close-modal>&times;</button><h3>Student Bill</h3><div class="bill-print-area plain-soa-print"><div class="soa-header-block"><div><strong>MindQuest Tutorial Center</strong><p>Address: MindQuest Tutorial Center, <%= row.branch_name || '' %>, <%= branchAddress(row.branch_name || '') %></p><p>Contact Number: (+63) 909 9879424</p><p>Date & Time: <%= formatDateTime(new Date()) %></p></div></div><div class="plain-soa-grid"><div class="plain-soa-row"><span>Student ID</span><strong><%= row.user_id %></strong></div><div class="plain-soa-row"><span>Student Name</span><strong><%= titleCaseName(row.first_name) %> <%= titleCaseName(row.middle_name || '') %> <%= titleCaseName(row.last_name) %></strong></div><div class="plain-soa-row"><span>Branch</span><strong><%= row.branch_name || '' %></strong></div><div class="plain-soa-row"><span>Address</span><strong><%= row.address || '-' %></strong></div><div class="plain-soa-row"><span>Full Bill</span><strong><%= money(row.full_bill) %></strong></div><div class="plain-soa-row"><span>Partial Payment</span><strong><%= money(row.partial_payment) %></strong></div><div class="plain-soa-row"><span>For Settlement</span><strong><%= money(row.for_settlement) %></strong></div><div class="plain-soa-row"><span>Payment Due Date</span><strong><%= formatDate(row.payment_due) %></strong></div></div><div class="form-actions right wrap-row-actions print-hide"><form method="post" action="<%= basePath %>/billing/<%= row.student_id %>/post-soa" data-confirm-message="Post this SOA to the student billing page?"><input type="hidden" name="student_id" value="<%= row.student_id %>" /><input type="hidden" name="billing_student_id" value="<%= row.student_id %>" /><input type="hidden" name="user_id" value="<%= row.user_id %>" /><button class="btn btn-secondary" type="submit">Post</button></form><button class="btn btn-secondary" type="button" onclick="printBillModal('bill-<%= row.student_id %>')">Print</button></div></div></div></div>
+  <% }) %>
+
+  <div class="global-modal" id="reenroll-students-modal"><div class="global-modal-card wide modal-scroll-box" style="max-height:80vh;overflow:auto;"><button type="button" class="modal-close" data-close-modal>&times;</button><h3>Reenroll Student</h3><form method="post" action="<%= basePath %>/billing/reenroll" class="stack-form"><div class="list-stack"><% const seen = new Set(); %><% if (!(paymentHistory || []).length) { %><p>No students in payment history.</p><% } %><% (paymentHistory || []).forEach((item) => { const key = String(item.student_id); if (seen.has(key)) return; seen.add(key); %><label class="checkbox-card"><input type="checkbox" name="student_ids" value="<%= item.student_id %>" /> <span><strong><%= item.first_name %> <%= item.middle_name || '' %> <%= item.last_name %></strong> - <%= item.user_id %> - <%= item.branch_name || '-' %></span></label><% }) %></div><div class="form-actions right wrap-row-actions"><button class="btn btn-primary" type="submit">Confirm Reenroll</button></div></form></div></div>
+</section>
+
+<script>
+function openBillingModal(id) {
+  var modal = document.getElementById(id);
+  if (!modal) return;
+  document.querySelectorAll('.global-modal.is-open').forEach(function(item){
+    if (item !== modal) item.classList.remove('is-open');
+  });
+  modal.classList.add('is-open');
+}
+</script>

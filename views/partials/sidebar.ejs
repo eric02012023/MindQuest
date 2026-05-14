@@ -1,0 +1,48 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/partials/sidebar.ejs | Purpose: UI template/view used by the system. %>
+<aside class="sidebar" data-dashboard-sidebar>
+  <button type="button" class="sidebar-close-btn" data-sidebar-close aria-label="Close navigation">&times;</button>
+  <div class="sidebar-fixed-top">
+  <div class="sidebar-brand">
+    <img src="/assets/logo.jpeg" alt="MindQuest Logo" />
+    <div>
+      <strong><%= roleName %></strong>
+      <span><%= currentUser.first_name %></span>
+    </div>
+  </div>
+
+  <div class="sidebar-scroll-area">
+  <% if (basePath === '/admin' || basePath === '/assistant') { %>
+    <nav class="sidebar-nav">
+      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="<%= basePath %>">Dashboard</a>
+      <a class="<%= section === 'users' ? 'active' : '' %>" href="<%= basePath %>/users">User Management</a>
+      <% if (currentUser.role === 'admin') { %><a class="<%= section === 'branches' ? 'active' : '' %>" href="<%= basePath %>/branches">Branch Management</a><% } %>
+      <a class="<%= section === 'billing' ? 'active' : '' %>" href="<%= basePath %>/billing">Student Bill</a>
+      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects">All Subjects</a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics">Analytics & Reports</a>
+      <a class="<%= section === 'profile' ? 'active' : '' %>" href="<%= basePath %>/profile/<%= currentUser.id %>">My Profile</a>
+    </nav>
+  <% } %>
+
+  <% if (basePath === '/student') { %>
+    <nav class="sidebar-nav">
+      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/student">Dashboard</a>
+      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/student/subjects">My Subject</a>
+      <a class="<%= section === 'billing' ? 'active' : '' %>" href="/student/billing">Billing Info</a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/student/analytics">Analytics & Reports</a>
+      <a class="<%= section === 'profile' ? 'active' : '' %>" href="/student/profile">Profile</a>
+    </nav>
+  <% } %>
+
+  <% if (basePath === '/tutor') { %>
+    <nav class="sidebar-nav">
+      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/tutor">Dashboard</a>
+      <a class="<%= section === 'students' ? 'active' : '' %>" href="/tutor/students">My Students</a>
+      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/tutor/subjects">My Subject</a>
+      <a class="<%= section === 'attendance' ? 'active' : '' %>" href="/tutor/attendance">Attendance</a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/tutor/analytics">Analytics & Reports</a>
+      <a class="<%= section === 'profile' ? 'active' : '' %>" href="/tutor/profile">Profile</a>
+    </nav>
+  <% } %>
+  </div>
+  </div>
+</aside>

@@ -1,0 +1,286 @@
+/* ANNOTATED COPY FOR DEFENSE REVIEW | File: public/css/student/theme.css | Purpose: Stylesheet used by the MindQuest UI. */
+.student-dashboard-page,
+.student-subjects-page,
+.student-billing-page,
+.student-assessments-page,
+.student-messages-page,
+.student-profile-page,
+.student-analytics-page {
+  background:
+    radial-gradient(circle at top left, rgba(99, 241, 104, 0.12), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(14, 233, 29, 0.1), transparent 32%),
+    linear-gradient(180deg, #f7fff7 0%, #eefff0 100%);
+}
+
+.student-dashboard-page .sidebar,
+.student-subjects-page .sidebar,
+.student-billing-page .sidebar,
+.student-assessments-page .sidebar,
+.student-messages-page .sidebar,
+.student-profile-page .sidebar,
+.student-analytics-page .sidebar {
+  background: linear-gradient(180deg, #022d00 0%, #064c02 52%, #19791b 100%);
+}
+
+.student-dashboard-page .dashboard-topbar,
+.student-subjects-page .dashboard-topbar,
+.student-billing-page .dashboard-topbar,
+.student-assessments-page .dashboard-topbar,
+.student-messages-page .dashboard-topbar,
+.student-profile-page .dashboard-topbar,
+.student-analytics-page .dashboard-topbar {
+  background: rgba(255,255,255,.88);
+  border-bottom-color: rgba(99,102,241,.10);
+}
+
+.student-dashboard-page .sidebar-nav a.active,
+.student-dashboard-page .sidebar-nav a:hover,
+.student-subjects-page .sidebar-nav a.active,
+.student-subjects-page .sidebar-nav a:hover,
+.student-billing-page .sidebar-nav a.active,
+.student-billing-page .sidebar-nav a:hover,
+.student-assessments-page .sidebar-nav a.active,
+.student-assessments-page .sidebar-nav a:hover,
+.student-messages-page .sidebar-nav a.active,
+.student-messages-page .sidebar-nav a:hover,
+.student-profile-page .sidebar-nav a.active,
+.student-profile-page .sidebar-nav a:hover,
+.student-analytics-page .sidebar-nav a.active,
+.student-analytics-page .sidebar-nav a:hover {
+  background: rgba(255,255,255,.22);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+
+.student-dashboard-page .panel-card,
+.student-subjects-page .panel-card,
+.student-billing-page .panel-card,
+.student-assessments-page .panel-card,
+.student-messages-page .panel-card,
+.student-profile-page .panel-card,
+.student-analytics-page .panel-card {
+  border-color: rgba(99,102,241,.08);
+  box-shadow: 0 18px 38px rgba(67,56,202,.07);
+}
+
+.student-dashboard-page .subject-list-card,
+.student-subjects-page .subject-list-card,
+.student-messages-page .mini-bubble,
+.student-dashboard-page .mini-bubble,
+.student-dashboard-page .attendance-box {
+  border-color: rgba(99, 241, 132, 0.1);
+}
+
+.student-dashboard-page .calendar-widget,
+.student-subjects-page .calendar-widget,
+.student-profile-page .calendar-widget,
+.student-messages-page .calendar-widget {
+  border: 1px solid rgba(99, 241, 135, 0.14);
+  background: linear-gradient(180deg, #ffffff 0%, #f3fff4 100%);
+}
+
+.student-dashboard-page .calendar-shell,
+.student-subjects-page .calendar-shell,
+.student-profile-page .calendar-shell,
+.student-messages-page .calendar-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.student-dashboard-page .calendar-top,
+.student-subjects-page .calendar-top,
+.student-profile-page .calendar-top,
+.student-messages-page .calendar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.student-dashboard-page .calendar-badge,
+.student-subjects-page .calendar-badge,
+.student-profile-page .calendar-badge,
+.student-messages-page .calendar-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(99,102,241,.10);
+  color: #38ca42;
+  font-weight: 800;
+}
+
+.student-dashboard-page .calendar-meta,
+.student-subjects-page .calendar-meta,
+.student-profile-page .calendar-meta,
+.student-messages-page .calendar-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.student-dashboard-page .calendar-today-label,
+.student-subjects-page .calendar-today-label,
+.student-profile-page .calendar-today-label,
+.student-messages-page .calendar-today-label {
+  color: #4b5d73;
+  font-size: 14px;
+}
+
+.student-dashboard-page .calendar-nav,
+.student-subjects-page .calendar-nav,
+.student-profile-page .calendar-nav,
+.student-messages-page .calendar-nav {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.student-dashboard-page .calendar-nav button,
+.student-subjects-page .calendar-nav button,
+.student-profile-page .calendar-nav button,
+.student-messages-page .calendar-nav button {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(99,102,241,.14);
+  background: #fff;
+  color: #4338ca;
+  font-weight: 800;
+}
+
+.student-dashboard-page .calendar-grid,
+.student-subjects-page .calendar-grid,
+.student-profile-page .calendar-grid,
+.student-messages-page .calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.student-dashboard-page .calendar-cell,
+.student-subjects-page .calendar-cell,
+.student-profile-page .calendar-cell,
+.student-messages-page .calendar-cell {
+  min-height: 72px;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(99, 241, 106, 0.08);
+  display: grid;
+  align-content: space-between;
+}
+
+.student-dashboard-page .calendar-cell.is-weekday,
+.student-subjects-page .calendar-cell.is-weekday,
+.student-profile-page .calendar-cell.is-weekday,
+.student-messages-page .calendar-cell.is-weekday {
+  min-height: auto;
+  border-radius: 14px;
+  background: rgba(99, 241, 104, 0.06);
+  color: #3aca38;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  padding: 10px 8px;
+}
+
+.student-dashboard-page .calendar-cell.is-muted,
+.student-subjects-page .calendar-cell.is-muted,
+.student-profile-page .calendar-cell.is-muted,
+.student-messages-page .calendar-cell.is-muted {
+  opacity: .42;
+}
+
+.student-dashboard-page .calendar-cell.today,
+.student-subjects-page .calendar-cell.today,
+.student-profile-page .calendar-cell.today,
+.student-messages-page .calendar-cell.today {
+  background: linear-gradient(180deg, rgba(99, 241, 111, 0.16), rgba(255,255,255,.98));
+  border-color: rgba(99, 241, 123, 0.26);
+  box-shadow: 0 12px 26px rgba(99, 241, 123, 0.14);
+}
+
+.student-dashboard-page .calendar-cell .calendar-date,
+.student-subjects-page .calendar-cell .calendar-date,
+.student-profile-page .calendar-cell .calendar-date,
+.student-messages-page .calendar-cell .calendar-date {
+  font-weight: 800;
+}
+
+.student-dashboard-page .calendar-pill,
+.student-subjects-page .calendar-pill,
+.student-profile-page .calendar-pill,
+.student-messages-page .calendar-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(59, 246, 68, 0.12);
+  color: #1dd829;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.student-dashboard-page .calendar-summary,
+.student-subjects-page .calendar-summary,
+.student-profile-page .calendar-summary,
+.student-messages-page .calendar-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.student-dashboard-page .calendar-summary-card,
+.student-subjects-page .calendar-summary-card,
+.student-profile-page .calendar-summary-card,
+.student-messages-page .calendar-summary-card {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.9);
+  border: 1px solid rgba(99,102,241,.08);
+}
+
+.student-dashboard-page .calendar-summary-card span,
+.student-subjects-page .calendar-summary-card span,
+.student-profile-page .calendar-summary-card span,
+.student-messages-page .calendar-summary-card span {
+  display: block;
+  color: #607089;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.student-dashboard-page .calendar-summary-card strong,
+.student-subjects-page .calendar-summary-card strong,
+.student-profile-page .calendar-summary-card strong,
+.student-messages-page .calendar-summary-card strong {
+  font-size: 22px;
+}
+
+@media (max-width: 760px) {
+  .student-dashboard-page .calendar-grid,
+  .student-subjects-page .calendar-grid,
+  .student-profile-page .calendar-grid,
+  .student-messages-page .calendar-grid {
+    gap: 6px;
+  }
+
+  .student-dashboard-page .calendar-cell,
+  .student-subjects-page .calendar-cell,
+  .student-profile-page .calendar-cell,
+  .student-messages-page .calendar-cell {
+    min-height: 60px;
+    border-radius: 14px;
+    padding: 8px;
+  }
+
+  .student-dashboard-page .calendar-summary,
+  .student-subjects-page .calendar-summary,
+  .student-profile-page .calendar-summary,
+  .student-messages-page .calendar-summary {
+    grid-template-columns: 1fr;
+  }
+}

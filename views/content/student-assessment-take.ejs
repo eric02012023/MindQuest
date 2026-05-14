@@ -1,0 +1,156 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-assessment-take.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head"><h2><%= assessment.title %></h2><p><%= assessment.assessment_origin === 'ai_generated' ? 'AI Generated' : assessment.assessment_type %> assessment</p></div>
+    <% if (assessment.result) { %>
+      <% const submittedAnswers = assessment.submittedAnswers || {}; %>
+      <div class="stat-grid assessment-result-grid">
+        <article class="stat-card"><h3>Score</h3><strong><%= assessment.result.score %> / <%= assessment.result.total_questions %></strong></article>
+        <article class="stat-card"><h3>Percentage</h3><strong><%= assessment.result.percentage %>%</strong></article>
+        <article class="stat-card gradient"><h3>Level</h3><strong><%= assessment.result.level %></strong></article>
+      </div>
+
+      <div style="margin:16px 0 20px;padding:12px;background:var(--bg-2);border-radius:8px;">
+        <p style="margin:0;color:var(--text-soft);"><strong>✅ Assessment Completed.</strong> Each assessment can only be taken once. A follow-up review module has been generated based on your result level.</p>
+      </div>
+
+      <section class="panel-card" style="margin-top:16px;">
+        <div class="panel-card-head"><h3>Answer Review</h3><p>Check your submitted answer versus the correct answer.</p></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Question</th><th>Your Answer</th><th>Correct Answer</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+              <% assessment.questions.forEach((question, index) => { %>
+                <% const selected = String(submittedAnswers[String(question.id)] || submittedAnswers[question.id] || '').trim().toUpperCase(); %>
+                <% const selectedDisplay = selected || '-'; %>
+                <% const correct = String(question.correct_answer || '').trim().toUpperCase(); %>
+                <% const isCorrect = !!selected && selected === correct; %>
+                <tr>
+                  <td><%= index + 1 %></td>
+                  <td><%= question.question_text %></td>
+                  <td><strong><%= selectedDisplay %></strong><br /><span class="empty-state"><%= selected ? (question['choice_' + selected.toLowerCase()] || '') : 'No answer' %></span></td>
+                  <td><strong><%= correct %></strong><br /><span class="empty-state"><%= question['choice_' + correct.toLowerCase()] || '' %></span></td>
+                  <td><span class="badge <%= isCorrect ? 'badge-success' : 'badge-danger' %>"><%= isCorrect ? 'Correct' : 'Wrong' %></span></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% } else { %>
+      <%# Anti-cheat warning banner %>
+      <div class="panel-card" style="background:linear-gradient(135deg,#ff6b35 0%,#f7c948 100%);color:#fff;padding:16px;margin-bottom:16px;border-radius:8px;">
+        <h4 style="margin:0 0 8px;">⚠️ Assessment Anti-Cheat Policy</h4>
+        <p style="margin:0;font-size:0.9rem;">Do <strong>NOT</strong> switch tabs, minimize the browser, or navigate away during this assessment. Violations are tracked and may result in <strong>automatic submission</strong> of your current answers after <strong><%= assessment.max_violations || 3 %> violations</strong>.</p>
+      </div>
+
+      <form id="assessmentForm" method="post" action="/student/assessments/<%= assessment.id %>/submit" class="stack-form">
+        <input type="hidden" name="time_started" value="<%= Date.now() %>" />
+        <% assessment.questions.forEach((question, index) => { %>
+          <article class="question-view-card">
+            <h4><%= index + 1 %>. <%= question.question_text %></h4>
+            <% if (question.question_type === 'True or False') { %>
+              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+              <label><input type="radio" name="answer_<%= question.id %>" value="true" required /> True</label>
+              <label><input type="radio" name="answer_<%= question.id %>" value="false" /> False</label>
+            <% } else if (question.question_type === 'Identification') { %>
+              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+              <label>Your Answer<input type="text" name="answer_<%= question.id %>" required /></label>
+            <% } else { %>
+              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+              <label><input type="radio" name="answer_<%= question.id %>" value="A" required /> A. <%= question.choice_a %></label>
+              <label><input type="radio" name="answer_<%= question.id %>" value="B" /> B. <%= question.choice_b %></label>
+              <% if (question.choice_c) { %><label><input type="radio" name="answer_<%= question.id %>" value="C" /> C. <%= question.choice_c %></label><% } %>
+              <% if (question.choice_d) { %><label><input type="radio" name="answer_<%= question.id %>" value="D" /> D. <%= question.choice_d %></label><% } %>
+            <% } %>
+          </article>
+        <% }) %>
+        <button class="btn btn-primary" type="submit">Submit Assessment</button>
+      </form>
+
+      <%# Anti-cheat client-side tracking %>
+      <script>
+      (function() {
+        var assessmentId = '<%= assessment.id %>';
+        var maxViolations = <%= assessment.max_violations || 3 %>;
+        var violationCount = 0;
+        var warningEl = null;
+
+        function createWarning() {
+          if (warningEl) return;
+          warningEl = document.createElement('div');
+          warningEl.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#e74c3c;color:#fff;padding:12px 20px;z-index:99999;text-align:center;font-weight:bold;font-size:14px;';
+          document.body.appendChild(warningEl);
+        }
+
+        function updateWarning() {
+          createWarning();
+          var remaining = maxViolations - violationCount;
+          if (remaining > 0) {
+            warningEl.textContent = '⚠️ Tab switch detected! ' + remaining + ' violation(s) remaining before auto-submit.';
+            setTimeout(function() { if (warningEl) warningEl.style.display = 'none'; }, 4000);
+          }
+        }
+
+        function logViolation(eventType) {
+          violationCount++;
+          // Send violation to server
+          try {
+            var data = JSON.stringify({
+              assessment_id: assessmentId,
+              event_type: eventType,
+              event_detail: 'Violation #' + violationCount
+            });
+            if (navigator.sendBeacon) {
+              navigator.sendBeacon('/student/assessments/' + assessmentId + '/anti-cheat', new Blob([data], { type: 'application/json' }));
+            } else {
+              var xhr = new XMLHttpRequest();
+              xhr.open('POST', '/student/assessments/' + assessmentId + '/anti-cheat', true);
+              xhr.setRequestHeader('Content-Type', 'application/json');
+              xhr.send(data);
+            }
+          } catch(e) {}
+
+          updateWarning();
+
+          if (violationCount >= maxViolations) {
+            // Auto-submit
+            createWarning();
+            warningEl.textContent = '🚫 Maximum violations reached. Auto-submitting your assessment...';
+            var form = document.getElementById('assessmentForm');
+            if (form) {
+              var autoInput = document.createElement('input');
+              autoInput.type = 'hidden';
+              autoInput.name = 'auto_submitted';
+              autoInput.value = '1';
+              form.appendChild(autoInput);
+              var reasonInput = document.createElement('input');
+              reasonInput.type = 'hidden';
+              reasonInput.name = 'auto_submit_reason';
+              reasonInput.value = 'max_violations_reached';
+              form.appendChild(reasonInput);
+              setTimeout(function() { form.submit(); }, 1500);
+            }
+          }
+        }
+
+        document.addEventListener('visibilitychange', function() {
+          if (document.hidden) logViolation('tab_switch');
+        });
+
+        window.addEventListener('blur', function() {
+          logViolation('window_blur');
+        });
+
+        window.addEventListener('beforeunload', function(e) {
+          // Warn before leaving
+          e.preventDefault();
+          e.returnValue = 'You have an ongoing assessment. Leaving will count as a violation.';
+        });
+      })();
+      </script>
+    <% } %>
+  </section>
+</section>

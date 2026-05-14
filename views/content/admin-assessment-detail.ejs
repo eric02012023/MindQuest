@@ -1,0 +1,36 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-assessment-detail.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <div class="panel-card">
+    <div class="panel-card-head">
+      <h2><%= assessment.title %></h2>
+      <p><%= assessment.assessment_type %> assessment for <%= assessment.first_name %> <%= assessment.last_name %></p>
+    </div>
+    <% if (assessment.result) { %>
+      <div class="stat-grid assessment-result-grid">
+        <article class="stat-card"><h3>Score</h3><strong><%= assessment.result.score %> / <%= assessment.result.total_questions %></strong></article>
+        <article class="stat-card"><h3>Percentage</h3><strong><%= assessment.result.percentage %>%</strong></article>
+        <article class="stat-card gradient"><h3>Result</h3><strong><%= assessment.result.level %></strong></article>
+      </div>
+    <% } else { %>
+      <p class="empty-state">Student has not taken this assessment yet.</p>
+    <% } %>
+  </div>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Questions</h3></div>
+    <div class="list-stack">
+      <% assessment.questions.forEach((question, index) => { %>
+        <article class="question-view-card">
+          <h4><%= index + 1 %>. <%= question.question_text %></h4>
+          <ul>
+            <li>A. <%= question.choice_a %></li>
+            <li>B. <%= question.choice_b %></li>
+            <li>C. <%= question.choice_c %></li>
+            <li>D. <%= question.choice_d %></li>
+          </ul>
+          <p><strong>Correct Answer:</strong> <%= question.correct_answer %></p>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+</section>

@@ -1,0 +1,64 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-attendance.ejs | Purpose: UI template/view used by the system. %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head"><h2>Mark Attendance</h2></div>
+    <form method="get" action="/tutor/attendance" class="stack-form attendance-filter-form">
+      <label>Select Subject
+        <select name="subject_id" required>
+          <option value="">Select subject</option>
+          <% if (!(tutorSubjects || []).length) { %>
+            <option value="" disabled>No subjects assigned yet</option>
+          <% } %>
+          <% (tutorSubjects || []).forEach((subject) => { %>
+            <option value="<%= subject.id %>" <%= String(selectedSubjectId || '') === String(subject.id) ? 'selected' : '' %>><%= subject.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <div class="form-actions"><button class="btn btn-secondary" type="submit">Load Assigned Student</button></div>
+    </form>
+
+    <form method="post" action="/tutor/attendance" class="stack-form">
+      <input type="hidden" name="subject_id" value="<%= selectedSubjectId || '' %>" />
+      <label>Attendance Date<input type="date" name="attendance_date" value="<%= toInputDate(new Date()) %>" required /></label>
+      <div class="table-wrap scroll-table-box">
+        <table>
+          <thead><tr><th>Select</th><th>Subject</th><th>Student</th><th>Status</th></tr></thead>
+          <tbody>
+            <% if (!(students || []).length) { %>
+              <tr><td colspan="4">Select one subject first, then click Load Assigned Student.</td></tr>
+            <% } %>
+            <% (students || []).forEach((student) => { const key = `${student.student_id}:${student.subject_id}`; %>
+              <tr>
+                <td><input type="checkbox" name="selected_student" value="<%= key %>" /></td>
+                <td><%= student.subject_name %></td>
+                <td><a href="/tutor/students/<%= student.student_id %>"><%= student.full_name %></a></td>
+                <td>
+                  <select name="status[<%= key %>]">
+                    <option value="present">Present</option>
+                    <option value="absent">Absent</option>
+                  </select>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save Attendance</button></div>
+    </form>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h2>Attendance Logs</h2></div>
+    <div class="table-wrap scroll-table-box">
+      <table>
+        <thead><tr><th>Date</th><th>Student</th><th>Subject</th><th>Status</th></tr></thead>
+        <tbody>
+          <% if (!(attendanceLogs || []).length) { %><tr><td colspan="4">No attendance logs yet.</td></tr><% } %>
+          <% (attendanceLogs || []).forEach((item) => { %>
+            <tr><td><%= formatDate(item.attendance_date) %></td><td><%= item.first_name %> <%= item.last_name %></td><td><%= item.subject_name %></td><td><%= item.status %></td></tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

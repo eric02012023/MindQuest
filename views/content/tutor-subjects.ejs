@@ -1,0 +1,47 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-subjects.ejs | Purpose: UI template/view used by the system. %>
+<section class="panel-card">
+  <div class="panel-card-head"><h2>My Subject</h2></div>
+  <div class="subject-list-cards">
+    <% if (!subjects.length) { %><p class="empty-state">No subject assignment yet.</p><% } %>
+    <% subjects.forEach((subject) => { %>
+      <a class="subject-list-card" href="/tutor/subjects/<%= subject.subject_id %>">
+        <div><strong><%= subject.subject_name %></strong><span><%= subject.total_students %> students</span></div>
+      </a>
+    <% }) %>
+  </div>
+</section>
+<section class="panel-card">
+  <div class="panel-card-head"><h3>My Time Schedule</h3></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time Slot</th><th>Status</th><th>Student</th><th>Action</th></tr></thead>
+      <tbody>
+        <% if (!(scheduleOverview || []).length) { %><tr><td colspan="4">No time schedule available yet.</td></tr><% } %>
+        <% (scheduleOverview || []).forEach((item) => { %>
+          <tr>
+            <td><%= item.time_slot %></td>
+            <td>
+              <% if (item.raw_status === 'finished') { %>
+                <span class="badge badge-finished">Finished</span>
+              <% } else if (item.raw_status === 'available') { %>
+                <span class="badge badge-available">Available</span>
+              <% } else { %>
+                <%= item.status %>
+              <% } %>
+            </td>
+            <td><%= item.student_name || '-' %></td>
+            <td>
+              <% if (['accepted', 'ongoing'].includes(item.raw_status) && item.application_id) { %>
+                <form method="POST" action="/tutor/schedule/<%= item.application_id %>/finish" onsubmit="return confirm('Mark this session as finished? The time slot will become available again.');">
+                  <button type="submit" class="btn-finish">Finish</button>
+                </form>
+              <% } else { %>
+                -
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

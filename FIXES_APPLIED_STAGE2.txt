@@ -1,0 +1,7 @@
+Second pass fixes applied:
+- assessment result lookup filtered by student_id
+- added resetAssessmentResult helper and student retake route
+- student assessment submit now validates ownership and published status
+- result page now shows answer review table with submitted vs correct answer
+- timezone parsing improved for naive date strings using Asia/Manila
+- mirrored fixes into nested mindquest-final copy
