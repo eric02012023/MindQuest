@@ -1,4 +1,4 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-assessment-take.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/student-assessment-take.ejs | Purpose: Assessment taking page with anti-cheat and auto-save %>
 <section class="page-stack">
   <section class="panel-card">
     <div class="panel-card-head"><h2><%= assessment.title %></h2><p><%= assessment.assessment_origin === 'ai_generated' ? 'AI Generated' : assessment.assessment_type %> assessment</p></div>
@@ -43,24 +43,26 @@
       <%# Anti-cheat warning banner %>
       <div class="panel-card" style="background:linear-gradient(135deg,#ff6b35 0%,#f7c948 100%);color:#fff;padding:16px;margin-bottom:16px;border-radius:8px;">
         <h4 style="margin:0 0 8px;">⚠️ Assessment Anti-Cheat Policy</h4>
-        <p style="margin:0;font-size:0.9rem;">Do <strong>NOT</strong> switch tabs, minimize the browser, or navigate away during this assessment. Violations are tracked and may result in <strong>automatic submission</strong> of your current answers after <strong><%= assessment.max_violations || 3 %> violations</strong>.</p>
+        <p style="margin:0;font-size:0.9rem;">Do <strong>NOT</strong> switch tabs, minimize the browser, or navigate away during this assessment. Violations are tracked and may result in <strong>automatic submission</strong> of your current answers.</p>
       </div>
 
       <form id="assessmentForm" method="post" action="/student/assessments/<%= assessment.id %>/submit" class="stack-form">
         <input type="hidden" name="time_started" value="<%= Date.now() %>" />
+        <input type="hidden" name="auto_submitted" id="autoSubmittedFlag" value="0" />
+        <input type="hidden" name="auto_submit_reason" id="autoSubmitReason" value="" />
         <% assessment.questions.forEach((question, index) => { %>
           <article class="question-view-card">
             <h4><%= index + 1 %>. <%= question.question_text %></h4>
             <% if (question.question_type === 'True or False') { %>
               <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label><input type="radio" name="answer_<%= question.id %>" value="true" required /> True</label>
+              <label><input type="radio" name="answer_<%= question.id %>" value="true" /> True</label>
               <label><input type="radio" name="answer_<%= question.id %>" value="false" /> False</label>
             <% } else if (question.question_type === 'Identification') { %>
               <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label>Your Answer<input type="text" name="answer_<%= question.id %>" required /></label>
+              <label>Your Answer<input type="text" name="answer_<%= question.id %>" /></label>
             <% } else { %>
               <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label><input type="radio" name="answer_<%= question.id %>" value="A" required /> A. <%= question.choice_a %></label>
+              <label><input type="radio" name="answer_<%= question.id %>" value="A" /> A. <%= question.choice_a %></label>
               <label><input type="radio" name="answer_<%= question.id %>" value="B" /> B. <%= question.choice_b %></label>
               <% if (question.choice_c) { %><label><input type="radio" name="answer_<%= question.id %>" value="C" /> C. <%= question.choice_c %></label><% } %>
               <% if (question.choice_d) { %><label><input type="radio" name="answer_<%= question.id %>" value="D" /> D. <%= question.choice_d %></label><% } %>
@@ -70,63 +72,53 @@
         <button class="btn btn-primary" type="submit">Submit Assessment</button>
       </form>
 
-      <%# Tab-switch warning modal %>
+      <%# Tab-switch warning modal (custom, replaces browser popup) %>
       <div class="global-modal" id="tab-switch-warning-modal">
         <div class="global-modal-card small">
-          <h3>⚠️ Warning: Tab Switch Detected</h3>
-          <p style="line-height:1.6;">Kapag lumipat ka ng tab, automatic na mase-save ang assessment mo. Ang score mo ay ibabase lamang sa mga tamang sagot na naisagot mo bago ka lumipat ng tab.</p>
+          <h3>⚠️ Warning: Lilipat ka ng Tab</h3>
+          <p style="line-height:1.6;">Kapag umalis ka sa assessment, automatic na mase-save ang current answers mo. Ang score mo ay ibabase lamang sa mga tamang sagot na nasagutan mo bago ka umalis.</p>
           <div class="confirm-actions" style="margin-top:16px;">
             <button type="button" class="btn btn-secondary" id="tabSwitchStay">Cancel — Stay on Assessment</button>
-            <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="background:#e74c3c;border-color:#e74c3c;">Accept — Auto-save & Submit</button>
+            <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="background:#e74c3c;border-color:#e74c3c;">Accept — Auto Save</button>
           </div>
         </div>
       </div>
 
-      <%# Anti-cheat client-side tracking with tab-switch warning modal %>
+      <%# Auto-save loading modal %>
+      <div class="global-modal" id="autosave-loading-modal">
+        <div class="global-modal-card small" style="text-align:center;">
+          <h3>Saving your assessment...</h3>
+          <div class="mqtc-dot-loader" style="display:flex;gap:8px;justify-content:center;margin:20px 0;">
+            <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;"></span>
+            <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;animation-delay:0.15s;"></span>
+            <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;animation-delay:0.3s;"></span>
+          </div>
+          <p style="color:var(--text-soft);">Please wait while we save your current answers...</p>
+        </div>
+      </div>
+
       <script>
       (function() {
         var assessmentId = '<%= assessment.id %>';
-        var maxViolations = <%= assessment.max_violations || 3 %>;
-        var violationCount = 0;
-        var warningEl = null;
         var isModalOpen = false;
-        var pendingViolation = false;
+        var isSubmitting = false;
 
-        function createWarning() {
-          if (warningEl) return;
-          warningEl = document.createElement('div');
-          warningEl.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#e74c3c;color:#fff;padding:12px 20px;z-index:99999;text-align:center;font-weight:bold;font-size:14px;';
-          document.body.appendChild(warningEl);
-        }
-
-        function updateWarning() {
-          createWarning();
-          var remaining = maxViolations - violationCount;
-          if (remaining > 0) {
-            warningEl.textContent = '⚠️ Tab switch detected! ' + remaining + ' violation(s) remaining before auto-submit.';
-            warningEl.style.display = 'block';
-            setTimeout(function() { if (warningEl) warningEl.style.display = 'none'; }, 4000);
-          }
-        }
-
-        function autoSubmitForm() {
-          createWarning();
-          warningEl.textContent = '🚫 Auto-submitting your assessment...';
-          warningEl.style.display = 'block';
+        // Collect current form answers into proper payload
+        function collectAnswers() {
           var form = document.getElementById('assessmentForm');
-          if (form) {
-            var autoInput = document.createElement('input');
-            autoInput.type = 'hidden';
-            autoInput.name = 'auto_submitted';
-            autoInput.value = '1';
-            form.appendChild(autoInput);
-            var reasonInput = document.createElement('input');
-            reasonInput.type = 'hidden';
-            reasonInput.name = 'auto_submit_reason';
-            reasonInput.value = 'tab_switch_accepted';
-            form.appendChild(reasonInput);
-            setTimeout(function() { form.submit(); }, 800);
+          if (!form) return {};
+          var formData = new FormData(form);
+          var payload = {};
+          for (var pair of formData.entries()) {
+            var key = pair[0];
+            var value = pair[1];
+            if (key === 'question_ids[]') {
+              if (!payload['question_ids[]']) payload['question_ids[]'] = [];
+              // FormData handles arrays via repeated keys; we need to encode properly
+            }
+            payload[key] = value;
           }
+          return payload;
         }
 
         function logViolationToServer(eventType) {
@@ -134,64 +126,105 @@
             var data = JSON.stringify({
               assessment_id: assessmentId,
               event_type: eventType,
-              event_detail: 'Violation #' + violationCount
+              event_detail: 'tab_switch_warning'
             });
             if (navigator.sendBeacon) {
               navigator.sendBeacon('/student/assessments/' + assessmentId + '/anti-cheat', new Blob([data], { type: 'application/json' }));
-            } else {
-              var xhr = new XMLHttpRequest();
-              xhr.open('POST', '/student/assessments/' + assessmentId + '/anti-cheat', true);
-              xhr.setRequestHeader('Content-Type', 'application/json');
-              xhr.send(data);
             }
           } catch(e) {}
         }
 
+        function doAutoSave() {
+          if (isSubmitting) return;
+          isSubmitting = true;
+          // Close warning modal, open loading modal
+          var warnModal = document.getElementById('tab-switch-warning-modal');
+          if (warnModal) warnModal.classList.remove('is-open');
+          var loadModal = document.getElementById('autosave-loading-modal');
+          if (loadModal) loadModal.classList.add('is-open');
+
+          // Remove the beforeunload handler so we don't get browser popup
+          window.onbeforeunload = null;
+
+          // Set auto-save flags
+          var flagEl = document.getElementById('autoSubmittedFlag');
+          if (flagEl) flagEl.value = '1';
+          var reasonEl = document.getElementById('autoSubmitReason');
+          if (reasonEl) reasonEl.value = 'tab_switch_accepted';
+
+          logViolationToServer('tab_switch_accepted');
+
+          // Submit the form natively (this sends all form data including partial answers)
+          var form = document.getElementById('assessmentForm');
+          if (form) {
+            // Brief delay to show loading UI
+            setTimeout(function() { form.submit(); }, 500);
+          }
+        }
+
         function showTabSwitchModal() {
-          if (isModalOpen) return;
+          if (isModalOpen || isSubmitting) return;
           isModalOpen = true;
-          pendingViolation = true;
           var modal = document.getElementById('tab-switch-warning-modal');
           if (modal) modal.classList.add('is-open');
         }
 
-        // Stay on assessment
+        // Stay on assessment button
         var stayBtn = document.getElementById('tabSwitchStay');
         if (stayBtn) {
           stayBtn.addEventListener('click', function() {
             isModalOpen = false;
-            pendingViolation = false;
             var modal = document.getElementById('tab-switch-warning-modal');
             if (modal) modal.classList.remove('is-open');
           });
         }
 
-        // Accept — auto-save and submit
+        // Accept — auto-save button
         var acceptBtn = document.getElementById('tabSwitchAccept');
         if (acceptBtn) {
           acceptBtn.addEventListener('click', function() {
-            isModalOpen = false;
-            var modal = document.getElementById('tab-switch-warning-modal');
-            if (modal) modal.classList.remove('is-open');
-            violationCount++;
-            logViolationToServer('tab_switch_accepted');
-            autoSubmitForm();
+            doAutoSave();
           });
         }
 
+        // Listen for tab switch / visibility change
         document.addEventListener('visibilitychange', function() {
-          if (document.hidden) {
+          if (document.hidden && !isSubmitting) {
             showTabSwitchModal();
           }
         });
 
         window.addEventListener('blur', function() {
-          showTabSwitchModal();
+          if (!isSubmitting) showTabSwitchModal();
         });
 
-        window.addEventListener('beforeunload', function(e) {
+        // Use custom beforeunload that we can disable
+        window.onbeforeunload = function(e) {
+          if (isSubmitting) return undefined; // allow navigation during submit
+          // Show custom modal instead for in-app navigation
+          // The browser may still show its own popup for external navigation
           e.preventDefault();
-          e.returnValue = 'You have an ongoing assessment. Leaving will count as a violation.';
+          e.returnValue = '';
+          return '';
+        };
+
+        // Intercept internal link clicks to show custom modal instead of browser popup
+        document.addEventListener('click', function(e) {
+          if (isSubmitting) return;
+          var link = e.target.closest('a[href]');
+          if (link && !link.target && link.getAttribute('href') && link.getAttribute('href').startsWith('/')) {
+            e.preventDefault();
+            showTabSwitchModal();
+          }
+        });
+
+        // Intercept sidebar navigation
+        document.querySelectorAll('.sidebar-nav a').forEach(function(link) {
+          link.addEventListener('click', function(e) {
+            if (isSubmitting) return;
+            e.preventDefault();
+            showTabSwitchModal();
+          });
         });
       })();
       </script>

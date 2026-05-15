@@ -714,26 +714,155 @@ router.get('/analytics', async (req, res, next) => {
   }
 });
 
-// Accept assessment request
+// Accept assessment request — generates AI assessment based on admin module
 router.post('/assessment-requests/:id/accept', async (req, res, next) => {
   try {
+    const itemCount = Number(req.body.item_count);
+    if (!itemCount || itemCount < 5 || itemCount > 50) {
+      setFlash(req, 'error', 'Please enter a valid number of assessment items (5–50).');
+      return res.redirect('/tutor/analytics');
+    }
+
     const request = await respondToAssessmentRequest(req.params.id, req.session.user.id, 'accept', req.body.message || '');
-    // Emit real-time notification to the student
-    const io = req.app.get('io');
-    const onlineUsers = req.app.get('onlineUsers');
-    if (io && request.student_id) {
-      const targetSocketId = onlineUsers.get(String(request.student_id));
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('assessment-request-update', {
-          status: 'accepted',
-          subjectId: request.subject_id,
-          resourceId: request.resource_id,
-          tutorName: `${req.session.user.first_name} ${req.session.user.last_name}`,
-          message: req.body.message || 'Your assessment request has been approved. You can now take the assessment!'
+
+    // Now generate the AI assessment for the student
+    try {
+      const { query: dbQuery } = require('../config/db');
+      const { generateAssessmentFromModule } = require('../services/aiService');
+      const {
+        getSubjectById, getUserById, addSubjectResource, logAiGeneration,
+        getActiveLearningCycle, createLearningCycle, advanceLearningCycle,
+        getAdminSubjectResources
+      } = require('../lib/data');
+
+      const subject = await getSubjectById(request.subject_id);
+      const student = await getUserById(request.student_id);
+      if (!subject || !student) throw new Error('Subject or student not found.');
+
+      // Fetch the admin module content (the source module from the request)
+      let moduleContent = '';
+      let moduleTitle = '';
+      let sourceResourceId = request.resource_id;
+
+      if (sourceResourceId) {
+        const moduleRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceResourceId]);
+        if (moduleRows.length) {
+          moduleContent = moduleRows[0].content_text || moduleRows[0].description || moduleRows[0].title || '';
+          moduleTitle = moduleRows[0].title || '';
+        }
+      }
+
+      // If no module content from specific resource, try to get latest admin module for this subject
+      if (!moduleContent) {
+        const adminModules = await getAdminSubjectResources(request.subject_id);
+        const activeAdminModule = adminModules.find(m => !m.is_archived && m.module_origin !== 'ai_generated');
+        if (activeAdminModule) {
+          moduleContent = activeAdminModule.content_text || activeAdminModule.description || activeAdminModule.title || '';
+          moduleTitle = activeAdminModule.title || '';
+          sourceResourceId = activeAdminModule.id;
+        }
+      }
+
+      if (!moduleContent) {
+        setFlash(req, 'error', 'No admin module found for this subject. Please ask the admin to upload a module first. The assessment request was accepted but no assessment was generated.');
+        return res.redirect('/tutor/analytics');
+      }
+
+      const levelGroup = student.education_level_group || student.year_level || '';
+
+      // Generate assessment via AI using admin module content and tutor-specified item count
+      const aiResult = await generateAssessmentFromModule({
+        moduleContent,
+        subject: subject.name,
+        levelGroup,
+        questionCount: itemCount
+      });
+
+      // Log AI generation
+      await logAiGeneration({
+        generation_type: 'assessment_from_module',
+        student_id: request.student_id,
+        subject_id: request.subject_id,
+        resource_id: sourceResourceId || null,
+        input_summary: `Module: ${moduleTitle} | Items: ${itemCount} (tutor-specified)`,
+        output_summary: `Generated ${aiResult.questions.length} questions`,
+        ai_provider: aiResult.provider,
+        ai_model: aiResult.model,
+        tokens_used: aiResult.tokensUsed,
+        success: true
+      });
+
+      // Get or create learning cycle
+      let activeCycle = await getActiveLearningCycle(request.student_id, request.subject_id);
+      if (!activeCycle && sourceResourceId) {
+        const cycleId = await createLearningCycle(request.student_id, request.subject_id, Number(sourceResourceId), 1);
+        activeCycle = { id: cycleId, round_number: 1 };
+      }
+
+      const round = activeCycle ? activeCycle.round_number : 1;
+
+      // Create assessment in database
+      const assessmentTitle = `AI Assessment: ${subject.name} — Round ${round}`;
+      const assessmentResult = await dbQuery(
+        `INSERT INTO assessments (title, subject_id, assigned_student_id, assessment_type, source_resource_id, assessment_origin, cycle_id, max_violations, time_limit_minutes, is_published)
+         VALUES (?, ?, ?, 'post', ?, 'ai_generated', ?, 3, NULL, 1)`,
+        [assessmentTitle, request.subject_id, request.student_id, sourceResourceId, activeCycle ? activeCycle.id : null]
+      );
+      const assessmentId = assessmentResult.insertId;
+
+      // Insert questions
+      for (const q of aiResult.questions) {
+        await dbQuery(
+          `INSERT INTO assessment_questions (assessment_id, question_text, question_type, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, answer_rubric)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [assessmentId, q.question_text, q.question_type, q.choice_a || '', q.choice_b || '', q.choice_c || '', q.choice_d || '', q.correct_answer, q.explanation || '', q.answer_rubric || '']
+        );
+      }
+
+      // Update learning cycle
+      if (activeCycle) {
+        await advanceLearningCycle(activeCycle.id, {
+          status: 'assessment_pending',
+          assessment_id: assessmentId
         });
       }
+
+      // Emit real-time notification to the student
+      const io = req.app.get('io');
+      const onlineUsers = req.app.get('onlineUsers');
+      if (io && request.student_id) {
+        const targetSocketId = onlineUsers.get(String(request.student_id));
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('assessment-request-update', {
+            status: 'accepted',
+            subjectId: request.subject_id,
+            resourceId: request.resource_id,
+            tutorName: `${req.session.user.first_name} ${req.session.user.last_name}`,
+            message: req.body.message || `Your assessment request has been approved! A ${aiResult.questions.length}-item assessment has been generated. You can now take it.`
+          });
+        }
+      }
+
+      setFlash(req, 'success', `Assessment request accepted! AI generated ${aiResult.questions.length} questions based on the admin module "${moduleTitle}".`);
+    } catch (aiError) {
+      console.error('[Tutor Accept] AI assessment generation failed:', aiError.message);
+      // Still notify the student that the request was accepted
+      const io = req.app.get('io');
+      const onlineUsers = req.app.get('onlineUsers');
+      if (io && request.student_id) {
+        const targetSocketId = onlineUsers.get(String(request.student_id));
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('assessment-request-update', {
+            status: 'accepted',
+            subjectId: request.subject_id,
+            resourceId: request.resource_id,
+            tutorName: `${req.session.user.first_name} ${req.session.user.last_name}`,
+            message: 'Your assessment request has been approved. You can now take the assessment!'
+          });
+        }
+      }
+      setFlash(req, 'error', `Assessment request accepted but AI generation failed: ${aiError.message}. The student can still generate the assessment manually.`);
     }
-    setFlash(req, 'success', 'Assessment request accepted. The student can now take the assessment.');
     res.redirect('/tutor/analytics');
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not accept request.');

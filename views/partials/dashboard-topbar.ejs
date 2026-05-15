@@ -97,10 +97,22 @@
         <div><strong>Module:</strong> <%= item.module_title || 'N/A' %></div>
         <div><strong>Requested:</strong> <%= formatDateTime(item.requested_at || item.created_at) %></div>
       </div>
-      <div class="form-actions right">
-        <form method="post" action="/tutor/assessment-requests/<%= item.id %>/accept" data-confirm-message="Accept this assessment request?"><button class="btn btn-primary" type="submit">Accept</button></form>
-        <form method="post" action="/tutor/assessment-requests/<%= item.id %>/decline" data-confirm-message="Decline this assessment request?"><button class="btn btn-secondary" type="submit">Decline</button></form>
-      </div>
+      <form method="post" action="/tutor/assessment-requests/<%= item.id %>/accept" class="stack-form" style="margin-top:16px;" id="accept-form-<%= item.id %>">
+        <label style="font-weight:600;">Number of Assessment Items <span style="color:#e74c3c;">*</span>
+          <input type="number" name="item_count" min="5" max="50" step="1" required placeholder="e.g. 5, 10, 15, 20" style="margin-top:4px;" />
+        </label>
+        <p style="margin:4px 0 12px;font-size:0.85rem;color:var(--text-soft);">Enter how many questions the AI will generate for this assessment (5–50).</p>
+        <label>Message to Student (optional)
+          <textarea name="message" rows="2" placeholder="Optional message to the student..."></textarea>
+        </label>
+        <div class="form-actions right" style="margin-top:12px;">
+          <button class="btn btn-primary" type="submit" data-confirm-message="Accept this assessment request and generate AI assessment?">Accept & Generate Assessment</button>
+          <button class="btn btn-secondary" type="button" onclick="document.getElementById('decline-form-<%= item.id %>').submit();">Decline</button>
+        </div>
+      </form>
+      <form method="post" action="/tutor/assessment-requests/<%= item.id %>/decline" id="decline-form-<%= item.id %>" style="display:none;" data-confirm-message="Decline this assessment request?">
+        <input type="hidden" name="message" value="Your assessment request has been declined." />
+      </form>
     <% } else { %>
       <h3><%= item.submission_type === 'tutor' ? 'Tutor Registration' : 'Learner Registration' %></h3>
       <div class="read-only-profile-grid">

@@ -54,7 +54,8 @@ const {
   createAssessmentRequest,
   getAssessmentRequestsForStudent,
   getAcceptedAssessmentRequest,
-  createPayMongoPayment
+  createPayMongoPayment,
+  getAdminSubjectResources
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { generateAssessmentFromModule } = require('../services/aiService');
@@ -432,7 +433,7 @@ router.post('/assessments/:id/submit', async (req, res, next) => {
       const { generateModuleFromAssessmentResult } = require('../services/aiService');
       const { query: dbQuery } = require('../config/db');
 
-      // Get the source module content
+      // Get the source module content — trace back to admin module
       const sourceResourceId = assessment.source_resource_id;
       let originalContent = '';
       let originalTitle = '';
@@ -444,6 +445,27 @@ router.post('/assessments/:id/submit', async (req, res, next) => {
         if (moduleRows.length) {
           originalContent = moduleRows[0].content_text || moduleRows[0].description || moduleRows[0].title || '';
           originalTitle = moduleRows[0].title || '';
+          // If this module is AI-generated, trace to original admin module
+          if (moduleRows[0].module_origin === 'ai_generated' && moduleRows[0].source_resource_id) {
+            const origRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [moduleRows[0].source_resource_id]);
+            if (origRows.length) {
+              const adminContent = origRows[0].content_text || origRows[0].description || origRows[0].title || '';
+              if (adminContent) {
+                originalContent = adminContent; // Use admin module as base
+                originalTitle = origRows[0].title || originalTitle;
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback: get latest admin module for this subject
+      if (!originalContent && subjectId) {
+        const adminModules = await getAdminSubjectResources(subjectId);
+        const activeAdmin = adminModules.find(m => !m.is_archived && m.module_origin !== 'ai_generated');
+        if (activeAdmin) {
+          originalContent = activeAdmin.content_text || activeAdmin.description || activeAdmin.title || '';
+          originalTitle = activeAdmin.title || '';
         }
       }
 
@@ -698,20 +720,48 @@ router.post('/subjects/:subjectId/modules/:resourceId/generate-assessment', asyn
     const student = await getUserById(req.session.user.id);
     if (!subject || !student) throw new Error('Subject or student not found.');
 
-    // Get the module content
+    // Get the module content — prefer admin-uploaded module
     const moduleRows = await query('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [req.params.resourceId]);
     const module_ = moduleRows[0];
     if (!module_) throw new Error('Module not found.');
 
-    const levelGroup = student.education_level_group || student.year_level || '';
-    const moduleContent = module_.content_text || module_.description || module_.title;
+    let moduleContent = module_.content_text || module_.description || module_.title || '';
 
-    // Generate assessment via AI
+    // If the module is AI-generated, try to find the original admin module
+    if (module_.module_origin === 'ai_generated' && module_.source_resource_id) {
+      const origRows = await query('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [module_.source_resource_id]);
+      if (origRows.length) {
+        const origContent = origRows[0].content_text || origRows[0].description || origRows[0].title || '';
+        if (origContent) moduleContent = origContent; // Use admin module content as base
+      }
+    }
+
+    // If still no meaningful content, try latest admin module for this subject
+    if (!moduleContent || moduleContent.length < 20) {
+      const { getAdminSubjectResources } = require('../lib/data');
+      const adminModules = await getAdminSubjectResources(req.params.subjectId);
+      const activeAdmin = adminModules.find(m => !m.is_archived && m.module_origin !== 'ai_generated');
+      if (activeAdmin) {
+        moduleContent = activeAdmin.content_text || activeAdmin.description || activeAdmin.title || '';
+      }
+    }
+
+    if (!moduleContent || moduleContent.length < 10) {
+      setFlash(req, 'error', 'No admin module found for this subject. Please ask admin to upload a module first.');
+      return res.redirect(`/student/subjects/${req.params.subjectId}`);
+    }
+
+    const levelGroup = student.education_level_group || student.year_level || '';
+
+    // Use item count from accepted request if available, otherwise default 20
+    const questionCount = Number(req.body.item_count) || 20;
+
+    // Generate assessment via AI based on admin module content
     const aiResult = await generateAssessmentFromModule({
       moduleContent,
       subject: subject.name,
       levelGroup,
-      questionCount: 20
+      questionCount
     });
 
     // Log AI generation
@@ -720,7 +770,7 @@ router.post('/subjects/:subjectId/modules/:resourceId/generate-assessment', asyn
       student_id: req.session.user.id,
       subject_id: req.params.subjectId,
       resource_id: req.params.resourceId,
-      input_summary: `Module: ${module_.title}`,
+      input_summary: `Module: ${module_.title} | Admin content used`,
       output_summary: `Generated ${aiResult.questions.length} questions`,
       ai_provider: aiResult.provider,
       ai_model: aiResult.model,
@@ -759,7 +809,7 @@ router.post('/subjects/:subjectId/modules/:resourceId/generate-assessment', asyn
       assessment_id: assessmentId
     });
 
-    setFlash(req, 'success', `AI Assessment generated with ${aiResult.questions.length} questions. Good luck!`);
+    setFlash(req, 'success', `AI Assessment generated with ${aiResult.questions.length} questions based on the admin module. Good luck!`);
     res.redirect(`/student/assessments/${assessmentId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not generate assessment.');
