@@ -32,7 +32,7 @@
             <td><%= item.student_name || '-' %></td>
             <td>
               <% if (['accepted', 'ongoing'].includes(item.raw_status) && item.application_id) { %>
-                <form method="POST" action="/tutor/schedule/<%= item.application_id %>/finish" onsubmit="return confirm('Mark this session as finished? The time slot will become available again.');">
+                <form method="POST" action="/tutor/schedule/<%= item.application_id %>/finish" data-confirm-message="Mark this session as finished? The time slot will become available again.">
                   <button type="submit" class="btn-finish">Finish</button>
                 </form>
               <% } else { %>
