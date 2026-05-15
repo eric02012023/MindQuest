@@ -37,5 +37,119 @@
   <script src="/js/dashboard.js"></script>
   <script src="/js/messages.js"></script>
   <script src="/js/calls.js"></script>
+
+  <!-- Global Loading Overlay -->
+  <div id="mqtc-loading-overlay" style="display:none;">
+    <div class="mqtc-loading-content">
+      <div class="mqtc-dot-loader">
+        <span></span><span></span><span></span>
+      </div>
+      <p id="mqtc-loading-text">Loading...</p>
+    </div>
+  </div>
+  <style>
+    /* Student name clickable link */
+    .student-name-link {
+      color: var(--primary, #1a5632);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      border-bottom: 1px dashed transparent;
+    }
+    .student-name-link:hover {
+      color: var(--primary-dark, #0d3b1e);
+      border-bottom-color: var(--primary, #1a5632);
+    }
+    .student-name-link strong {
+      color: inherit;
+    }
+
+    /* Loading overlay */
+    #mqtc-loading-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      z-index: 99998;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mqtc-loading-content {
+      text-align: center;
+      color: #fff;
+    }
+    .mqtc-loading-content p {
+      margin-top: 16px;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+    .mqtc-dot-loader {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+    .mqtc-dot-loader span {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      animation: mqtcDotBounce 1.2s infinite ease-in-out;
+    }
+    .mqtc-dot-loader span:nth-child(1) { animation-delay: 0s; }
+    .mqtc-dot-loader span:nth-child(2) { animation-delay: 0.15s; }
+    .mqtc-dot-loader span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes mqtcDotBounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+  <script>
+    // Show loading overlay on navigation and form submission
+    (function() {
+      var overlay = document.getElementById('mqtc-loading-overlay');
+      var loadingText = document.getElementById('mqtc-loading-text');
+      if (!overlay) return;
+
+      function showLoading(msg) {
+        if (loadingText) loadingText.textContent = msg || 'Loading...';
+        overlay.style.display = 'flex';
+      }
+
+      // Show loading on link clicks (internal navigation)
+      document.addEventListener('click', function(e) {
+        var link = e.target.closest('a[href]');
+        if (link && !link.target && !link.href.startsWith('javascript') && !link.href.includes('#') && !link.getAttribute('download')) {
+          var url = link.getAttribute('href');
+          if (url && url.startsWith('/') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            showLoading('Loading page...');
+          }
+        }
+      });
+
+      // Show loading on form submission
+      document.addEventListener('submit', function(e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        // Skip if it has a confirm message (handled by confirm modal first)
+        if (form.getAttribute('data-confirm-message') && form.dataset.confirmed !== 'true') return;
+        var action = form.getAttribute('action') || '';
+        if (action.includes('generate-assessment')) {
+          showLoading('Generating AI Assessment...');
+        } else if (action.includes('submit')) {
+          showLoading('Submitting...');
+        } else if (action.includes('pay')) {
+          showLoading('Processing payment...');
+        } else {
+          showLoading('Processing...');
+        }
+      });
+
+      // Hide loading when page is fully loaded (for back/forward navigation)
+      window.addEventListener('pageshow', function() {
+        overlay.style.display = 'none';
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -33,7 +33,7 @@
           </div>
           <form method="post" action="/tutor/subjects/<%= subjectId %>/resources/share" class="stack-form" style="min-width:320px;">
             <input type="hidden" name="resource_id" value="<%= resource.id %>" />
-            <label>Select assigned students</label>
+            <label>Post to students</label>
             <div class="list-stack" style="max-height:180px;overflow:auto;">
               <% students.forEach((student) => { %>
                 <label class="checkbox-card"><input type="checkbox" name="assigned_student_ids" value="<%= student.student_id %>" /> <span><strong><%= student.full_name %></strong> - <%= student.year_level %><%= student.grade_level ? ' / ' + student.grade_level : '' %></span></label>

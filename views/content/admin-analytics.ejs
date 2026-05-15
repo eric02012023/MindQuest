@@ -32,14 +32,13 @@
             <th>Modules</th>
             <th>Assessments</th>
             <th>Status</th>
-            <th>Action</th>
           </tr>
         </thead>
         <tbody>
-          <% if (!students.length) { %><tr><td colspan="11">No students found.</td></tr><% } %>
+          <% if (!students.length) { %><tr><td colspan="10">No students found.</td></tr><% } %>
           <% students.forEach((student) => { %>
             <tr>
-              <td><strong><%= student.full_name %></strong></td>
+              <td><a href="<%= basePath %>/students/<%= student.id %>/analytics" class="student-name-link"><strong><%= student.full_name %></strong></a></td>
               <td><%= student.user_id %></td>
               <td><%= student.branch_name || '-' %></td>
               <td><%= student.subjects %></td>
@@ -56,9 +55,6 @@
                 <span class="badge badge-<%= student.progress_status === 'Advanced' ? 'success' : student.progress_status === 'In Progress' ? 'info' : 'warning' %>">
                   <%= student.progress_status %>
                 </span>
-              </td>
-              <td>
-                <a class="btn btn-primary btn-sm" href="<%= basePath %>/profile/<%= student.id %>">View Profile</a>
               </td>
             </tr>
           <% }) %>

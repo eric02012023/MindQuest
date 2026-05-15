@@ -1523,6 +1523,34 @@ function createAdminRouter(role) {
     }
   });
 
+  // Student analytics detail page (from Analytics & Reports page)
+  router.get('/students/:studentId/analytics', async (req, res, next) => {
+    try {
+      const studentAssignments = await getStudentAssignments(req.params.studentId);
+      if (!studentAssignments.length) {
+        setFlash(req, 'error', 'No analytics data found for this student.');
+        return res.redirect(`${basePath}/analytics`);
+      }
+
+      // Get analytics for the first subject (primary view)
+      const primaryAnalytics = await getStudentAnalytics(req.params.studentId, studentAssignments[0].subject_id);
+      if (!primaryAnalytics) {
+        setFlash(req, 'error', 'Student or subject not found.');
+        return res.redirect(`${basePath}/analytics`);
+      }
+
+      const shell = await buildShellData(req, {
+        pageTitle: `Analytics: ${primaryAnalytics.student.first_name} ${primaryAnalytics.student.last_name}`,
+        section: 'analytics',
+        contentView: '../content/admin-student-analytics',
+        analytics: primaryAnalytics
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 }
 

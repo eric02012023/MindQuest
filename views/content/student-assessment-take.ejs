@@ -70,13 +70,27 @@
         <button class="btn btn-primary" type="submit">Submit Assessment</button>
       </form>
 
-      <%# Anti-cheat client-side tracking %>
+      <%# Tab-switch warning modal %>
+      <div class="global-modal" id="tab-switch-warning-modal">
+        <div class="global-modal-card small">
+          <h3>⚠️ Warning: Tab Switch Detected</h3>
+          <p style="line-height:1.6;">Kapag lumipat ka ng tab, automatic na mase-save ang assessment mo. Ang score mo ay ibabase lamang sa mga tamang sagot na naisagot mo bago ka lumipat ng tab.</p>
+          <div class="confirm-actions" style="margin-top:16px;">
+            <button type="button" class="btn btn-secondary" id="tabSwitchStay">Cancel — Stay on Assessment</button>
+            <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="background:#e74c3c;border-color:#e74c3c;">Accept — Auto-save & Submit</button>
+          </div>
+        </div>
+      </div>
+
+      <%# Anti-cheat client-side tracking with tab-switch warning modal %>
       <script>
       (function() {
         var assessmentId = '<%= assessment.id %>';
         var maxViolations = <%= assessment.max_violations || 3 %>;
         var violationCount = 0;
         var warningEl = null;
+        var isModalOpen = false;
+        var pendingViolation = false;
 
         function createWarning() {
           if (warningEl) return;
@@ -90,13 +104,32 @@
           var remaining = maxViolations - violationCount;
           if (remaining > 0) {
             warningEl.textContent = '⚠️ Tab switch detected! ' + remaining + ' violation(s) remaining before auto-submit.';
+            warningEl.style.display = 'block';
             setTimeout(function() { if (warningEl) warningEl.style.display = 'none'; }, 4000);
           }
         }
 
-        function logViolation(eventType) {
-          violationCount++;
-          // Send violation to server
+        function autoSubmitForm() {
+          createWarning();
+          warningEl.textContent = '🚫 Auto-submitting your assessment...';
+          warningEl.style.display = 'block';
+          var form = document.getElementById('assessmentForm');
+          if (form) {
+            var autoInput = document.createElement('input');
+            autoInput.type = 'hidden';
+            autoInput.name = 'auto_submitted';
+            autoInput.value = '1';
+            form.appendChild(autoInput);
+            var reasonInput = document.createElement('input');
+            reasonInput.type = 'hidden';
+            reasonInput.name = 'auto_submit_reason';
+            reasonInput.value = 'tab_switch_accepted';
+            form.appendChild(reasonInput);
+            setTimeout(function() { form.submit(); }, 800);
+          }
+        }
+
+        function logViolationToServer(eventType) {
           try {
             var data = JSON.stringify({
               assessment_id: assessmentId,
@@ -112,40 +145,51 @@
               xhr.send(data);
             }
           } catch(e) {}
+        }
 
-          updateWarning();
+        function showTabSwitchModal() {
+          if (isModalOpen) return;
+          isModalOpen = true;
+          pendingViolation = true;
+          var modal = document.getElementById('tab-switch-warning-modal');
+          if (modal) modal.classList.add('is-open');
+        }
 
-          if (violationCount >= maxViolations) {
-            // Auto-submit
-            createWarning();
-            warningEl.textContent = '🚫 Maximum violations reached. Auto-submitting your assessment...';
-            var form = document.getElementById('assessmentForm');
-            if (form) {
-              var autoInput = document.createElement('input');
-              autoInput.type = 'hidden';
-              autoInput.name = 'auto_submitted';
-              autoInput.value = '1';
-              form.appendChild(autoInput);
-              var reasonInput = document.createElement('input');
-              reasonInput.type = 'hidden';
-              reasonInput.name = 'auto_submit_reason';
-              reasonInput.value = 'max_violations_reached';
-              form.appendChild(reasonInput);
-              setTimeout(function() { form.submit(); }, 1500);
-            }
-          }
+        // Stay on assessment
+        var stayBtn = document.getElementById('tabSwitchStay');
+        if (stayBtn) {
+          stayBtn.addEventListener('click', function() {
+            isModalOpen = false;
+            pendingViolation = false;
+            var modal = document.getElementById('tab-switch-warning-modal');
+            if (modal) modal.classList.remove('is-open');
+          });
+        }
+
+        // Accept — auto-save and submit
+        var acceptBtn = document.getElementById('tabSwitchAccept');
+        if (acceptBtn) {
+          acceptBtn.addEventListener('click', function() {
+            isModalOpen = false;
+            var modal = document.getElementById('tab-switch-warning-modal');
+            if (modal) modal.classList.remove('is-open');
+            violationCount++;
+            logViolationToServer('tab_switch_accepted');
+            autoSubmitForm();
+          });
         }
 
         document.addEventListener('visibilitychange', function() {
-          if (document.hidden) logViolation('tab_switch');
+          if (document.hidden) {
+            showTabSwitchModal();
+          }
         });
 
         window.addEventListener('blur', function() {
-          logViolation('window_blur');
+          showTabSwitchModal();
         });
 
         window.addEventListener('beforeunload', function(e) {
-          // Warn before leaving
           e.preventDefault();
           e.returnValue = 'You have an ongoing assessment. Leaving will count as a violation.';
         });

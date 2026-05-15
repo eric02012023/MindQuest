@@ -13,8 +13,8 @@
         <div style="margin-top:16px;padding:16px;background:var(--bg-2);border-radius:8px;">
           <h4 style="margin:0 0 12px;">💳 Pay Online</h4>
           <form method="post" action="/student/billing/pay-online" class="stack-form" data-confirm-message="Proceed with online payment?">
-            <label>Amount to Pay (min ₱100)
-              <input type="number" name="amount" min="100" max="<%= billingView.bill.for_settlement %>" step="0.01" required placeholder="Enter amount" />
+            <label>Amount to Pay (min ₱500)
+              <input type="number" name="amount" min="500" max="<%= billingView.bill.for_settlement %>" step="0.01" required placeholder="Enter amount (minimum ₱500)" />
             </label>
             <button type="submit" class="btn btn-primary">Pay Now</button>
             <p class="empty-state" style="margin-top:8px;">Secure payment via PayMongo (GCash, GrabPay, Card, Maya) or MindQuest Mock Pay.</p>

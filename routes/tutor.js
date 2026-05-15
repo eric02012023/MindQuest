@@ -71,7 +71,21 @@ router.use(authorize(['tutor']));
 // Role: Handles a reusable server-side operation used by this module.
 
 async function buildShell(req, extra = {}) {
-  const inboxNotifications = await getTutorScheduleNotifications(req.session.user.id);
+  const [inboxNotifications, assessmentRequests] = await Promise.all([
+    getTutorScheduleNotifications(req.session.user.id),
+    getAssessmentRequestsForTutor(req.session.user.id)
+  ]);
+  const pendingAssessmentRequests = assessmentRequests.filter((r) => r.status === 'pending');
+  // Merge assessment requests into notifications for the bell
+  const allNotifications = [
+    ...inboxNotifications,
+    ...pendingAssessmentRequests.map((r) => ({
+      ...r,
+      notification_type: 'assessment_request',
+      full_name: `${r.student_first_name} ${r.student_last_name}`,
+      created_at: r.requested_at
+    }))
+  ];
   return {
     pageTitle: extra.pageTitle || 'Tutor Dashboard',
     roleName: 'Tutor',
@@ -79,8 +93,8 @@ async function buildShell(req, extra = {}) {
     section: extra.section || 'dashboard',
     contentView: extra.contentView,
     currentUser: req.session.user,
-    notificationCount: inboxNotifications.length,
-    inboxNotifications,
+    notificationCount: allNotifications.length,
+    inboxNotifications: allNotifications,
     ...extra
   };
 }

@@ -786,6 +786,11 @@ router.post('/assessments/:id/anti-cheat', express.json(), async (req, res) => {
 router.post('/billing/pay-online', async (req, res, next) => {
   try {
     const amount = Number(req.body.amount);
+    // Backend validation: minimum ₱500
+    if (!amount || amount < 500) {
+      setFlash(req, 'error', 'Minimum payment amount is ₱500.');
+      return res.redirect('/student/billing');
+    }
     const student = await getUserById(req.session.user.id);
     const result = await createPayMongoPayment(req.session.user.id, amount, {
       name: `${student.first_name} ${student.last_name}`,
