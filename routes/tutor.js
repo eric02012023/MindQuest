@@ -723,7 +723,7 @@ router.post('/assessment-requests/:id/accept', async (req, res, next) => {
       return res.redirect('/tutor/analytics');
     }
 
-    const request = await respondToAssessmentRequest(req.params.id, req.session.user.id, 'accept', req.body.message || '');
+    const request = await respondToAssessmentRequest(req.params.id, req.session.user.id, 'accept', req.body.message || '', itemCount);
 
     // Now generate the AI assessment for the student
     try {
@@ -739,7 +739,7 @@ router.post('/assessment-requests/:id/accept', async (req, res, next) => {
       const student = await getUserById(request.student_id);
       if (!subject || !student) throw new Error('Subject or student not found.');
 
-      // Fetch the admin module content (the source module from the request)
+      // Fetch the module content — trace through source_resource_id chain
       let moduleContent = '';
       let moduleTitle = '';
       let sourceResourceId = request.resource_id;
@@ -747,24 +747,49 @@ router.post('/assessment-requests/:id/accept', async (req, res, next) => {
       if (sourceResourceId) {
         const moduleRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceResourceId]);
         if (moduleRows.length) {
-          moduleContent = moduleRows[0].content_text || moduleRows[0].description || moduleRows[0].title || '';
+          moduleContent = moduleRows[0].content_text || '';
           moduleTitle = moduleRows[0].title || '';
+          // If no content_text, trace through source_resource_id (for tutor_share modules)
+          if (!moduleContent && moduleRows[0].source_resource_id) {
+            const sourceRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [moduleRows[0].source_resource_id]);
+            if (sourceRows.length) {
+              moduleContent = sourceRows[0].content_text || sourceRows[0].description || '';
+              moduleTitle = sourceRows[0].title || moduleTitle;
+            }
+          }
+          // Use description as fallback
+          if (!moduleContent) {
+            moduleContent = moduleRows[0].description || '';
+          }
         }
       }
 
-      // If no module content from specific resource, try to get latest admin module for this subject
+      // Fallback: get any admin module with content for this subject
       if (!moduleContent) {
         const adminModules = await getAdminSubjectResources(request.subject_id);
-        const activeAdminModule = adminModules.find(m => !m.is_archived && m.module_origin !== 'ai_generated');
-        if (activeAdminModule) {
-          moduleContent = activeAdminModule.content_text || activeAdminModule.description || activeAdminModule.title || '';
-          moduleTitle = activeAdminModule.title || '';
-          sourceResourceId = activeAdminModule.id;
+        for (const am of adminModules) {
+          const content = am.content_text || am.description || '';
+          if (content && content.length >= 10) {
+            moduleContent = content;
+            moduleTitle = am.title || moduleTitle;
+            sourceResourceId = am.id;
+            break;
+          }
         }
       }
 
-      if (!moduleContent) {
-        setFlash(req, 'error', 'No admin module found for this subject. Please ask the admin to upload a module first. The assessment request was accepted but no assessment was generated.');
+      // Last resort: use title + description as context
+      if (!moduleContent || moduleContent.length < 10) {
+        if (sourceResourceId) {
+          const lastRows = await dbQuery('SELECT TOP 1 title, description FROM subject_resources WHERE id = ?', [sourceResourceId]);
+          if (lastRows.length) {
+            moduleContent = `${lastRows[0].title || ''}\n${lastRows[0].description || ''}`.trim();
+          }
+        }
+      }
+
+      if (!moduleContent || moduleContent.length < 5) {
+        setFlash(req, 'error', 'No module content found for this subject. Please ask admin to add content to the module. The request was accepted but no assessment was generated.');
         return res.redirect('/tutor/analytics');
       }
 

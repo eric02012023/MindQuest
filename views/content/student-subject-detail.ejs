@@ -72,7 +72,7 @@
                 <button class="btn btn-primary btn-sm" type="submit">Mark as Read</button>
               </form>
             <% } else if (acceptedReq) { %>
-              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/generate-assessment" data-confirm-message="Generate a 20-item AI assessment based on this module?">
+              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/generate-assessment" data-confirm-message="Generate an AI assessment based on this module? The number of items was set by your tutor.">
                 <button class="btn btn-primary btn-sm" type="submit">Take Assessment</button>
               </form>
               <span class="badge badge-success" style="font-size:11px;">✓ Tutor Approved</span>

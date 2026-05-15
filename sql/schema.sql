@@ -930,3 +930,7 @@ IF OBJECT_ID('dbo.online_payments','U') IS NOT NULL AND COL_LENGTH('dbo.online_p
   ALTER TABLE dbo.online_payments ADD billing_phone NVARCHAR(50) NULL;
 
 
+-- 21. assessment_requests — item_count column (tutor-specified number of items)
+IF OBJECT_ID('dbo.assessment_requests','U') IS NOT NULL AND COL_LENGTH('dbo.assessment_requests','item_count') IS NULL
+  ALTER TABLE dbo.assessment_requests ADD item_count INT NULL;
+

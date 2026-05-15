@@ -433,7 +433,7 @@ router.post('/assessments/:id/submit', async (req, res, next) => {
       const { generateModuleFromAssessmentResult } = require('../services/aiService');
       const { query: dbQuery } = require('../config/db');
 
-      // Get the source module content — trace back to admin module
+      // Get the source module content — trace through source_resource_id chain
       const sourceResourceId = assessment.source_resource_id;
       let originalContent = '';
       let originalTitle = '';
@@ -443,30 +443,47 @@ router.post('/assessments/:id/submit', async (req, res, next) => {
       if (sourceResourceId) {
         const moduleRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceResourceId]);
         if (moduleRows.length) {
-          originalContent = moduleRows[0].content_text || moduleRows[0].description || moduleRows[0].title || '';
+          originalContent = moduleRows[0].content_text || '';
           originalTitle = moduleRows[0].title || '';
-          // If this module is AI-generated, trace to original admin module
-          if (moduleRows[0].module_origin === 'ai_generated' && moduleRows[0].source_resource_id) {
-            const origRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [moduleRows[0].source_resource_id]);
-            if (origRows.length) {
-              const adminContent = origRows[0].content_text || origRows[0].description || origRows[0].title || '';
-              if (adminContent) {
-                originalContent = adminContent; // Use admin module as base
-                originalTitle = origRows[0].title || originalTitle;
+          // If no content_text, trace through source_resource_id (tutor_share or AI modules)
+          if (!originalContent && moduleRows[0].source_resource_id) {
+            const sourceRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [moduleRows[0].source_resource_id]);
+            if (sourceRows.length) {
+              originalContent = sourceRows[0].content_text || sourceRows[0].description || '';
+              originalTitle = sourceRows[0].title || originalTitle;
+              // Trace one more level if needed
+              if (!originalContent && sourceRows[0].source_resource_id) {
+                const deepRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceRows[0].source_resource_id]);
+                if (deepRows.length) {
+                  originalContent = deepRows[0].content_text || deepRows[0].description || '';
+                  originalTitle = deepRows[0].title || originalTitle;
+                }
               }
             }
+          }
+          // Use description as fallback
+          if (!originalContent) {
+            originalContent = moduleRows[0].description || '';
           }
         }
       }
 
-      // Fallback: get latest admin module for this subject
+      // Fallback: get any admin module with content for this subject
       if (!originalContent && subjectId) {
         const adminModules = await getAdminSubjectResources(subjectId);
-        const activeAdmin = adminModules.find(m => !m.is_archived && m.module_origin !== 'ai_generated');
-        if (activeAdmin) {
-          originalContent = activeAdmin.content_text || activeAdmin.description || activeAdmin.title || '';
-          originalTitle = activeAdmin.title || '';
+        for (const am of adminModules) {
+          const content = am.content_text || am.description || '';
+          if (content && content.length >= 10) {
+            originalContent = content;
+            originalTitle = am.title || originalTitle;
+            break;
+          }
         }
+      }
+
+      // Last resort: use title + description
+      if (!originalContent || originalContent.length < 10) {
+        originalContent = `${originalTitle}\n${assessment.title || ''}`.trim();
       }
 
       if (!subjectName && subjectId) {
@@ -716,47 +733,79 @@ router.post('/subjects/:subjectId/modules/:resourceId/generate-assessment', asyn
     }
 
     const { query } = require('../config/db');
+
+    // CHECK: Did the tutor already generate an assessment when accepting?
+    // Look for an existing AI assessment for this student + source resource
+    const existingAssessment = await query(
+      `SELECT TOP 1 id FROM assessments
+       WHERE assigned_student_id = ? AND subject_id = ? AND source_resource_id = ?
+         AND assessment_origin = 'ai_generated' AND is_published = 1
+       ORDER BY created_at DESC`,
+      [req.session.user.id, req.params.subjectId, req.params.resourceId]
+    );
+    if (existingAssessment.length) {
+      // Assessment already exists — redirect student to take it
+      setFlash(req, 'success', 'Your assessment is ready! Good luck!');
+      return res.redirect(`/student/assessments/${existingAssessment[0].id}`);
+    }
+
+    // No pre-generated assessment found — generate one now (fallback)
     const subject = await getSubjectById(req.params.subjectId);
     const student = await getUserById(req.session.user.id);
     if (!subject || !student) throw new Error('Subject or student not found.');
 
-    // Get the module content — prefer admin-uploaded module
+    // Get the module content — trace through source_resource_id chain
     const moduleRows = await query('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [req.params.resourceId]);
     const module_ = moduleRows[0];
     if (!module_) throw new Error('Module not found.');
 
-    let moduleContent = module_.content_text || module_.description || module_.title || '';
+    let moduleContent = module_.content_text || '';
+    let moduleTitle = module_.title || '';
 
-    // If the module is AI-generated, try to find the original admin module
-    if (module_.module_origin === 'ai_generated' && module_.source_resource_id) {
-      const origRows = await query('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [module_.source_resource_id]);
-      if (origRows.length) {
-        const origContent = origRows[0].content_text || origRows[0].description || origRows[0].title || '';
-        if (origContent) moduleContent = origContent; // Use admin module content as base
+    // If no content_text, trace through source_resource_id (for tutor_share modules)
+    if (!moduleContent && module_.source_resource_id) {
+      const sourceRows = await query('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [module_.source_resource_id]);
+      if (sourceRows.length) {
+        moduleContent = sourceRows[0].content_text || sourceRows[0].description || '';
+        moduleTitle = sourceRows[0].title || moduleTitle;
+        // If source is also AI-generated, trace deeper
+        if (!moduleContent && sourceRows[0].source_resource_id) {
+          const deepRows = await query('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceRows[0].source_resource_id]);
+          if (deepRows.length) {
+            moduleContent = deepRows[0].content_text || deepRows[0].description || '';
+            moduleTitle = deepRows[0].title || moduleTitle;
+          }
+        }
       }
     }
 
-    // If still no meaningful content, try latest admin module for this subject
-    if (!moduleContent || moduleContent.length < 20) {
-      const { getAdminSubjectResources } = require('../lib/data');
+    // Fallback: get ANY admin module with content for this subject
+    if (!moduleContent) {
       const adminModules = await getAdminSubjectResources(req.params.subjectId);
-      const activeAdmin = adminModules.find(m => !m.is_archived && m.module_origin !== 'ai_generated');
-      if (activeAdmin) {
-        moduleContent = activeAdmin.content_text || activeAdmin.description || activeAdmin.title || '';
+      for (const am of adminModules) {
+        const content = am.content_text || am.description || '';
+        if (content && content.length >= 10) {
+          moduleContent = content;
+          moduleTitle = am.title || moduleTitle;
+          break;
+        }
       }
     }
 
+    // Last resort: use title + description as context
     if (!moduleContent || moduleContent.length < 10) {
-      setFlash(req, 'error', 'No admin module found for this subject. Please ask admin to upload a module first.');
+      moduleContent = `${module_.title || ''}\n${module_.description || ''}`.trim();
+    }
+
+    if (!moduleContent || moduleContent.length < 5) {
+      setFlash(req, 'error', 'No module content found for this subject. Please ask admin to add content to the module.');
       return res.redirect(`/student/subjects/${req.params.subjectId}`);
     }
 
     const levelGroup = student.education_level_group || student.year_level || '';
+    const questionCount = 20; // Default fallback; tutor-specified count is used in tutor accept route
 
-    // Use item count from accepted request if available, otherwise default 20
-    const questionCount = Number(req.body.item_count) || 20;
-
-    // Generate assessment via AI based on admin module content
+    // Generate assessment via AI based on module content
     const aiResult = await generateAssessmentFromModule({
       moduleContent,
       subject: subject.name,
@@ -770,7 +819,7 @@ router.post('/subjects/:subjectId/modules/:resourceId/generate-assessment', asyn
       student_id: req.session.user.id,
       subject_id: req.params.subjectId,
       resource_id: req.params.resourceId,
-      input_summary: `Module: ${module_.title} | Admin content used`,
+      input_summary: `Module: ${moduleTitle} | Fallback generation`,
       output_summary: `Generated ${aiResult.questions.length} questions`,
       ai_provider: aiResult.provider,
       ai_model: aiResult.model,
@@ -809,7 +858,7 @@ router.post('/subjects/:subjectId/modules/:resourceId/generate-assessment', asyn
       assessment_id: assessmentId
     });
 
-    setFlash(req, 'success', `AI Assessment generated with ${aiResult.questions.length} questions based on the admin module. Good luck!`);
+    setFlash(req, 'success', `AI Assessment generated with ${aiResult.questions.length} questions. Good luck!`);
     res.redirect(`/student/assessments/${assessmentId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not generate assessment.');
