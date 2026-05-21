@@ -1,0 +1,11 @@
+# robots.txt for MindQuest Tutorial Center
+# This file tells search engine crawlers which pages to index
+
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /student/
+Disallow: /tutor/
+Disallow: /assistant/
+
+Sitemap: https://mindquesttutorial.com/sitemap.xml

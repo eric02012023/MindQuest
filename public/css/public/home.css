@@ -28,7 +28,6 @@
 
 * {
   box-sizing: border-box;
-  margin-bottom: 5px;
 }
 
 html {
@@ -1022,7 +1021,7 @@ body {
 
 /* ANNOTATED COPY FOR DEFENSE REVIEW | File: public/css/public/home.css | Purpose: Stylesheet used by the MindQuest UI. */
 :root {
-  --mq-header-offset: 106px;
+  --mq-header-offset: 85px;
 }
 
 .landing-page-body.design-scroll-body {
@@ -1162,7 +1161,7 @@ body {
 
 
 .mq-section {
-  padding: clamp(60px, 8vw, 74px) 0;
+  padding: clamp(60px, 8vw, 30px) 0;
 }
 
 .mq-container {
@@ -1790,6 +1789,7 @@ body {
 
 .mq-copy-block {
   min-width: 0;
+  padding: 60px 0;
 }
 
 .mq-copy-block p,
@@ -1936,5 +1936,11 @@ body {
   .branch-grid article,
   .mq-feature-grid article {
     padding: 20px 16px;
+  }
+
+  .footer {
+    background-color: #0f6300;
+    text-align: center;
+    padding: 110px 0 130px 0;
   }
 }

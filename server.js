@@ -42,6 +42,15 @@ app.locals.titleCaseName = titleCaseName;
 
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 
+// SEO: Serve robots.txt and sitemap.xml from root
+app.get('/robots.txt', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'robots.txt'));
+});
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml');
+  res.sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
+});
+
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use('/css', express.static(path.join(__dirname, 'public', 'css')));

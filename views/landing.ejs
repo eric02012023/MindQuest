@@ -255,17 +255,26 @@
           <article><h4>Calumpang Branch</h4><p>Block 27 Lot 37, Sail Fish Street corner Manta Ray Street Deca Homes, Calumpang, General Santos City</p></article>
           <article><h4>Bawing Branch</h4><p>Block 18 Lot 32, Guardian's Hill, Bawing, GSC</p></article>
         </div>
-
-        <div class="reserve-block">
-          <h3>Reserve Your Slot Today!</h3>
-          <p>Contact us</p>
-          <button type="button" class="mq-phone-footer" data-copy-phone="<%= phoneNumber %>"><%= phoneNumber %></button>
-          <div class="reserve-divider"></div>
-          <a href="<%= facebookUrl %>" class="facebook-link" target="_blank" rel="noreferrer" aria-label="MindQuest Facebook page">f</a>
-        </div>
       </div>
     </section>
   </main>
+
+  <footer class="footer">
+    <div class="reserve-block">
+      <nav arial-label="Resource link">
+        <div class="reserve-text"><h3>Reserve Your Slot Today!</h3>
+          <p>Contact us</p> 
+            <button type="button" class="mq-phone-footer" data-copy-phone="<%= phoneNumber %>"><%= phoneNumber %></button>
+            <ul class="footer-social-list" aria-label="Social Links"> 
+              <li><a href="https://www.facebook.com/profile.php?id=61565864290106" class="facebook-link" target="_blank" rel="noopener noreferrer" aria-label="MindQuest Facebook page">f</a> </li>
+            </ul>
+        </div> 
+      </nav>
+      <p class="footer-copyright"> Copyright &copy; <script>document.write(new Date().getFullYear());</script> MindQuest Tutorial Center.
+        <span>All rights reserved.</span>
+      </p>
+    </div>
+  </footer>
 
   <div class="global-modal" data-logo-modal>
     <div class="global-modal-card logo-modal-card">

@@ -3,9 +3,38 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><%= pageTitle %> | MindQuest Tutorial Center</title>
+
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="MindQuest Tutorial Center – Affordable and personalized tutoring in General Santos City. We offer one-on-one sessions, home-based tutoring, and online tuition for Pre-School to Senior High students in Math, Science, English, Filipino, and more." />
+  <meta name="keywords" content="MindQuest, MindQuest Tutorial Center, tutorial center General Santos City, tutoring GenSan, affordable tutor Philippines, one-on-one tutoring, home-based tutoring, online tuition, math tutor, science tutor, english tutor, filipino tutor, mindquesttutorial" />
+  <meta name="author" content="MindQuest Tutorial Center" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://mindquesttutorial.com" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://mindquesttutorial.com" />
+  <meta property="og:title" content="<%= pageTitle %> | MindQuest Tutorial Center" />
+  <meta property="og:description" content="Unlocking Minds, One Quest At A Time! Affordable personalized tutoring for Pre-School to Senior High students in General Santos City." />
+  <meta property="og:image" content="https://mindquesttutorial.com/assets/logo.jpeg" />
+  <meta property="og:site_name" content="MindQuest Tutorial Center" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="<%= pageTitle %> | MindQuest Tutorial Center" />
+  <meta name="twitter:description" content="Unlocking Minds, One Quest At A Time! Affordable personalized tutoring for Pre-School to Senior High students in General Santos City." />
+  <meta name="twitter:image" content="https://mindquesttutorial.com/assets/logo.jpeg" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/jpeg" href="/assets/logo.jpeg" />
+  <link rel="apple-touch-icon" href="/assets/logo.jpeg" />
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Page Stylesheets -->
   <% const styles = Array.isArray(pageCss) ? pageCss : (pageCss ? [pageCss] : []); %>
   <% styles.forEach((stylePath) => { %>
     <link rel="stylesheet" href="<%= stylePath %>" />

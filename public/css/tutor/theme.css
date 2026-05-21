@@ -21,7 +21,7 @@
 .tutor-messages-page .sidebar,
 .tutor-profile-page .sidebar,
 .tutor-analytics-page .sidebar {
-  background: linear-gradient(180deg, #020034 0%, #072177 52%, #2f43c9 100%);
+  background: linear-gradient(180deg, #022d00 0%, #064c02 52%, #19791b 100%);
 }
 
 .tutor-dashboard-page .dashboard-topbar,
@@ -32,8 +32,8 @@
 .tutor-messages-page .dashboard-topbar,
 .tutor-profile-page .dashboard-topbar,
 .tutor-analytics-page .dashboard-topbar {
-  background: rgba(255,255,255,.9);
-  border-bottom-color: rgba(245,158,11,.10);
+  background: rgba(255, 255, 255, .9);
+  border-bottom-color: rgba(245, 158, 11, .10);
 }
 
 .tutor-dashboard-page .sidebar-nav a.active,
@@ -52,8 +52,8 @@
 .tutor-profile-page .sidebar-nav a:hover,
 .tutor-analytics-page .sidebar-nav a.active,
 .tutor-analytics-page .sidebar-nav a:hover {
-  background: rgba(255,255,255,.18);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.10);
+  background: rgba(255, 255, 255, .18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10);
 }
 
 .tutor-dashboard-page .panel-card,
@@ -64,15 +64,15 @@
 .tutor-messages-page .panel-card,
 .tutor-profile-page .panel-card,
 .tutor-analytics-page .panel-card {
-  border-color: rgba(245,158,11,.10);
-  box-shadow: 0 18px 38px rgba(124,45,18,.07);
+  border-color: rgba(245, 158, 11, .10);
+  box-shadow: 0 18px 38px rgba(124, 45, 18, .07);
 }
 
 .tutor-dashboard-page .subject-list-card,
 .tutor-subjects-page .subject-list-card,
 .tutor-dashboard-page .mini-bubble,
 .tutor-dashboard-page .attendance-box {
-  border-color: rgba(245,158,11,.12);
+  border-color: rgba(245, 158, 11, .12);
 }
 
 .tutor-dashboard-page .calendar-widget,
@@ -149,7 +149,7 @@
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  border: 1px solid rgba(245,158,11,.16);
+  border: 1px solid rgba(245, 158, 11, .16);
   background: #fff;
   color: #9a3412;
   font-weight: 800;
@@ -171,8 +171,8 @@
   min-height: 72px;
   padding: 10px;
   border-radius: 18px;
-  background: rgba(255,255,255,.96);
-  border: 1px solid rgba(245,158,11,.10);
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(245, 158, 11, .10);
   display: grid;
   align-content: space-between;
 }
@@ -202,9 +202,9 @@
 .tutor-students-page .calendar-cell.today,
 .tutor-profile-page .calendar-cell.today,
 .tutor-messages-page .calendar-cell.today {
-  background: linear-gradient(180deg, rgba(245,158,11,.18), rgba(255,255,255,.98));
-  border-color: rgba(245,158,11,.28);
-  box-shadow: 0 12px 26px rgba(245,158,11,.16);
+  background: linear-gradient(180deg, rgba(245, 158, 11, .18), rgba(255, 255, 255, .98));
+  border-color: rgba(245, 158, 11, .28);
+  box-shadow: 0 12px 26px rgba(245, 158, 11, .16);
 }
 
 .tutor-dashboard-page .calendar-cell .calendar-date,
@@ -223,7 +223,7 @@
   justify-content: center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(16,185,129,.12);
+  background: rgba(16, 185, 129, .12);
   color: #047857;
   font-size: 11px;
   font-weight: 800;
@@ -244,8 +244,8 @@
 .tutor-messages-page .calendar-summary-card {
   padding: 14px 16px;
   border-radius: 18px;
-  background: rgba(255,255,255,.96);
-  border: 1px solid rgba(245,158,11,.10);
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(245, 158, 11, .10);
 }
 
 .tutor-dashboard-page .calendar-summary-card span,
@@ -266,6 +266,7 @@
 }
 
 @media (max-width: 760px) {
+
   .tutor-dashboard-page .calendar-grid,
   .tutor-students-page .calendar-grid,
   .tutor-profile-page .calendar-grid,
