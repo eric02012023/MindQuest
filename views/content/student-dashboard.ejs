@@ -19,6 +19,19 @@
       </div>
     </section>
     <section class="panel-card">
+      <div class="panel-card-head"><h3>Attendance Summary</h3></div>
+      <div style="display: flex; gap: 2rem; padding: 0.5rem 0;">
+        <div>
+          <span style="font-size: 0.875rem; color: var(--text-muted, #868e96);">Present</span>
+          <div style="font-size: 2rem; font-weight: 700; color: var(--success);"><%= dashboard.attendance.present || 0 %></div>
+        </div>
+        <div>
+          <span style="font-size: 0.875rem; color: var(--text-muted, #868e96);">Absent</span>
+          <div style="font-size: 2rem; font-weight: 700; color: var(--danger);"><%= dashboard.attendance.absent || 0 %></div>
+        </div>
+      </div>
+    </section>
+    <section class="panel-card">
       <div class="panel-card-head"><h3>Latest SOA</h3></div>
       <% if (dashboard.latestSoa) { %>
         <p><strong>Statement Date:</strong> <%= formatDateTime(dashboard.latestSoa.statement_date || dashboard.latestSoa.created_at) %></p>

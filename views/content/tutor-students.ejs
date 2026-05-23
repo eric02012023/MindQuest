@@ -4,7 +4,7 @@
   <div class="list-stack">
     <% if (!students.length) { %><p class="empty-state">No students assigned yet.</p><% } %>
     <% students.forEach((student) => { %>
-      <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>/analytics">
+      <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>">
         <div>
           <strong><%= student.full_name %></strong>
           <span><%= student.subject_name %> - <%= student.year_level %> <%= student.grade_level %></span>

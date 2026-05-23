@@ -87,6 +87,8 @@ app.use('/assistant', assistantRoutes);
 app.use('/student', studentRoutes);
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use('/tutor', tutorRoutes);
+// Middleware/route mount: attaches shared behavior or a route group to the application.
+app.use('/download', require('./routes/download'));
 
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 

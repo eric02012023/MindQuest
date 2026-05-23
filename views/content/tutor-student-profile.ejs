@@ -1,0 +1,132 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-student-profile.ejs | Purpose: Tutor view of a specific student profile. %>
+<section class="page-stack">
+  <div class="toolbar-card split">
+    <h2>Student Profile: <%= student.first_name %> <%= student.last_name %></h2>
+    <a href="/tutor/students" class="btn btn-secondary">Back to Students</a>
+  </div>
+
+  <section class="panel-card">
+    <div class="profile-header-card">
+      <img src="<%= student.image_path || '/assets/logo.png' %>" alt="Profile image" class="profile-avatar large" />
+      <div>
+        <h2><%= student.first_name %> <%= student.middle_name || '' %> <%= student.last_name %></h2>
+        <p>Student ID: <%= student.user_id %> · <%= student.branch_name || '-' %></p>
+      </div>
+    </div>
+    
+    <div class="form-grid three-col" style="margin-top: 1.5rem;">
+      <label>Email<input type="text" value="<%= student.email || '-' %>" readonly /></label>
+      <label>Year Level<input type="text" value="<%= student.year_level || '-' %>" readonly /></label>
+      <label>Grade Level<input type="text" value="<%= student.grade_level || '-' %>" readonly /></label>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Assigned Subjects</h3></div>
+    <div class="list-stack">
+      <% if (!subjects.length) { %>
+        <p class="empty-state">No subjects assigned.</p>
+      <% } else { %>
+        <% subjects.forEach((sub) => { %>
+          <article class="list-card compact">
+            <strong><%= sub.subject_name %></strong>
+          </article>
+        <% }) %>
+      <% } %>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Attendance Logs</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Subject</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!attendanceLogs || !attendanceLogs.length) { %>
+            <tr><td colspan="3" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">No attendance recorded.</td></tr>
+          <% } else { %>
+            <% attendanceLogs.forEach((log) => { %>
+              <tr>
+                <td><%= formatDate(log.attendance_date) %></td>
+                <td><%= log.subject_name %></td>
+                <td>
+                  <span class="badge badge-<%= log.status === 'present' ? 'success' : 'danger' %>">
+                    <%= log.status %>
+                  </span>
+                </td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Assessments</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Subject</th>
+            <th>Score</th>
+            <th>Percentage</th>
+            <th>Level</th>
+            <th>Taken At</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% 
+            const combinedAssessments = [
+              ...(studentAssessments || []),
+              ...(studentAssessmentHistory || [])
+            ].sort((a, b) => new Date(b.taken_at || b.created_at) - new Date(a.taken_at || a.created_at));
+          %>
+          <% if (!combinedAssessments.length) { %>
+            <tr><td colspan="6" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">No assessments assigned.</td></tr>
+          <% } else { %>
+            <% combinedAssessments.forEach((item) => { %>
+              <tr>
+                <td><%= item.template_title || item.title %></td>
+                <td><%= item.subject_name || '-' %></td>
+                <td><%= item.score != null ? item.score + ' / ' + item.total_questions : '-' %></td>
+                <td><%= item.percentage != null ? item.percentage + '%' : '-' %></td>
+                <td><%= item.level || '-' %></td>
+                <td><%= item.taken_at ? formatDateTime(item.taken_at) : 'Not taken' %></td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Generated Learning Modules</h3></div>
+    <div class="list-stack">
+      <% if (!generatedModules || !generatedModules.length) { %>
+        <p class="empty-state">No AI modules generated yet.</p>
+      <% } else { %>
+        <% generatedModules.forEach((mod) => { %>
+          <article class="list-card compact">
+            <div>
+              <strong><%= mod.title %></strong>
+              <span class="badge badge-info" style="margin-left: 8px;"><%= mod.type_of_module || 'AI Module' %></span>
+              <p style="margin-top:4px;"><%= mod.description || 'Generated based on assessment results.' %></p>
+              <% if (mod.file_path) { %>
+                <a href="/download?path=<%= encodeURIComponent(mod.file_path) %>" target="_blank" class="btn btn-secondary btn-sm" style="margin-top: 8px; display: inline-block;">Open file</a>
+              <% } %>
+            </div>
+          </article>
+        <% }) %>
+      <% } %>
+    </div>
+  </section>
+</section>

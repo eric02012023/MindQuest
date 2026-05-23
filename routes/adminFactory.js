@@ -821,6 +821,31 @@ function createAdminRouter(role) {
     }
   });
 
+  // Income Report route
+  router.get('/income-report', async (req, res, next) => {
+    try {
+      const scopeBranchId = getScopeBranchId(req);
+      const [billingRows, paidBills, paymentHistoryData, branches] = await Promise.all([
+        getBillingRows(scopeBranchId, false),
+        getBillingRows(scopeBranchId, true),
+        getPaymentHistory(scopeBranchId),
+        getBranches()
+      ]);
+      const allBillingRows = [...billingRows, ...paidBills];
+      const shell = await buildShellData(req, {
+        pageTitle: 'Income Report',
+        section: 'income',
+        contentView: '../content/admin-income-report',
+        billingRows: allBillingRows,
+        paymentHistory: paymentHistoryData,
+        branches: req.session.user.role === 'admin' ? branches : []
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // Route handler: GET request
 
   // Purpose: Processes this endpoint and returns the correct view or action result.
@@ -1132,12 +1157,38 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Only the main admin can upload modules.');
         return res.redirect(`${basePath}/subjects/${req.params.id}`);
       }
+
+      let contentText = '';
+      if (req.file) {
+        const fs = require('fs');
+        const absolutePath = require('path').join(__dirname, '..', 'public', 'uploads', 'resources', req.file.filename);
+        
+        try {
+          if (req.file.mimetype === 'application/pdf') {
+            const pdfParse = require('pdf-parse');
+            const dataBuffer = fs.readFileSync(absolutePath);
+            const data = await pdfParse(dataBuffer);
+            contentText = data.text;
+          } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            const mammoth = require('mammoth');
+            const result = await mammoth.extractRawText({ path: absolutePath });
+            contentText = result.value;
+          } else if (req.file.mimetype === 'text/plain') {
+            contentText = fs.readFileSync(absolutePath, 'utf8');
+          }
+        } catch (parseError) {
+          console.error('[AI File Parser] Error extracting text:', parseError);
+          // Non-fatal error, we still save the file
+        }
+      }
+
       await addSubjectResource(req.session.user.id, req.params.id, req.body.title, req.body.description, req.file ? {
         path: `/uploads/resources/${req.file.filename}`,
         mimetype: req.file.mimetype
       } : null, {
         created_by_role: 'admin_template',
-        type_of_module: req.body.type_of_module || null
+        type_of_module: req.body.type_of_module || null,
+        content_text: contentText.substring(0, 50000) // limit to 50k chars
       });
       setFlash(req, 'success', 'Module uploaded successfully.');
       res.redirect(`${basePath}/subjects/${req.params.id}`);

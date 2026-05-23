@@ -47,7 +47,8 @@ const {
   // Phase 3: Assessment requests and analytics
   getAssessmentRequestsForTutor,
   respondToAssessmentRequest,
-  getTutorStudentsForAnalytics
+  getTutorStudentsForAnalytics,
+  getAttendanceBySubject
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 
@@ -146,10 +147,11 @@ router.get('/students', async (req, res, next) => {
 
 router.get('/students/:studentId', async (req, res, next) => {
   try {
-    // Direct DB check: is this student assigned to this tutor?
     const { query: dbQuery } = require('../config/db');
     const assignmentCheck = await dbQuery(
-      `SELECT TOP 1 usa.student_id FROM user_subject_assignments usa
+      `SELECT usa.student_id, usa.subject_id, s.name AS subject_name
+       FROM user_subject_assignments usa
+       INNER JOIN subjects s ON s.id = usa.subject_id
        WHERE usa.tutor_id = ? AND usa.student_id = ? AND usa.is_archived = 0`,
       [req.session.user.id, req.params.studentId]
     );
@@ -157,8 +159,43 @@ router.get('/students/:studentId', async (req, res, next) => {
       setFlash(req, 'error', 'Student not found in your assigned list.');
       return res.redirect('/tutor/students');
     }
-    // Redirect to analytics view
-    return res.redirect(`/tutor/students/${req.params.studentId}/analytics`);
+    // Get student basic info + attendance + assessments
+    const student = await getUserById(req.params.studentId);
+    if (!student) {
+      setFlash(req, 'error', 'Student not found.');
+      return res.redirect('/tutor/students');
+    }
+    // Get attendance for shared subjects
+    const attendanceLogs = [];
+    for (const a of assignmentCheck) {
+      const logs = await getAttendanceBySubject(req.params.studentId, a.subject_id);
+      attendanceLogs.push(...logs.map(l => ({ ...l, subject_name: a.subject_name })));
+    }
+    // Get assessments for this student
+    const [assessments, assessmentHistory] = await Promise.all([
+      getAssessments(null),
+      getAssessmentHistory(null)
+    ]);
+    const studentAssessments = assessments.filter(a => Number(a.assigned_student_id) === Number(req.params.studentId));
+    const studentAssessmentHistory = assessmentHistory.filter(a => Number(a.assigned_student_id) === Number(req.params.studentId));
+    
+    const generatedModules = await dbQuery(
+      `SELECT * FROM subject_resources WHERE module_origin = 'ai_generated' AND assigned_student_id = ? AND is_archived = 0`,
+      [req.params.studentId]
+    );
+
+    const shell = await buildShell(req, {
+      pageTitle: `${student.first_name} ${student.last_name}`,
+      section: 'students',
+      contentView: '../content/tutor-student-profile',
+      student,
+      subjects: assignmentCheck,
+      attendanceLogs,
+      studentAssessments,
+      studentAssessmentHistory,
+      generatedModules
+    });
+    res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
 });
 

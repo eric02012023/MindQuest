@@ -40,7 +40,7 @@
             <p><%= resource.description || 'No description' %></p>
             <p><strong>Uploaded by:</strong> <%= resource.tutor_name %></p>
             <% if (resource.difficulty_level) { %><p><strong>Difficulty:</strong> <%= resource.difficulty_level %></p><% } %>
-            <% if (resource.file_path) { %><a href="<%= resource.file_path %>" target="_blank">Open file</a><% } %>
+            <% if (resource.file_path) { %><a href="/download?path=<%= encodeURIComponent(resource.file_path) %>" target="_blank">Open file</a><% } %>
             <% if (resource.is_archived) { %><span class="badge badge-danger" style="margin-left:8px;">Archived</span><% } %>
           </div>
           <% if (currentUser.role === 'admin') { %>

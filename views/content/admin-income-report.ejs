@@ -1,0 +1,200 @@
+<%# Income Report View for Admin and Assistant Admin %>
+<section class="page-stack">
+
+  <div class="toolbar-card split">
+    <h2>Income Report</h2>
+    <div class="row-actions wrap-row-actions">
+      <select id="income-filter" onchange="filterIncomeReport(this.value)" class="form-select" style="min-width:140px;">
+        <option value="monthly" selected>Monthly</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+      <% if (currentUser.role === 'admin' && (branches || []).length) { %>
+        <select id="branch-filter" onchange="filterByBranch(this.value)" class="form-select" style="min-width:160px;">
+          <option value="all">All Branches</option>
+          <% (branches || []).forEach((b) => { %>
+            <option value="<%= b.id %>"><%= b.name %></option>
+          <% }) %>
+        </select>
+      <% } %>
+    </div>
+  </div>
+
+  <%
+    // Compute summary from billingRows + paymentHistory
+    const allBills = billingRows || [];
+    const allPayments = paymentHistory || [];
+
+    let totalCollected = 0;
+    let totalOutstanding = 0;
+    let totalPaid = 0;
+    let totalPending = 0;
+
+    allBills.forEach((bill) => {
+      totalOutstanding += Number(bill.for_settlement || 0);
+      if (bill.payment_status === 'paid') totalPaid++;
+      else totalPending++;
+    });
+
+    allPayments.forEach((ph) => {
+      totalCollected += Number(ph.amount || 0);
+    });
+
+    // Group by month
+    const monthlyData = {};
+    allPayments.forEach((ph) => {
+      const d = new Date(ph.paid_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthlyData[key]) monthlyData[key] = { income: 0, count: 0, label: '' };
+      monthlyData[key].income += Number(ph.amount || 0);
+      monthlyData[key].count += 1;
+      monthlyData[key].label = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+    });
+    const monthKeys = Object.keys(monthlyData).sort();
+    const monthLabels = monthKeys.map(k => monthlyData[k].label || k);
+    const monthValues = monthKeys.map(k => monthlyData[k].income);
+
+    // Group by branch
+    const branchData = {};
+    allPayments.forEach((ph) => {
+      const bName = ph.branch_name || 'Unknown';
+      if (!branchData[bName]) branchData[bName] = 0;
+      branchData[bName] += Number(ph.amount || 0);
+    });
+    const branchLabels = Object.keys(branchData);
+    const branchValues = branchLabels.map(k => branchData[k]);
+  %>
+
+  <div class="billing-summary-grid">
+    <article class="stat-card gradient">
+      <h3>Total Collections</h3>
+      <strong><%= money(totalCollected) %></strong>
+    </article>
+    <article class="stat-card">
+      <h3>Outstanding Balance</h3>
+      <strong><%= money(totalOutstanding) %></strong>
+    </article>
+    <article class="stat-card">
+      <h3>Paid Bills</h3>
+      <strong><%= totalPaid %></strong>
+    </article>
+    <article class="stat-card">
+      <h3>Pending Bills</h3>
+      <strong><%= totalPending %></strong>
+    </article>
+  </div>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Monthly Income Trend</h3></div>
+    <div style="position:relative;width:100%;max-width:800px;margin:0 auto;">
+      <canvas id="incomeChart" height="300"></canvas>
+    </div>
+  </section>
+
+  <% if (currentUser.role === 'admin' && branchLabels.length > 1) { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Income per Branch</h3></div>
+    <div style="position:relative;width:100%;max-width:600px;margin:0 auto;">
+      <canvas id="branchChart" height="300"></canvas>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Payment History</h3></div>
+    <div class="table-wrap scroll-table-box">
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Branch</th>
+            <th>Amount</th>
+            <th>Date Paid</th>
+            <th>Recorded By</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!allPayments.length) { %>
+            <tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--text-muted);">No payment records found.</td></tr>
+          <% } %>
+          <% allPayments.forEach((ph) => { %>
+          <tr>
+            <td><%= ph.first_name %> <%= ph.middle_name || '' %> <%= ph.last_name %></td>
+            <td><%= ph.branch_name || '-' %></td>
+            <td><%= money(ph.amount) %></td>
+            <td><%= formatDateTime(ph.paid_at) %></td>
+            <td><%= ph.recorded_by || '-' %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Monthly income chart
+  var monthCtx = document.getElementById('incomeChart');
+  if (monthCtx) {
+    new Chart(monthCtx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: <%- JSON.stringify(monthLabels) %>,
+        datasets: [{
+          label: 'Income',
+          data: <%- JSON.stringify(monthValues) %>,
+          backgroundColor: 'rgba(26, 86, 50, 0.7)',
+          borderColor: 'rgba(26, 86, 50, 1)',
+          borderWidth: 1,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: function(v) { return '₱' + v.toLocaleString(); } } }
+        }
+      }
+    });
+  }
+
+  // Branch comparison chart (admin only)
+  var branchCtx = document.getElementById('branchChart');
+  if (branchCtx) {
+    var colors = ['#1a5632','#2d8a4e','#e6a817','#c0392b','#2980b9','#8e44ad','#d35400','#1abc9c'];
+    new Chart(branchCtx.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: <%- JSON.stringify(branchLabels) %>,
+        datasets: [{
+          data: <%- JSON.stringify(branchValues) %>,
+          backgroundColor: colors.slice(0, <%- branchLabels.length %>),
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+  }
+});
+
+function filterIncomeReport(val) {
+  // Placeholder: could be used with AJAX or page reload for time-based filtering
+  console.log('Filter by:', val);
+}
+function filterByBranch(val) {
+  var url = new URL(window.location.href);
+  if (val === 'all') url.searchParams.delete('branch_id');
+  else url.searchParams.set('branch_id', val);
+  window.location.href = url.toString();
+}
+</script>

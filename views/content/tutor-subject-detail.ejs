@@ -7,7 +7,7 @@
       <% const seenIds = new Set(); %>
       <% students.forEach((student) => { %>
         <% if (!seenIds.has(Number(student.student_id))) { seenIds.add(Number(student.student_id)); %>
-          <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>/analytics">
+          <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>">
             <div>
               <strong><%= student.full_name %></strong>
               <span><%= student.year_level %> <%= student.grade_level %></span>
@@ -29,7 +29,7 @@
             <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
             <% if (resource.module_origin === 'ai_generated') { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
             <p><%= resource.description || 'No description' %></p>
-            <% if (resource.file_path) { %><a href="<%= resource.file_path %>" target="_blank">Open file</a><% } %>
+            <% if (resource.file_path) { %><a href="/download?path=<%= encodeURIComponent(resource.file_path) %>" target="_blank">Open file</a><% } %>
           </div>
           <form method="post" action="/tutor/subjects/<%= subjectId %>/resources/share" class="stack-form" style="min-width:320px;">
             <input type="hidden" name="resource_id" value="<%= resource.id %>" />
@@ -56,7 +56,7 @@
             <strong><%= resource.title %></strong>
             <p><%= resource.description || 'No description' %></p>
             <p><strong>Assigned Student:</strong> <%= resource.student_name || '-' %></p>
-            <% if (resource.file_path) { %><a href="<%= resource.file_path %>" target="_blank">Open file</a><% } %>
+            <% if (resource.file_path) { %><a href="/download?path=<%= encodeURIComponent(resource.file_path) %>" target="_blank">Open file</a><% } %>
           </div>
           <form method="post" action="/tutor/resources/<%= resource.id %>/delete">
             <button class="btn btn-secondary btn-sm" type="submit">Remove</button>

@@ -17,6 +17,7 @@
       <a class="<%= section === 'users' ? 'active' : '' %>" href="<%= basePath %>/users">User Management</a>
       <% if (currentUser.role === 'admin') { %><a class="<%= section === 'branches' ? 'active' : '' %>" href="<%= basePath %>/branches">Branch Management</a><% } %>
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="<%= basePath %>/billing">Student Bill</a>
+      <a class="<%= section === 'income' ? 'active' : '' %>" href="<%= basePath %>/income-report">Income Report</a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects">All Subjects</a>
       <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics">Analytics & Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="<%= basePath %>/profile/<%= currentUser.id %>">My Profile</a>
@@ -27,6 +28,8 @@
     <nav class="sidebar-nav">
       <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/student">Dashboard</a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/student/subjects">My Subject</a>
+      <a class="<%= section === 'assessments' ? 'active' : '' %>" href="/student/assessments">Assessments</a>
+      <a class="<%= section === 'messages' ? 'active' : '' %>" href="/student/messages">Messages</a>
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="/student/billing">Billing Info</a>
       <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/student/analytics">Analytics & Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="/student/profile">Profile</a>
@@ -39,6 +42,8 @@
       <a class="<%= section === 'students' ? 'active' : '' %>" href="/tutor/students">My Students</a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/tutor/subjects">My Subject</a>
       <a class="<%= section === 'attendance' ? 'active' : '' %>" href="/tutor/attendance">Attendance</a>
+      <a class="<%= section === 'assessments' ? 'active' : '' %>" href="/tutor/assessments">Assessments</a>
+      <a class="<%= section === 'messages' ? 'active' : '' %>" href="/tutor/messages">Messages</a>
       <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/tutor/analytics">Analytics & Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="/tutor/profile">Profile</a>
     </nav>
