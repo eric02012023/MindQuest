@@ -104,9 +104,15 @@ if (trustedDevice) {
 
 const otp = generateOtp();
 await storeOtp({ userId: user.id, purpose: 'login', code: otp });
-await sendOtpEmail({ to: user.email, otp, purpose: 'login' });
+try {
+  await sendOtpEmail({ to: user.email, otp, purpose: 'login' });
+  req.session.flash = { type: 'success', message: 'A 4-digit OTP was sent to your email. Enter it to continue.' };
+} catch (emailErr) {
+  console.error('[OTP EMAIL ERROR]', emailErr.message);
+  console.log(`[OTP FALLBACK] OTP for ${user.email}: ${otp}`);
+  req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+}
 req.session.pendingLogin = { user: { ...user, password_hash: undefined } };
-req.session.flash = { type: 'success', message: 'A 4-digit OTP was sent to your email. Enter it to continue.' };
 return res.redirect('/login/verify');
   } catch (error) {
     next(error);
@@ -170,8 +176,14 @@ router.post('/login/resend-otp', ensureGuest, async (req, res, next) => {
     }
     const otp = generateOtp();
     await storeOtp({ userId: pending.user.id, purpose: 'login', code: otp });
-    await sendOtpEmail({ to: pending.user.email, otp, purpose: 'login' });
-    req.session.flash = { type: 'success', message: 'A new 4-digit OTP was sent to your email.' };
+    try {
+      await sendOtpEmail({ to: pending.user.email, otp, purpose: 'login' });
+      req.session.flash = { type: 'success', message: 'A new 4-digit OTP was sent to your email.' };
+    } catch (emailErr) {
+      console.error('[OTP EMAIL ERROR]', emailErr.message);
+      console.log(`[OTP FALLBACK] OTP for ${pending.user.email}: ${otp}`);
+      req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+    }
     return res.redirect('/login/verify');
   } catch (error) {
     next(error);
