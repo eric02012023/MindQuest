@@ -120,8 +120,8 @@
               <strong><%= mod.title %></strong>
               <span class="badge badge-info" style="margin-left: 8px;"><%= mod.type_of_module || 'AI Module' %></span>
               <p style="margin-top:4px;"><%= mod.description || 'Generated based on assessment results.' %></p>
-              <% if (mod.file_path) { %>
-                <a href="/download?path=<%= encodeURIComponent(mod.file_path) %>" target="_blank" class="btn btn-secondary btn-sm" style="margin-top: 8px; display: inline-block;">Open file</a>
+              <% if (mod.file_path || mod.content_text) { %>
+                <a href="/download/module/<%= mod.id %>" target="_blank" class="btn btn-secondary btn-sm" style="margin-top: 8px; display: inline-block;">Open file</a>
               <% } %>
             </div>
           </article>

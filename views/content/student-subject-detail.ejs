@@ -55,8 +55,8 @@
                 <div class="module-content-text" style="margin-top:8px;padding:12px;background:var(--bg-2);border-radius:8px;white-space:pre-wrap;"><%= resource.content_text %></div>
               </details>
             <% } %>
-            <% if (resource.file_path) { %>
-              <a href="/download?path=<%= encodeURIComponent(resource.file_path) %>" target="_blank">Open file</a>
+            <% if (resource.file_path || resource.content_text) { %>
+              <a href="/download/module/<%= resource.id %>" target="_blank">Open file</a>
             <% } %>
           </div>
           <div class="row-actions" style="flex-direction:column;gap:6px;">
@@ -104,8 +104,8 @@
           <div>
             <strong><%= resource.title %></strong>
             <p><%= resource.description || 'No description' %></p>
-            <% if (resource.file_path) { %>
-              <a href="/download?path=<%= encodeURIComponent(resource.file_path) %>" target="_blank">Open file</a>
+            <% if (resource.file_path || resource.content_text) { %>
+              <a href="/download/module/<%= resource.id %>" target="_blank">Open file</a>
             <% } %>
           </div>
         </article>
