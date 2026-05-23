@@ -59,17 +59,4 @@
     </div>
   </section>
 
-  <% if (currentUser.role === 'admin') { %>
-  <section class="panel-card" style="border:1px solid var(--danger, #c0392b); border-radius:12px;">
-    <div class="panel-card-head between-line">
-      <div>
-        <h3 style="color:var(--danger, #c0392b);">⚠️ Database Cleanup</h3>
-        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">Delete all old assessments, AI-generated modules, and learning records. This cannot be undone.</p>
-      </div>
-      <form method="post" action="<%= basePath %>/cleanup-records" data-confirm-message="WARNING: This will permanently delete ALL assessments, AI-generated modules, learning cycles, and assessment results. Users, branches, subjects, and enrollments will NOT be affected. Are you sure?">
-        <button class="btn btn-secondary btn-sm" type="submit" style="background:var(--danger, #c0392b);color:#fff;border:none;">Reset Assessment & Module Data</button>
-      </form>
-    </div>
-  </section>
-  <% } %>
 </section>

@@ -6,7 +6,8 @@
   const sectionMap = {
     archive_notifications: 'notification-archives',
     notification_history: 'notification-history',
-    payment_history: 'payment-history'
+    payment_history: 'payment-history',
+    income: 'dashboard'
   };
   const sectionSlug = sectionMap[section] || String(section || 'dashboard').replace(/_/g, '-');
   const roleThemeCss = `/css/${roleFolder}/theme.css`;
