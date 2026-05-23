@@ -370,19 +370,9 @@ router.post('/messages/:id/unsend', async (req, res, next) => {
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
 
-router.get('/assessments', async (req, res, next) => {
-  try {
-    const assessments = await getStudentAssessments(req.session.user.id);
-    const shell = await buildShell(req, {
-      pageTitle: 'Assessments',
-      section: 'assessments',
-      contentView: '../content/student-assessments',
-      assessments
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) {
-    next(error);
-  }
+router.get('/assessments', (req, res) => {
+  // Assessments are now accessed inside My Subjects only
+  res.redirect('/student/subjects');
 });
 
 // Route handler: GET request
@@ -394,7 +384,7 @@ router.get('/assessments/:id', async (req, res, next) => {
     const assessment = await getAssessmentById(req.params.id, req.session.user.id);
     if (!assessment || Number(assessment.assigned_student_id) !== Number(req.session.user.id)) {
       setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/student/assessments');
+      return res.redirect('/student/subjects');
     }
     const shell = await buildShell(req, {
       pageTitle: 'Take Assessment',

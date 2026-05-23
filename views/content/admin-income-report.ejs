@@ -1,20 +1,17 @@
-<%# Income Report View for Admin and Assistant Admin %>
+<%# Income Report View for Admin and Assistant Admin — Modern Dashboard Design %>
 <section class="page-stack">
 
   <div class="toolbar-card split">
-    <h2>Income Report</h2>
-    <div class="row-actions wrap-row-actions">
-      <select id="income-filter" onchange="filterIncomeReport(this.value)" class="form-select" style="min-width:140px;">
-        <option value="monthly" selected>Monthly</option>
-        <option value="daily">Daily</option>
-        <option value="weekly">Weekly</option>
-        <option value="yearly">Yearly</option>
-      </select>
+    <div>
+      <h2 style="margin:0;">Income Report</h2>
+      <p style="margin:4px 0 0;color:var(--text-muted);font-size:0.85rem;">Financial overview and payment analytics</p>
+    </div>
+    <div class="row-actions wrap-row-actions" style="gap:8px;">
       <% if (currentUser.role === 'admin' && (branches || []).length) { %>
-        <select id="branch-filter" onchange="filterByBranch(this.value)" class="form-select" style="min-width:160px;">
+        <select id="branch-filter" onchange="filterByBranch(this.value)" class="form-select" style="min-width:160px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-1);font-size:0.85rem;">
           <option value="all">All Branches</option>
           <% (branches || []).forEach((b) => { %>
-            <option value="<%= b.id %>"><%= b.name %></option>
+            <option value="<%= b.id %>" <%= String(selectedBranch) === String(b.id) ? 'selected' : '' %>><%= b.name %></option>
           <% }) %>
         </select>
       <% } %>
@@ -22,7 +19,6 @@
   </div>
 
   <%
-    // Compute summary from billingRows + paymentHistory
     const allBills = billingRows || [];
     const allPayments = paymentHistory || [];
 
@@ -41,21 +37,34 @@
       totalCollected += Number(ph.amount || 0);
     });
 
-    // Group by month
+    // Current month income
+    const now = new Date();
+    let monthlyIncome = 0;
+    allPayments.forEach((ph) => {
+      const d = new Date(ph.paid_at);
+      if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+        monthlyIncome += Number(ph.amount || 0);
+      }
+    });
+
+    // Group payments by month for chart
     const monthlyData = {};
     allPayments.forEach((ph) => {
       const d = new Date(ph.paid_at);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthlyData[key]) monthlyData[key] = { income: 0, count: 0, label: '' };
+      if (!monthlyData[key]) monthlyData[key] = { income: 0, count: 0 };
       monthlyData[key].income += Number(ph.amount || 0);
       monthlyData[key].count += 1;
-      monthlyData[key].label = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
     });
-    const monthKeys = Object.keys(monthlyData).sort();
-    const monthLabels = monthKeys.map(k => monthlyData[k].label || k);
+    const monthKeys = Object.keys(monthlyData).sort().slice(-12);
+    const monthLabels = monthKeys.map(k => {
+      const [y, m] = k.split('-');
+      return new Date(y, m - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+    });
     const monthValues = monthKeys.map(k => monthlyData[k].income);
+    const monthCounts = monthKeys.map(k => monthlyData[k].count);
 
-    // Group by branch
+    // Group by branch for chart
     const branchData = {};
     allPayments.forEach((ph) => {
       const bName = ph.branch_name || 'Unknown';
@@ -66,43 +75,69 @@
     const branchValues = branchLabels.map(k => branchData[k]);
   %>
 
-  <div class="billing-summary-grid">
-    <article class="stat-card gradient">
-      <h3>Total Collections</h3>
-      <strong><%= money(totalCollected) %></strong>
-    </article>
-    <article class="stat-card">
-      <h3>Outstanding Balance</h3>
-      <strong><%= money(totalOutstanding) %></strong>
-    </article>
-    <article class="stat-card">
-      <h3>Paid Bills</h3>
-      <strong><%= totalPaid %></strong>
-    </article>
-    <article class="stat-card">
-      <h3>Pending Bills</h3>
-      <strong><%= totalPending %></strong>
-    </article>
+  <!-- Summary Cards -->
+  <div class="income-summary-grid">
+    <div class="income-card income-card-primary">
+      <div class="income-card-icon">💰</div>
+      <div class="income-card-body">
+        <span class="income-card-label">Total Collections</span>
+        <strong class="income-card-value"><%= money(totalCollected) %></strong>
+      </div>
+    </div>
+    <div class="income-card income-card-success">
+      <div class="income-card-icon">📅</div>
+      <div class="income-card-body">
+        <span class="income-card-label">This Month</span>
+        <strong class="income-card-value"><%= money(monthlyIncome) %></strong>
+      </div>
+    </div>
+    <div class="income-card income-card-warning">
+      <div class="income-card-icon">⏳</div>
+      <div class="income-card-body">
+        <span class="income-card-label">Outstanding Balance</span>
+        <strong class="income-card-value"><%= money(totalOutstanding) %></strong>
+      </div>
+    </div>
+    <div class="income-card income-card-info">
+      <div class="income-card-icon">📊</div>
+      <div class="income-card-body">
+        <span class="income-card-label">Paid / Pending</span>
+        <strong class="income-card-value"><%= totalPaid %> / <%= totalPending %></strong>
+      </div>
+    </div>
   </div>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Monthly Income Trend</h3></div>
-    <div style="position:relative;width:100%;max-width:800px;margin:0 auto;">
-      <canvas id="incomeChart" height="300"></canvas>
-    </div>
-  </section>
+  <!-- Charts Row -->
+  <div class="income-charts-grid">
+    <section class="panel-card" style="flex:2;min-width:0;">
+      <div class="panel-card-head"><h3>Monthly Income Trend</h3></div>
+      <div style="padding:16px;">
+        <% if (!monthKeys.length) { %>
+          <div class="empty-state" style="padding:40px 0;text-align:center;">
+            <p style="color:var(--text-muted);font-size:0.95rem;">📊 No payment data available yet.</p>
+          </div>
+        <% } else { %>
+          <canvas id="incomeChart" height="280"></canvas>
+        <% } %>
+      </div>
+    </section>
 
-  <% if (currentUser.role === 'admin' && branchLabels.length > 1) { %>
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Income per Branch</h3></div>
-    <div style="position:relative;width:100%;max-width:600px;margin:0 auto;">
-      <canvas id="branchChart" height="300"></canvas>
-    </div>
-  </section>
-  <% } %>
+    <% if (currentUser.role === 'admin' && branchLabels.length > 0) { %>
+    <section class="panel-card" style="flex:1;min-width:260px;">
+      <div class="panel-card-head"><h3>Income per Branch</h3></div>
+      <div style="padding:16px;">
+        <canvas id="branchChart" height="280"></canvas>
+      </div>
+    </section>
+    <% } %>
+  </div>
 
+  <!-- Payment History Table -->
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Payment History</h3></div>
+    <div class="panel-card-head between-line">
+      <h3>Recent Payments</h3>
+      <span style="color:var(--text-muted);font-size:0.8rem;"><%= allPayments.length %> record<%= allPayments.length !== 1 ? 's' : '' %></span>
+    </div>
     <div class="table-wrap scroll-table-box">
       <table>
         <thead>
@@ -111,28 +146,106 @@
             <th>Branch</th>
             <th>Amount</th>
             <th>Date Paid</th>
-            <th>Recorded By</th>
+            <th>Method</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
           <% if (!allPayments.length) { %>
-            <tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--text-muted);">No payment records found.</td></tr>
+            <tr><td colspan="6" class="empty-table-state">No payment records found.</td></tr>
+          <% } else { %>
+            <% allPayments.slice(0, 100).forEach((ph) => { %>
+            <tr>
+              <td>
+                <div style="font-weight:500;"><%= ph.first_name %> <%= ph.middle_name || '' %> <%= ph.last_name %></div>
+                <div style="font-size:0.75rem;color:var(--text-muted);"><%= ph.user_id || '' %></div>
+              </td>
+              <td><span class="badge badge-info" style="font-size:0.7rem;"><%= ph.branch_name || '-' %></span></td>
+              <td style="font-weight:600;color:var(--primary);"><%= money(ph.amount) %></td>
+              <td><%= formatDateTime(ph.paid_at) %></td>
+              <td><%= ph.payment_method || 'Cash' %></td>
+              <td><span class="pill paid" style="font-size:0.7rem;">Paid</span></td>
+            </tr>
+            <% }) %>
           <% } %>
-          <% allPayments.forEach((ph) => { %>
-          <tr>
-            <td><%= ph.first_name %> <%= ph.middle_name || '' %> <%= ph.last_name %></td>
-            <td><%= ph.branch_name || '-' %></td>
-            <td><%= money(ph.amount) %></td>
-            <td><%= formatDateTime(ph.paid_at) %></td>
-            <td><%= ph.recorded_by || '-' %></td>
-          </tr>
-          <% }) %>
         </tbody>
       </table>
     </div>
   </section>
 
 </section>
+
+<style>
+  .income-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .income-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px;
+    border-radius: 12px;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .income-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  }
+  .income-card-icon {
+    font-size: 2rem;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+  .income-card-primary .income-card-icon { background: rgba(26, 86, 50, 0.12); }
+  .income-card-success .income-card-icon { background: rgba(39, 174, 96, 0.12); }
+  .income-card-warning .income-card-icon { background: rgba(230, 168, 23, 0.12); }
+  .income-card-info .income-card-icon { background: rgba(41, 128, 185, 0.12); }
+  .income-card-body { min-width: 0; }
+  .income-card-label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .income-card-value {
+    display: block;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-1);
+  }
+  .income-charts-grid {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .empty-table-state {
+    text-align: center;
+    padding: 2.5rem 1rem !important;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  @media (max-width: 768px) {
+    .income-summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .income-charts-grid { flex-direction: column; }
+    .income-card-value { font-size: 1.1rem; }
+  }
+  @media (max-width: 480px) {
+    .income-summary-grid { grid-template-columns: 1fr; }
+  }
+</style>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
@@ -145,19 +258,46 @@ document.addEventListener('DOMContentLoaded', function () {
       data: {
         labels: <%- JSON.stringify(monthLabels) %>,
         datasets: [{
-          label: 'Income',
+          label: 'Income (₱)',
           data: <%- JSON.stringify(monthValues) %>,
-          backgroundColor: 'rgba(26, 86, 50, 0.7)',
+          backgroundColor: 'rgba(26, 86, 50, 0.75)',
           borderColor: 'rgba(26, 86, 50, 1)',
           borderWidth: 1,
-          borderRadius: 6
+          borderRadius: 6,
+          borderSkipped: false
+        }, {
+          label: 'Transactions',
+          data: <%- JSON.stringify(monthCounts) %>,
+          type: 'line',
+          borderColor: 'rgba(230, 168, 23, 1)',
+          backgroundColor: 'rgba(230, 168, 23, 0.1)',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: 'rgba(230, 168, 23, 1)',
+          yAxisID: 'y1',
+          tension: 0.3
         }]
       },
       options: {
         responsive: true,
-        plugins: { legend: { display: false } },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 12 } } }
+        },
         scales: {
-          y: { beginAtZero: true, ticks: { callback: function(v) { return '₱' + v.toLocaleString(); } } }
+          y: {
+            beginAtZero: true,
+            position: 'left',
+            ticks: { callback: function(v) { return '₱' + v.toLocaleString(); } },
+            grid: { color: 'rgba(0,0,0,0.04)' }
+          },
+          y1: {
+            beginAtZero: true,
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { stepSize: 1 }
+          },
+          x: { grid: { display: false } }
         }
       }
     });
@@ -166,7 +306,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Branch comparison chart (admin only)
   var branchCtx = document.getElementById('branchChart');
   if (branchCtx) {
-    var colors = ['#1a5632','#2d8a4e','#e6a817','#c0392b','#2980b9','#8e44ad','#d35400','#1abc9c'];
+    var colors = ['#1a5632','#2d8a4e','#e6a817','#c0392b','#2980b9','#8e44ad','#d35400','#1abc9c','#34495e','#7f8c8d'];
     new Chart(branchCtx.getContext('2d'), {
       type: 'doughnut',
       data: {
@@ -174,23 +314,21 @@ document.addEventListener('DOMContentLoaded', function () {
         datasets: [{
           data: <%- JSON.stringify(branchValues) %>,
           backgroundColor: colors.slice(0, <%- branchLabels.length %>),
-          borderWidth: 2
+          borderWidth: 2,
+          borderColor: 'var(--bg-1)'
         }]
       },
       options: {
         responsive: true,
+        cutout: '60%',
         plugins: {
-          legend: { position: 'bottom' }
+          legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, font: { size: 11 } } }
         }
       }
     });
   }
 });
 
-function filterIncomeReport(val) {
-  // Placeholder: could be used with AJAX or page reload for time-based filtering
-  console.log('Filter by:', val);
-}
 function filterByBranch(val) {
   var url = new URL(window.location.href);
   if (val === 'all') url.searchParams.delete('branch_id');

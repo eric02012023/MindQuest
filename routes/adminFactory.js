@@ -838,7 +838,8 @@ function createAdminRouter(role) {
         contentView: '../content/admin-income-report',
         billingRows: allBillingRows,
         paymentHistory: paymentHistoryData,
-        branches: req.session.user.role === 'admin' ? branches : []
+        branches: req.session.user.role === 'admin' ? branches : [],
+        selectedBranch: req.query.branch_id || 'all'
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -1597,6 +1598,54 @@ function createAdminRouter(role) {
         analytics: primaryAnalytics
       });
       res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Admin-only: Database cleanup for old assessment/module records
+  router.post('/cleanup-records', async (req, res, next) => {
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can perform database cleanup.');
+        return res.redirect(`${basePath}`);
+      }
+
+      const { query: dbQuery } = require('../config/db');
+      const fs = require('fs');
+      const path = require('path');
+
+      // Delete in order respecting foreign keys
+      await dbQuery('DELETE FROM assessment_results');
+      await dbQuery('DELETE FROM ai_generation_logs');
+      await dbQuery('DELETE FROM student_learning_cycles');
+      await dbQuery('DELETE FROM module_reads');
+      await dbQuery('DELETE FROM assessment_requests');
+      await dbQuery('DELETE FROM assessments');
+
+      // Get AI-generated file paths before deleting records
+      const aiModules = await dbQuery("SELECT file_path FROM subject_resources WHERE module_origin = 'ai_generated' AND file_path IS NOT NULL");
+      await dbQuery("DELETE FROM subject_resources WHERE module_origin = 'ai_generated'");
+
+      // Delete AI-generated files from storage
+      let filesDeleted = 0;
+      for (const mod of aiModules) {
+        if (mod.file_path) {
+          const filePath = path.join(__dirname, '..', 'public', mod.file_path.replace(/\\/g, '/'));
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              filesDeleted++;
+            }
+          } catch (e) {
+            console.error('[Cleanup] Failed to delete file:', filePath, e.message);
+          }
+        }
+      }
+
+      console.log(`[Admin Cleanup] Records cleaned. ${filesDeleted} AI files removed from storage.`);
+      setFlash(req, 'success', `Database cleanup complete! All old assessments, AI modules, and learning records have been removed. ${filesDeleted} generated files deleted from storage.`);
+      res.redirect(`${basePath}`);
     } catch (error) {
       next(error);
     }
