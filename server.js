@@ -193,6 +193,13 @@ async function start() {
       console.log(`Connected database: ${dbName}`);
       console.log('Default admin email: admin@mindquest.local');
       console.log('Default admin password: Admin@12345');
+      console.log('SMTP Configuration Status:', {
+        host: process.env.SMTP_HOST || 'NOT SET',
+        port: process.env.SMTP_PORT || 'NOT SET',
+        user: process.env.SMTP_USER || 'NOT SET',
+        pass: process.env.SMTP_PASS ? 'SET (hidden)' : 'NOT SET',
+        from: process.env.SMTP_FROM || 'NOT SET'
+      });
     });
   } catch (error) {
     console.error('Failed to bootstrap the database before start.');
