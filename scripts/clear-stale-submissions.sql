@@ -9,12 +9,12 @@ GO
 
 -- Cancel all accepted submissions (they already became users, no longer needed for duplicate check)
 UPDATE dbo.submissions
-SET status = 'cancelled', archived = 1, updated_at = SYSDATETIME()
+SET status = 'cancelled', archived = 1, updated_at = DATEADD(hour, 8, GETUTCDATE())
 WHERE status = 'accepted';
 
 -- Archive all existing archived-flagged submissions
 UPDATE dbo.submissions
-SET archived = 1, updated_at = SYSDATETIME()
+SET archived = 1, updated_at = DATEADD(hour, 8, GETUTCDATE())
 WHERE archived = 0 AND status IN ('accepted', 'cancelled');
 
 SELECT 

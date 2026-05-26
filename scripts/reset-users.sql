@@ -38,7 +38,7 @@ BEGIN
         is_archived = 0,
         branch_id = NULL,
         assistant_scope_branch_id = NULL,
-        updated_at = SYSDATETIME()
+        updated_at = DATEADD(hour, 8, GETUTCDATE())
     WHERE role = 'admin';
 END
 ELSE
@@ -48,7 +48,7 @@ BEGIN
         first_name, middle_name, last_name, email, contact_number, status, is_archived, created_at, updated_at
     ) VALUES (
         'ADM-0001', 'admin', NULL, NULL, @AdminPasswordHash,
-        'System', '', 'Administrator', @AdminEmail, '', 'approved', 0, SYSDATETIME(), SYSDATETIME()
+        'System', '', 'Administrator', @AdminEmail, '', 'approved', 0, DATEADD(hour, 8, GETUTCDATE()), DATEADD(hour, 8, GETUTCDATE())
     );
 END;
 

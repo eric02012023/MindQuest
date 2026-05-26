@@ -26,14 +26,14 @@ async function run() {
 
   // Mark all accepted submissions as archived (they already became users)
   await query(
-    `UPDATE submissions SET status = 'cancelled', archived = 1, updated_at = SYSDATETIME()
+    `UPDATE submissions SET status = 'cancelled', archived = 1, updated_at = DATEADD(hour, 8, GETUTCDATE())
      WHERE status = 'accepted'`
   );
   console.log('  ✓ Archived accepted submissions.');
 
   // Archive any cancelled submissions too
   await query(
-    `UPDATE submissions SET archived = 1, updated_at = SYSDATETIME()
+    `UPDATE submissions SET archived = 1, updated_at = DATEADD(hour, 8, GETUTCDATE())
      WHERE archived = 0 AND status = 'cancelled'`
   );
   console.log('  ✓ Archived cancelled submissions.');

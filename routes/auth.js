@@ -293,7 +293,7 @@ router.post('/reset-password', ensureGuest, async (req, res, next) => {
 
     // Hash the new password and update in the database
     const hashedPassword = await bcrypt.hash(password, 10);
-    await query('UPDATE users SET password_hash = ?, updated_at = SYSDATETIME() WHERE id = ?', [hashedPassword, pending.userId]);
+    await query('UPDATE users SET password_hash = ?, updated_at = DATEADD(hour, 8, GETUTCDATE()) WHERE id = ?', [hashedPassword, pending.userId]);
 
     delete req.session.pendingReset;
     req.session.flash = { type: 'success', message: 'Your password has been reset successfully. You can now log in with your new password.' };

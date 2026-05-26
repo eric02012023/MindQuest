@@ -55,8 +55,8 @@ function rewriteLimit(sqlText) {
 function transformSql(sqlText) {
   let text = String(sqlText || '').trim();
   text = text.replace(/`([^`]+)`/g, '[$1]');
-  text = text.replace(/NOW\(\)/gi, 'SYSDATETIME()');
-  text = text.replace(/\bCURRENT_TIMESTAMP\b/gi, 'SYSDATETIME()');
+  text = text.replace(/NOW\(\)/gi, 'DATEADD(hour, 8, GETUTCDATE())');
+  text = text.replace(/\bCURRENT_TIMESTAMP\b/gi, 'DATEADD(hour, 8, GETUTCDATE())');
   text = rewriteLimit(text);
   const params = [];
   let index = 0;

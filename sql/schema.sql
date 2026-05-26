@@ -8,7 +8,7 @@ BEGIN
     id INT IDENTITY(1,1) PRIMARY KEY,
     name NVARCHAR(120) NOT NULL UNIQUE,
     is_archived BIT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE())
   );
 END;
 
@@ -20,8 +20,8 @@ BEGIN
     category NVARCHAR(120) NOT NULL DEFAULT 'Academic',
     image_path NVARCHAR(255) NULL,
     is_archived BIT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE())
   );
 END;
 
@@ -57,8 +57,8 @@ BEGIN
     read_at DATETIME2 NULL,
     archived_at DATETIME2 NULL,
     accepted_at DATETIME2 NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_submissions_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION
   );
 END;
@@ -96,8 +96,8 @@ BEGIN
     accepted_at DATETIME2 NULL,
     status NVARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
     is_archived BIT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_users_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION,
     CONSTRAINT fk_users_scope_branch FOREIGN KEY (assistant_scope_branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION,
     CONSTRAINT fk_users_submission FOREIGN KEY (accepted_submission_id) REFERENCES dbo.submissions(id) ON DELETE NO ACTION
@@ -114,8 +114,8 @@ BEGIN
     is_read BIT NOT NULL DEFAULT 0,
     is_archived BIT NOT NULL DEFAULT 0,
     moved_to_history BIT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_notifications_submission FOREIGN KEY (submission_id) REFERENCES dbo.submissions(id) ON DELETE CASCADE
   );
 END;
@@ -128,13 +128,13 @@ BEGIN
     tutor_id INT NULL,
     subject_id INT NOT NULL,
     branch_id INT NULL,
-    enrolled_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    enrolled_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     assigned_at DATETIME2 NULL,
     accepted_by INT NULL,
     time_slot NVARCHAR(50) NULL,
     is_archived BIT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_assignments_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_assignments_tutor FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_assignments_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
@@ -152,8 +152,8 @@ BEGIN
     subject_id INT NOT NULL,
     attendance_date DATE NOT NULL,
     status NVARCHAR(20) NOT NULL CHECK (status IN ('present','absent')),
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT uniq_attendance UNIQUE (student_id, tutor_id, subject_id, attendance_date),
     CONSTRAINT fk_attendance_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_attendance_tutor FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
@@ -176,8 +176,8 @@ BEGIN
     soa_posted_at DATETIME2 NULL,
     soa_type NVARCHAR(100) NULL,
     notes NVARCHAR(MAX) NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_billing_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_billing_admin FOREIGN KEY (posted_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
   );
@@ -198,7 +198,7 @@ BEGIN
     payment_status NVARCHAR(50) NULL,
     balance_after DECIMAL(10,2) NULL,
     remarks NVARCHAR(MAX) NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_payment_billing FOREIGN KEY (billing_id) REFERENCES dbo.billing(id) ON DELETE CASCADE,
     CONSTRAINT fk_payment_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_payment_admin FOREIGN KEY (recorded_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
@@ -216,14 +216,14 @@ BEGIN
     student_full_name NVARCHAR(255) NOT NULL,
     address NVARCHAR(MAX) NULL,
     contact_number NVARCHAR(60) NOT NULL DEFAULT '',
-    statement_date DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    statement_date DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     full_bill DECIMAL(10,2) NOT NULL DEFAULT 1800.00,
     partial_payment DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     for_settlement DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     payment_due DATE NULL,
     soa_type NVARCHAR(100) NULL,
     created_by INT NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_soa_billing FOREIGN KEY (billing_id) REFERENCES dbo.billing(id) ON DELETE CASCADE,
     CONSTRAINT fk_soa_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_soa_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION,
@@ -241,7 +241,7 @@ BEGIN
     description NVARCHAR(MAX) NULL,
     file_path NVARCHAR(255) NULL,
     file_type NVARCHAR(120) NOT NULL DEFAULT '',
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_resources_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
     CONSTRAINT fk_resources_tutor FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE NO ACTION
   );
@@ -260,7 +260,7 @@ BEGIN
     is_seen BIT NOT NULL DEFAULT 0,
     is_unsent BIT NOT NULL DEFAULT 0,
     edited_at DATETIME2 NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_messages_receiver FOREIGN KEY (receiver_id) REFERENCES dbo.users(id) ON DELETE NO ACTION
   );
@@ -276,8 +276,8 @@ BEGIN
     assigned_student_id INT NOT NULL,
     created_by INT NULL,
     is_published BIT NOT NULL DEFAULT 1,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_assessment_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION,
     CONSTRAINT fk_assessment_student FOREIGN KEY (assigned_student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_assessment_admin FOREIGN KEY (created_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
@@ -297,7 +297,7 @@ BEGIN
     correct_answer NVARCHAR(255) NOT NULL,
     points INT NOT NULL DEFAULT 1,
     question_type NVARCHAR(100) NULL DEFAULT 'Multiple Choice',
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_questions_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.assessments(id) ON DELETE CASCADE
   );
 END;
@@ -314,7 +314,7 @@ BEGIN
     level NVARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advance')),
     answers_json NVARCHAR(MAX) NULL,
     attempt_id INT NULL,
-    taken_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    taken_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT uniq_assessment_result UNIQUE (assessment_id, student_id),
     CONSTRAINT fk_results_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.assessments(id) ON DELETE CASCADE,
     CONSTRAINT fk_results_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION
@@ -369,8 +369,8 @@ BEGIN
     type_of_assessment_json NVARCHAR(MAX) NULL,
     created_by INT NULL,
     is_archived BIT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_assessment_templates_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
     CONSTRAINT fk_assessment_templates_admin FOREIGN KEY (created_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
   );
@@ -404,7 +404,7 @@ BEGIN
     correct_answer NVARCHAR(255) NOT NULL,
     points INT NOT NULL DEFAULT 1,
     question_type NVARCHAR(100) NULL DEFAULT 'Multiple Choice',
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_template_questions_template FOREIGN KEY (template_id) REFERENCES dbo.assessment_templates(id) ON DELETE CASCADE
   );
 END;
@@ -416,7 +416,7 @@ BEGIN
     id INT IDENTITY(1,1) PRIMARY KEY,
     tutor_id INT NOT NULL,
     year_level NVARCHAR(50) NOT NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_tutor_year_levels_user FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE CASCADE
   );
 END;
@@ -431,8 +431,8 @@ BEGIN
     expires_at DATETIME2 NOT NULL,
     is_used BIT NOT NULL DEFAULT 0,
     used_at DATETIME2 NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_otps_user FOREIGN KEY (user_id) REFERENCES dbo.users(id) ON DELETE CASCADE
   );
 END;
@@ -450,8 +450,8 @@ BEGIN
     expires_at DATETIME2 NOT NULL,
     used_at DATETIME2 NULL,
     is_used BIT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE())
   );
 END;
 
@@ -466,8 +466,8 @@ BEGIN
     last_used_at DATETIME2 NULL,
     expires_at DATETIME2 NULL,
     is_active BIT NOT NULL DEFAULT 1,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_trusted_devices_user FOREIGN KEY (user_id) REFERENCES dbo.users(id) ON DELETE CASCADE
   );
 END;
@@ -498,8 +498,8 @@ BEGIN
     status NVARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected','cancelled')),
     decided_by INT NULL,
     decided_at DATETIME2 NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_subject_requests_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE CASCADE,
     CONSTRAINT fk_subject_requests_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
     CONSTRAINT fk_subject_requests_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION,
@@ -521,8 +521,8 @@ BEGIN
     student_notified BIT NOT NULL DEFAULT 0,
     decided_by INT NULL,
     decided_at DATETIME2 NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE())
   );
 END;
 
@@ -597,7 +597,7 @@ IF OBJECT_ID('dbo.subject_resources','U') IS NOT NULL AND COL_LENGTH('dbo.subjec
   ALTER TABLE dbo.subject_resources ADD recovered_at DATETIME2 NULL;
 
 IF OBJECT_ID('dbo.subject_resources','U') IS NOT NULL AND COL_LENGTH('dbo.subject_resources','updated_at') IS NULL
-  ALTER TABLE dbo.subject_resources ADD updated_at DATETIME2 NOT NULL CONSTRAINT df_sr_updated_at DEFAULT SYSDATETIME();
+  ALTER TABLE dbo.subject_resources ADD updated_at DATETIME2 NOT NULL CONSTRAINT df_sr_updated_at DEFAULT DATEADD(hour, 8, GETUTCDATE());
 
 
 -- 3. users — education_level_group
@@ -638,7 +638,7 @@ BEGIN
     student_id INT NOT NULL,
     resource_id INT NOT NULL,
     subject_id INT NOT NULL,
-    read_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    read_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_module_reads_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_module_reads_resource FOREIGN KEY (resource_id) REFERENCES dbo.subject_resources(id) ON DELETE CASCADE,
     CONSTRAINT fk_module_reads_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE NO ACTION,
@@ -663,12 +663,12 @@ BEGIN
     percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
     level NVARCHAR(20) NOT NULL DEFAULT 'Beginner' CHECK (level IN ('Beginner','Intermediate','Advance')),
     answers_json NVARCHAR(MAX) NULL,
-    started_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    started_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     submitted_at DATETIME2 NULL,
     is_auto_submitted BIT NOT NULL DEFAULT 0,
     auto_submit_reason NVARCHAR(100) NULL,
     time_spent_seconds INT NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_attempts_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.assessments(id) ON DELETE CASCADE,
     CONSTRAINT fk_attempts_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION
   );
@@ -689,7 +689,7 @@ BEGIN
     is_correct BIT NOT NULL DEFAULT 0,
     points_earned DECIMAL(5,2) NOT NULL DEFAULT 0,
     ai_feedback NVARCHAR(MAX) NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_saa_attempt FOREIGN KEY (attempt_id) REFERENCES dbo.assessment_attempts(id) ON DELETE CASCADE,
     CONSTRAINT fk_saa_question FOREIGN KEY (question_id) REFERENCES dbo.assessment_questions(id) ON DELETE NO ACTION
   );
@@ -707,7 +707,7 @@ BEGIN
     event_type NVARCHAR(50) NOT NULL,
     event_detail NVARCHAR(MAX) NULL,
     violation_count INT NOT NULL DEFAULT 1,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_acl_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.assessments(id) ON DELETE CASCADE,
     CONSTRAINT fk_acl_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_acl_attempt FOREIGN KEY (attempt_id) REFERENCES dbo.assessment_attempts(id) ON DELETE NO ACTION
@@ -731,11 +731,11 @@ BEGIN
     round_number INT NOT NULL DEFAULT 1,
     status NVARCHAR(30) NOT NULL DEFAULT 'reading' CHECK (status IN ('reading','assessment_pending','assessment_taken','module_generated','completed')),
     result_level NVARCHAR(20) NULL,
-    started_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    started_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     completed_at DATETIME2 NULL,
     next_due_at DATETIME2 NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_slc_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_slc_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
     CONSTRAINT fk_slc_resource FOREIGN KEY (resource_id) REFERENCES dbo.subject_resources(id) ON DELETE NO ACTION,
@@ -765,7 +765,7 @@ BEGIN
     tokens_used INT NULL,
     success BIT NOT NULL DEFAULT 1,
     error_message NVARCHAR(MAX) NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_ailog_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_ailog_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE NO ACTION,
     CONSTRAINT fk_ailog_resource FOREIGN KEY (resource_id) REFERENCES dbo.subject_resources(id) ON DELETE NO ACTION,
@@ -788,8 +788,8 @@ BEGIN
     status NVARCHAR(30) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed','refunded')),
     notes NVARCHAR(MAX) NULL,
     paid_at DATETIME2 NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_op_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_op_billing FOREIGN KEY (billing_id) REFERENCES dbo.billing(id) ON DELETE NO ACTION
   );
@@ -897,11 +897,11 @@ BEGIN
     subject_id INT NOT NULL,
     resource_id INT NULL,
     status NVARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined')),
-    requested_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    requested_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     responded_at DATETIME2 NULL,
     tutor_message NVARCHAR(MAX) NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
-    updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
     CONSTRAINT fk_ar_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_ar_tutor FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
     CONSTRAINT fk_ar_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
