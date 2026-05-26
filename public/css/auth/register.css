@@ -1003,6 +1003,41 @@ body {
   margin-top: 24px;
   padding-top: 20px;
   border-top: 1px solid rgba(16,32,51,.08);
+  align-items: start;
+}
+
+.registration-account-block .account-field {
+  display: grid;
+  gap: 8px;
+}
+
+.account-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.account-input-wrap input {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1px solid #d8e3ec;
+  background: #fbfdff;
+  padding: 11px 14px;
+  font-size: 14px;
+  color: #203043;
+  outline: none;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+  box-sizing: border-box;
+}
+
+.account-input-wrap input:focus {
+  border-color: #20bfd2;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(32,191,210,.10);
+}
+
+.password-hint {
+  display: none !important;
 }
 
 .registration-account-block .account-field-email {
@@ -1322,7 +1357,7 @@ body {
 
 .upload-block-top { width: min(100%, 280px); }
 .upload-block-top .fake-upload-box { min-height: 160px; }
-.password-hint { margin: 4px 0 0; font-size: 12px; color: #5a7087; }
+.password-hint { display: none !important; }
 .registration-bottom-row { justify-content: flex-end; }
 .registration-bottom-row .next-gradient-btn { min-width: 180px; }
 @media (max-width: 720px) {

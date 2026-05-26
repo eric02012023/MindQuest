@@ -158,13 +158,15 @@
       <div class="registration-account-block">
         <div class="field-block account-field">
           <label>Email <span class="required-mark">*</span></label>
-          <input type="email" name="email" placeholder="example@gmail.com" value="<%= formData.email || '' %>" required />
+          <div class="account-input-wrap">
+            <input type="email" name="email" placeholder="example@gmail.com" value="<%= formData.email || '' %>" required />
+          </div>
         </div>
 
         <div class="field-block account-field">
           <label>Password <span class="required-mark">*</span></label>
           <div class="password-input-wrap create-password-wrap">
-            <input type="password" name="password" placeholder="Create Password" required data-password-strength-input data-password-toggle-target="pw-main" />
+            <input type="password" name="password" placeholder="Create Password" required data-password-toggle-target="pw-main" />
             <button type="button" class="password-eye-btn" data-password-toggle="pw-main" aria-label="Show password">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -172,7 +174,6 @@
               </svg>
             </button>
           </div>
-          <p class="password-hint">Minimum 8 characters with uppercase, lowercase, number, and special character.</p>
         </div>
 
         <div class="field-block account-field">
