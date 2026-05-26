@@ -38,12 +38,24 @@
     <div class="panel-card-head"><h3>Assessment History</h3></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Title</th><th>Score</th><th>Percentage</th><th>Level</th><th>Taken At</th></tr></thead>
+        <thead><tr><th>Title</th><th>Type</th><th>Module</th><th>Score</th><th>Percentage</th><th>Level</th><th>Taken At</th></tr></thead>
         <tbody>
-          <% if (!analytics.assessments.length) { %><tr><td colspan="5">No assessments yet.</td></tr><% } %>
+          <% if (!analytics.assessments.length) { %><tr><td colspan="7">No assessments yet.</td></tr><% } %>
           <% analytics.assessments.forEach((item) => { %>
             <tr>
               <td><%= item.title %></td>
+              <td>
+                <% if (item.assessment_type === 'pre') { %>
+                  <span class="badge badge-info">Pre</span>
+                <% } else if (item.assessment_type === 'post') { %>
+                  <span class="badge badge-success">Post</span>
+                <% } else if (item.assessment_origin === 'ai_generated') { %>
+                  <span class="badge badge-warning">AI Generated</span>
+                <% } else { %>
+                  <span class="badge badge-info"><%= item.assessment_type || 'Standard' %></span>
+                <% } %>
+              </td>
+              <td><%= item.source_module_title || '-' %></td>
               <td><%= item.score != null ? item.score + ' / ' + item.total_questions : '-' %></td>
               <td><%= item.percentage != null ? item.percentage + '%' : '-' %></td>
               <td><%= item.level || '-' %></td>

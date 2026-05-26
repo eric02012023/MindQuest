@@ -318,6 +318,79 @@ router.post('/subjects/:subjectId/resources/share', async (req, res, next) => {
   }
 });
 
+// Phase 5: Tutor publishes an AI assessment from a module
+router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', async (req, res, next) => {
+  try {
+    const { query: dbQuery } = require('../config/db');
+    const { generateAssessmentFromModule } = require('../services/aiService');
+    const { getSubjectById, logAiGeneration } = require('../lib/data');
+
+    const itemCount = Number(req.body.item_count) || 10;
+    if (itemCount < 5 || itemCount > 50) {
+      setFlash(req, 'error', 'Please enter a valid number of items (5–50).');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+
+    const moduleRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [req.params.resourceId]);
+    if (!moduleRows.length) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+    const mod = moduleRows[0];
+    let moduleContent = mod.content_text || mod.description || '';
+    if (!moduleContent && mod.source_resource_id) {
+      const src = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [mod.source_resource_id]);
+      if (src.length) moduleContent = src[0].content_text || src[0].description || '';
+    }
+
+    const subject = await getSubjectById(req.params.subjectId);
+    if (!subject) {
+      setFlash(req, 'error', 'Subject not found.');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+
+    const aiResult = await generateAssessmentFromModule({
+      moduleContent,
+      subject: subject.name,
+      levelGroup: mod.type_of_module || 'General',
+      questionCount: itemCount
+    });
+
+    const tutorStudents = await getTutorStudentsBySubject(req.session.user.id, req.params.subjectId);
+    if (!tutorStudents.length) {
+      setFlash(req, 'error', 'No students assigned to you in this subject.');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+
+    const title = `AI Assessment: ${mod.title || subject.name}`;
+    for (const student of tutorStudents) {
+      const insertResult = await dbQuery(
+        `INSERT INTO assessments (title, assessment_type, assigned_student_id, created_by, is_published, subject_id, assessment_origin, source_module_title, source_resource_id)
+         VALUES (?, 'post', ?, ?, 1, ?, 'ai_generated', ?, ?)`,
+        [title, student.student_id, req.session.user.id, req.params.subjectId, mod.title || null, mod.id]
+      );
+      const assessmentId = insertResult.insertId;
+      for (const q of aiResult.questions) {
+        await dbQuery(
+          `INSERT INTO assessment_questions (assessment_id, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, question_type, points)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [assessmentId, q.question_text, q.choice_a || '', q.choice_b || '', q.choice_c || '', q.choice_d || '', q.correct_answer, q.question_type || 'Multiple Choice', q.points || 1]
+        );
+      }
+    }
+
+    try {
+      await logAiGeneration({ student_id: tutorStudents[0].student_id, subject_id: req.params.subjectId, generation_type: 'tutor_publish_assessment', provider: aiResult.provider, model: aiResult.model, tokens_used: aiResult.tokensUsed });
+    } catch(e) { /* non-critical */ }
+
+    setFlash(req, 'success', `AI Assessment published to ${tutorStudents.length} student(s) with ${aiResult.questions.length} items!`);
+    res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not publish assessment.');
+    res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+  }
+});
+
 
 
 

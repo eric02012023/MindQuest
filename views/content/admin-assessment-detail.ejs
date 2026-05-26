@@ -19,6 +19,40 @@
         <article class="stat-card"><h3>Percentage</h3><strong><%= assessment.result.percentage %>%</strong></article>
         <article class="stat-card gradient"><h3>Result</h3><strong><%= assessment.result.level %></strong></article>
       </div>
+      <%
+        // Per-module score breakdown
+        let perModuleScores = null;
+        if (assessment.result.per_module_scores_json) {
+          try { perModuleScores = JSON.parse(assessment.result.per_module_scores_json); } catch(e) {}
+        }
+        // Fallback: compute from source_module_title if available
+        if (!perModuleScores && assessment.source_module_title && assessment.submittedAnswers) {
+          const moduleTitle = assessment.source_module_title;
+          perModuleScores = {};
+          perModuleScores[moduleTitle] = { score: assessment.result.score, total: assessment.result.total_questions, percentage: assessment.result.percentage };
+        }
+      %>
+      <% if (perModuleScores && Object.keys(perModuleScores).length) { %>
+        <div class="table-wrap" style="margin-top:16px;">
+          <table>
+            <thead><tr><th>Module Title</th><th>Score</th><th>Percentage</th></tr></thead>
+            <tbody>
+              <% Object.entries(perModuleScores).forEach(([title, data]) => { %>
+                <tr>
+                  <td><%= title %></td>
+                  <td><%= data.score %> / <%= data.total %></td>
+                  <td><%= data.percentage %>%</td>
+                </tr>
+              <% }) %>
+              <tr style="font-weight:700;background:var(--surface-muted);">
+                <td>Overall</td>
+                <td><%= assessment.result.score %> / <%= assessment.result.total_questions %></td>
+                <td><%= assessment.result.percentage %>%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
     <% } else { %>
       <p class="empty-state">Student has not taken this assessment yet.</p>
     <% } %>

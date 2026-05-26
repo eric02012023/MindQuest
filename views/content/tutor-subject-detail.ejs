@@ -31,16 +31,26 @@
             <p><%= resource.description || 'No description' %></p>
             <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
           </div>
-          <form method="post" action="/tutor/subjects/<%= subjectId %>/resources/share" class="stack-form" style="min-width:320px;">
-            <input type="hidden" name="resource_id" value="<%= resource.id %>" />
-            <label>Post to students</label>
-            <div class="list-stack" style="max-height:180px;overflow:auto;">
-              <% students.forEach((student) => { %>
-                <label class="checkbox-card"><input type="checkbox" name="assigned_student_ids" value="<%= student.student_id %>" /> <span><strong><%= student.full_name %></strong> - <%= student.year_level %><%= student.grade_level ? ' / ' + student.grade_level : '' %></span></label>
-              <% }) %>
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm">Post to Selected Students</button>
-          </form>
+          <div style="display:grid;gap:10px;min-width:320px;">
+            <form method="post" action="/tutor/subjects/<%= subjectId %>/resources/share" class="stack-form">
+              <input type="hidden" name="resource_id" value="<%= resource.id %>" />
+              <label>Post to students</label>
+              <div class="list-stack" style="max-height:180px;overflow:auto;">
+                <% students.forEach((student) => { %>
+                  <label class="checkbox-card"><input type="checkbox" name="assigned_student_ids" value="<%= student.student_id %>" /> <span><strong><%= student.full_name %></strong> - <%= student.year_level %><%= student.grade_level ? ' / ' + student.grade_level : '' %></span></label>
+                <% }) %>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">Post to Selected Students</button>
+            </form>
+            <% if (resource.module_origin === 'ai_generated') { %>
+              <form method="post" action="/tutor/subjects/<%= subjectId %>/modules/<%= resource.id %>/publish-assessment" class="stack-form" data-confirm-message="Generate and publish an AI assessment from this module? Students will be able to take it immediately." style="border-top:1px solid var(--border);padding-top:10px;">
+                <label>Number of items
+                  <input type="number" name="item_count" value="10" min="5" max="50" required style="width:100px;" />
+                </label>
+                <button type="submit" class="btn btn-primary btn-sm">Publish Assessment</button>
+              </form>
+            <% } %>
+          </div>
         </article>
       <% }) %>
     </div>
