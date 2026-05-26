@@ -201,4 +201,133 @@ router.post('/logout', ensureAuthenticated, (req, res, next) => {
   });
 });
 
+// ───────────────────────────────────────────
+// Forgot Password Flow
+// ───────────────────────────────────────────
+
+// GET /forgot-password — render the forgot-password form
+router.get('/forgot-password', ensureGuest, (req, res) => {
+  res.render('forgot-password', { pageTitle: 'Forgot Password' });
+});
+
+// POST /forgot-password — look up the email, generate OTP, send it
+router.post('/forgot-password', ensureGuest, async (req, res, next) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) {
+      req.session.flash = { type: 'error', message: 'Please enter your email address.' };
+      return res.redirect('/forgot-password');
+    }
+
+    const rows = await query(
+      `SELECT TOP 1 id, email, first_name FROM users WHERE LOWER(email) = ? AND is_archived = 0`,
+      [email]
+    );
+
+    const user = rows[0];
+    if (!user) {
+      // Show a generic message so attackers cannot enumerate accounts
+      req.session.flash = { type: 'success', message: 'If that email is registered, a 4-digit OTP was sent. Check your inbox.' };
+      return res.redirect('/forgot-password');
+    }
+
+    const otp = generateOtp();
+    await storeOtp({ userId: user.id, purpose: 'reset', code: otp });
+
+    try {
+      await sendOtpEmail({ to: user.email, otp, purpose: 'reset' });
+      req.session.flash = { type: 'success', message: 'A 4-digit OTP was sent to your email. Enter it below to reset your password.' };
+    } catch (emailErr) {
+      console.error('[OTP EMAIL ERROR]', emailErr.message);
+      console.log(`[OTP FALLBACK] Reset OTP for ${user.email}: ${otp}`);
+      req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+    }
+
+    req.session.pendingReset = { userId: user.id, email: user.email };
+    return res.redirect('/reset-password');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /reset-password — render the reset-password form (OTP + new password)
+router.get('/reset-password', ensureGuest, (req, res) => {
+  if (!req.session.pendingReset?.email) {
+    req.session.flash = { type: 'error', message: 'Please request a password reset first.' };
+    return res.redirect('/forgot-password');
+  }
+  return res.render('reset-password', {
+    pageTitle: 'Reset Password',
+    email: req.session.pendingReset.email
+  });
+});
+
+// POST /reset-password — verify OTP, hash new password, update DB
+router.post('/reset-password', ensureGuest, async (req, res, next) => {
+  try {
+    const pending = req.session.pendingReset;
+    if (!pending?.userId) {
+      req.session.flash = { type: 'error', message: 'Your reset session expired. Please start again.' };
+      return res.redirect('/forgot-password');
+    }
+
+    const otpCode = String(req.body.otp || '').trim();
+    const password = String(req.body.password || '');
+    const confirmPassword = String(req.body.confirm_password || '');
+
+    if (password.length < 6) {
+      req.session.flash = { type: 'error', message: 'Password must be at least 6 characters.' };
+      return res.redirect('/reset-password');
+    }
+
+    if (password !== confirmPassword) {
+      req.session.flash = { type: 'error', message: 'Passwords do not match.' };
+      return res.redirect('/reset-password');
+    }
+
+    const result = await verifyOtp({ userId: pending.userId, purpose: 'reset', code: otpCode });
+    if (!result.ok) {
+      req.session.flash = { type: 'error', message: result.reason };
+      return res.redirect('/reset-password');
+    }
+
+    // Hash the new password and update in the database
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await query('UPDATE users SET password_hash = ?, updated_at = SYSDATETIME() WHERE id = ?', [hashedPassword, pending.userId]);
+
+    delete req.session.pendingReset;
+    req.session.flash = { type: 'success', message: 'Your password has been reset successfully. You can now log in with your new password.' };
+    return res.redirect('/login');
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /forgot-password/resend-otp — resend the OTP for password reset
+router.post('/forgot-password/resend-otp', ensureGuest, async (req, res, next) => {
+  try {
+    const pending = req.session.pendingReset;
+    if (!pending?.userId || !pending?.email) {
+      req.session.flash = { type: 'error', message: 'Your reset session expired. Please start again.' };
+      return res.redirect('/forgot-password');
+    }
+
+    const otp = generateOtp();
+    await storeOtp({ userId: pending.userId, purpose: 'reset', code: otp });
+
+    try {
+      await sendOtpEmail({ to: pending.email, otp, purpose: 'reset' });
+      req.session.flash = { type: 'success', message: 'A new 4-digit OTP was sent to your email.' };
+    } catch (emailErr) {
+      console.error('[OTP EMAIL ERROR]', emailErr.message);
+      console.log(`[OTP FALLBACK] Reset OTP for ${pending.email}: ${otp}`);
+      req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+    }
+
+    return res.redirect('/reset-password');
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
