@@ -24,7 +24,9 @@ document.addEventListener('click', (event) => {
   }
 
   if (event.target.classList.contains('global-modal')) {
-    event.target.classList.remove('is-open');
+    if (!event.target.hasAttribute('data-no-backdrop-close')) {
+      event.target.classList.remove('is-open');
+    }
   }
 
   const scrollTarget = event.target.closest('[data-scroll-target]');

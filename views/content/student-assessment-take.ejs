@@ -72,20 +72,20 @@
         <button class="btn btn-primary" type="submit">Submit Assessment</button>
       </form>
 
-      <%# Tab-switch warning modal (custom, replaces browser popup) %>
-      <div class="global-modal" id="tab-switch-warning-modal">
+      <%# Tab-switch warning modal (custom, replaces browser popup) — inescapable %>
+      <div class="global-modal" id="tab-switch-warning-modal" data-no-backdrop-close>
         <div class="global-modal-card small">
           <h3>⚠️ Warning: Lilipat ka ng Tab</h3>
           <p style="line-height:1.6;">Kapag umalis ka sa assessment, automatic na mase-save ang current answers mo. Ang score mo ay ibabase lamang sa mga tamang sagot na nasagutan mo bago ka umalis.</p>
-          <div class="confirm-actions" style="margin-top:16px;">
-            <button type="button" class="btn btn-secondary" id="tabSwitchStay">Cancel — Stay on Assessment</button>
-            <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="background:#e74c3c;border-color:#e74c3c;">Accept — Auto Save</button>
+          <div class="confirm-actions" style="margin-top:16px;display:grid;gap:10px;">
+            <button type="button" class="btn btn-secondary" id="tabSwitchStay" style="width:100%;">Cancel — Stay on Assessment</button>
+            <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="width:100%;background:#e74c3c;border-color:#e74c3c;">Accept — Auto Save</button>
           </div>
         </div>
       </div>
 
       <%# Auto-save loading modal %>
-      <div class="global-modal" id="autosave-loading-modal">
+      <div class="global-modal" id="autosave-loading-modal" data-no-backdrop-close>
         <div class="global-modal-card small" style="text-align:center;">
           <h3>Saving your assessment...</h3>
           <div class="mqtc-dot-loader" style="display:flex;gap:8px;justify-content:center;margin:20px 0;">
@@ -102,24 +102,7 @@
         var assessmentId = '<%= assessment.id %>';
         var isModalOpen = false;
         var isSubmitting = false;
-
-        // Collect current form answers into proper payload
-        function collectAnswers() {
-          var form = document.getElementById('assessmentForm');
-          if (!form) return {};
-          var formData = new FormData(form);
-          var payload = {};
-          for (var pair of formData.entries()) {
-            var key = pair[0];
-            var value = pair[1];
-            if (key === 'question_ids[]') {
-              if (!payload['question_ids[]']) payload['question_ids[]'] = [];
-              // FormData handles arrays via repeated keys; we need to encode properly
-            }
-            payload[key] = value;
-          }
-          return payload;
-        }
+        var pendingNavigationUrl = null;
 
         function logViolationToServer(eventType) {
           try {
@@ -174,6 +157,7 @@
         if (stayBtn) {
           stayBtn.addEventListener('click', function() {
             isModalOpen = false;
+            pendingNavigationUrl = null;
             var modal = document.getElementById('tab-switch-warning-modal');
             if (modal) modal.classList.remove('is-open');
           });
@@ -201,31 +185,58 @@
         // Use custom beforeunload that we can disable
         window.onbeforeunload = function(e) {
           if (isSubmitting) return undefined; // allow navigation during submit
-          // Show custom modal instead for in-app navigation
           // The browser may still show its own popup for external navigation
           e.preventDefault();
           e.returnValue = '';
           return '';
         };
 
-        // Intercept internal link clicks to show custom modal instead of browser popup
+        // Intercept ALL link clicks (internal navigation) to show warning modal
         document.addEventListener('click', function(e) {
           if (isSubmitting) return;
           var link = e.target.closest('a[href]');
-          if (link && !link.target && link.getAttribute('href') && link.getAttribute('href').startsWith('/')) {
+          if (link && link.getAttribute('href') && link.getAttribute('href') !== '#') {
+            // Allow close-modal buttons inside the tab-switch modal itself
+            if (link.closest('#tab-switch-warning-modal') || link.closest('#autosave-loading-modal')) return;
             e.preventDefault();
+            e.stopPropagation();
+            pendingNavigationUrl = link.getAttribute('href');
             showTabSwitchModal();
           }
-        });
+        }, true);
 
-        // Intercept sidebar navigation
+        // Intercept sidebar navigation with capture phase
         document.querySelectorAll('.sidebar-nav a').forEach(function(link) {
           link.addEventListener('click', function(e) {
             if (isSubmitting) return;
             e.preventDefault();
+            e.stopPropagation();
+            pendingNavigationUrl = link.getAttribute('href');
             showTabSwitchModal();
-          });
+          }, true);
         });
+
+        // Block keyboard shortcuts (Ctrl+W, Ctrl+T, etc.) — show modal
+        document.addEventListener('keydown', function(e) {
+          if (isSubmitting) return;
+          // Block Escape key from closing the modal
+          if (e.key === 'Escape' && isModalOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }, true);
+
+        // Intercept browser back/forward navigation
+        window.addEventListener('popstate', function(e) {
+          if (isSubmitting) return;
+          // Push the state back to prevent navigation
+          history.pushState(null, '', window.location.href);
+          showTabSwitchModal();
+        });
+
+        // Push initial state so popstate works
+        history.pushState(null, '', window.location.href);
       })();
       </script>
     <% } %>

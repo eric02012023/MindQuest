@@ -4,14 +4,42 @@
 <%- include('partials/head', { pageTitle, pageCss: '/css/auth/register.css' }) %>
 <body class="auth-register-done-page plain-page registration-design-page">
   <div class="global-modal is-open always-open-done">
-    <div class="global-modal-card done-card-design">
-      <a href="/login" class="big-close-link inside-modal" aria-label="Go to login">×</a>
-      <div class="done-title">Done!</div>
-      <p class="done-subtitle">Wait for the response, thank you!</p>
-      <div class="registration-top-divider short"></div>
-      <p class="done-footer-text">Thank you for choosing MindQuest Tutorial Center</p>
+    <div class="global-modal-card done-card-design" style="text-align:center;padding:40px 32px 36px;max-width:460px;width:min(100%,460px);">
+      <a href="/login" class="big-close-link inside-modal" aria-label="Go to login">&times;</a>
+
+      <!-- Animated success checkmark -->
+      <div style="margin:0 auto 20px;width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#1ec8d4,#77d95b);display:grid;place-items:center;box-shadow:0 12px 32px rgba(30,200,212,.22);animation:donePopIn .5s cubic-bezier(.175,.885,.32,1.275) forwards;">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+
+      <h2 style="margin:0 0 6px;font-size:26px;font-weight:800;color:#13253d;font-family:'Inter',Arial,sans-serif;letter-spacing:-.02em;">Registration Submitted!</h2>
+
+      <div class="registration-top-divider short" style="margin:14px auto 16px;width:60px;"></div>
+
+      <p style="margin:0 0 8px;font-size:15px;color:#5f7084;line-height:1.6;font-family:'Inter',Arial,sans-serif;">
+        Please wait for admin approval before logging in.
+      </p>
+
+      <p style="margin:0 0 24px;font-size:13px;color:#8fa0b3;line-height:1.5;font-family:'Inter',Arial,sans-serif;">
+        Thank you for choosing <strong style="color:#0f7ea0;">MindQuest Tutorial Center</strong>
+      </p>
+
+      <a href="/login" class="next-gradient-btn" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;min-width:200px;">
+        Go to Login
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
     </div>
   </div>
+
+  <style>
+    @keyframes donePopIn {
+      0% { transform: scale(0); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+
   <script src="/js/main.js"></script>
 </body>
 </html>

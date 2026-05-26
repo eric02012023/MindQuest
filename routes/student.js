@@ -612,18 +612,9 @@ ${aiModule.content}
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
 router.post('/assessments/:id/reset', async (req, res, next) => {
-  try {
-    const assessment = await getAssessmentById(req.params.id, req.session.user.id);
-    if (!assessment || Number(assessment.assigned_student_id) !== Number(req.session.user.id)) {
-      setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/student/assessments');
-    }
-    await resetAssessmentResult(req.params.id, req.session.user.id);
-    setFlash(req, 'success', 'Previous result cleared. You can take the assessment again.');
-    res.redirect(`/student/assessments/${req.params.id}`);
-  } catch (error) {
-    next(error);
-  }
+  // Assessment retake is disabled — each assessment can only be taken once
+  setFlash(req, 'error', 'Assessment retake is not allowed. Each assessment can only be taken once.');
+  return res.redirect(`/student/assessments/${req.params.id}`);
 });
 
 
