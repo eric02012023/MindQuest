@@ -29,11 +29,71 @@
   </section>
   <% } %>
 
+  <%# Phase 4: Pre/Post Assessment Section %>
+  <% if (typeof preAssessmentRequired !== 'undefined' && preAssessmentRequired) { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Subject Assessments</h3></div>
+    <div class="list-stack">
+      <% if (preAssessment) { %>
+        <article class="list-card">
+          <div>
+            <strong><%= preAssessment.title %></strong>
+            <span class="badge badge-info" style="margin-left:8px;">Pre-Assessment</span>
+            <% if (preAssessment.source_module_title) { %><p><small>Module: <%= preAssessment.source_module_title %></small></p><% } %>
+            <p><small><%= preAssessment.question_count || 0 %> items</small></p>
+          </div>
+          <div class="row-actions">
+            <% if (preAssessment.taken_at) { %>
+              <div style="text-align:center;">
+                <span class="badge badge-success">✅ Completed</span><br>
+                <small><strong>Score:</strong> <%= preAssessment.score %>/<%= preAssessment.total_questions %> (<%= preAssessment.percentage %>%)</small><br>
+                <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= preAssessment.id %>" style="margin-top:6px;">View Result</a>
+              </div>
+            <% } else if (preAssessment.is_published) { %>
+              <a class="btn btn-primary btn-sm" href="/student/assessments/<%= preAssessment.id %>">Take Pre-Assessment</a>
+            <% } else { %>
+              <span class="badge badge-warning">Assessment not posted yet</span>
+            <% } %>
+          </div>
+        </article>
+      <% } %>
+      <% if (typeof postAssessment !== 'undefined' && postAssessment) { %>
+        <article class="list-card">
+          <div>
+            <strong><%= postAssessment.title %></strong>
+            <span class="badge badge-success" style="margin-left:8px;">Post-Assessment</span>
+            <% if (postAssessment.source_module_title) { %><p><small>Module: <%= postAssessment.source_module_title %></small></p><% } %>
+            <p><small><%= postAssessment.question_count || 0 %> items</small></p>
+          </div>
+          <div class="row-actions">
+            <% if (postAssessment.taken_at) { %>
+              <div style="text-align:center;">
+                <span class="badge badge-success">✅ Completed</span><br>
+                <small><strong>Score:</strong> <%= postAssessment.score %>/<%= postAssessment.total_questions %> (<%= postAssessment.percentage %>%)</small><br>
+                <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= postAssessment.id %>" style="margin-top:6px;">View Result</a>
+              </div>
+            <% } else if (postAssessment.is_published) { %>
+              <a class="btn btn-primary btn-sm" href="/student/assessments/<%= postAssessment.id %>">Take Post-Assessment</a>
+            <% } else { %>
+              <span class="badge badge-warning">Assessment not posted yet</span>
+            <% } %>
+          </div>
+        </article>
+      <% } %>
+    </div>
+  </section>
+  <% } %>
+
   <section class="panel-card">
     <div class="panel-card-head"><h3>Modules</h3></div>
+    <% if (typeof preAssessmentRequired !== 'undefined' && preAssessmentRequired && !preAssessmentTaken) { %>
+      <div style="padding:20px;text-align:center;opacity:0.7;">
+        <p class="empty-state" style="margin:0;">🔒 Complete the Pre-Assessment first to unlock modules.</p>
+      </div>
+    <% } else { %>
     <div class="list-stack">
       <% if (!(modules || []).length) { %>
-        <p class="empty-state">No modules available for your education level yet.</p>
+        <p class="empty-state">No posted module yet.</p>
       <% } %>
       <% (modules || []).forEach((resource) => {
         const reqsForModule = (typeof assessmentRequests !== 'undefined' ? assessmentRequests : []).filter((r) => Number(r.resource_id) === Number(resource.id) && Number(r.subject_id) === Number(assignment.subject_id));
@@ -56,7 +116,7 @@
               </details>
             <% } %>
             <% if (resource.file_path || resource.content_text) { %>
-              <a href="/download/module/<%= resource.id %>" target="_blank">Open file</a>
+              <a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a>
             <% } %>
           </div>
           <div class="row-actions" style="flex-direction:column;gap:6px;">
@@ -93,6 +153,7 @@
         </article>
       <% }) %>
     </div>
+    <% } %>
   </section>
 
   <% if (typeof resources !== 'undefined' && resources.length) { %>
@@ -105,7 +166,7 @@
             <strong><%= resource.title %></strong>
             <p><%= resource.description || 'No description' %></p>
             <% if (resource.file_path || resource.content_text) { %>
-              <a href="/download/module/<%= resource.id %>" target="_blank">Open file</a>
+              <a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a>
             <% } %>
           </div>
         </article>

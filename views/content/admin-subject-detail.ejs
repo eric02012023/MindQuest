@@ -30,7 +30,7 @@
   <section class="panel-card">
     <div class="panel-card-head"><h3>List of Modules</h3></div>
     <div class="list-stack">
-      <% if (!adminResources.length) { %><p class="empty-state">No modules uploaded yet.</p><% } %>
+      <% if (!adminResources.length) { %><p class="empty-state">No posted module yet.</p><% } %>
       <% adminResources.forEach((resource) => { %>
         <article class="list-card">
           <div>
@@ -40,7 +40,7 @@
             <p><%= resource.description || 'No description' %></p>
             <p><strong>Uploaded by:</strong> <%= resource.tutor_name %></p>
             <% if (resource.difficulty_level) { %><p><strong>Difficulty:</strong> <%= resource.difficulty_level %></p><% } %>
-            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open file</a><% } %>
+            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
             <% if (resource.is_archived) { %><span class="badge badge-danger" style="margin-left:8px;">Archived</span><% } %>
           </div>
           <% if (currentUser.role === 'admin') { %>
@@ -60,6 +60,92 @@
       <% }) %>
     </div>
   </section>
+
+  <% if (currentUser.role === 'admin') { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Create Assessment</h3></div>
+    <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/assessments/create" class="stack-form">
+      <div class="form-grid two-col">
+        <label>Assessment Type
+          <select name="assessment_type" required>
+            <option value="pre">Pre-Assessment</option>
+            <option value="post">Post-Assessment</option>
+          </select>
+        </label>
+        <label>Source Module (Title)
+          <select name="source_module_title">
+            <option value="">— Select Module —</option>
+            <% adminResources.forEach((r) => { %>
+              <option value="<%= r.title %>"><%= r.title %></option>
+            <% }) %>
+          </select>
+        </label>
+      </div>
+      <div class="question-stack" data-question-stack>
+        <div class="assessment-question-card" data-question-card>
+          <div class="question-card-head"><strong>Question 1</strong></div>
+          <label>Question Type
+            <select name="question_type" onchange="toggleQF(this)">
+              <option value="Multiple Choice">Multiple Choice</option>
+              <option value="True or False">True or False</option>
+              <option value="Fill in the Blank">Fill in the Blank</option>
+              <option value="Essay">Essay</option>
+            </select>
+          </label>
+          <label>Question<textarea name="question_text" rows="2" required></textarea></label>
+          <div class="mc-fields">
+            <label>Choice A<input type="text" name="choice_a" /></label>
+            <label>Choice B<input type="text" name="choice_b" /></label>
+            <label>Choice C<input type="text" name="choice_c" /></label>
+            <label>Choice D<input type="text" name="choice_d" /></label>
+          </div>
+          <label>Correct Answer<input type="text" name="correct_answer" placeholder="e.g. A, True, or the answer text" required /></label>
+          <label class="essay-field" style="display:none;">Expected Answer (for AI grading)<textarea name="essay_rubric_keywords" rows="2" placeholder="Write the expected answer idea..."></textarea></label>
+        </div>
+      </div>
+      <div class="row-actions assessment-action-row">
+        <button type="button" class="btn btn-secondary" onclick="addAQ()">Add Question</button>
+        <button type="submit" class="btn btn-primary">Create Assessment</button>
+      </div>
+    </form>
+  </section>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Subject Assessments</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Title</th><th>Type</th><th>Module</th><th>Student</th><th>Score</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          <% if (!(subjectAssessments || []).length) { %><tr><td colspan="7">No assessments created yet.</td></tr><% } %>
+          <% (subjectAssessments || []).forEach((sa) => { %>
+            <tr>
+              <td><%= sa.title %></td>
+              <td><span class="badge badge-<%= sa.assessment_type === 'pre' ? 'info' : 'success' %>"><%= sa.assessment_type === 'pre' ? 'Pre' : 'Post' %></span></td>
+              <td><%= sa.source_module_title || '-' %></td>
+              <td><%= sa.first_name ? (sa.first_name + ' ' + (sa.last_name || '')) : 'All Students' %></td>
+              <td><%= sa.score != null ? sa.score + '/' + sa.result_total : '-' %></td>
+              <td><% if (sa.taken_at) { %><span class="badge badge-success">Taken</span><% } else if (sa.is_published) { %><span class="badge badge-info">Published</span><% } else { %><span class="badge badge-warning">Not Published</span><% } %></td>
+              <td>
+                <div class="row-actions wrap-row-actions">
+                  <a class="btn btn-secondary btn-sm" href="<%= basePath %>/assessments/<%= sa.id %>">View</a>
+                  <% if (!sa.is_published && currentUser.role === 'admin') { %>
+                    <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/assessments/<%= sa.id %>/publish" data-confirm-message="Publish this assessment? Students will be able to take it."><button class="btn btn-primary btn-sm" type="submit">Publish</button></form>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <script>
+  var qc=1;
+  function toggleQF(s){var c=s.closest('.assessment-question-card');if(!c)return;var t=s.value;var m=c.querySelector('.mc-fields');var e=c.querySelector('.essay-field');if(m)m.style.display=t==='Multiple Choice'?'':'none';if(e)e.style.display=t==='Essay'?'':'none';}
+  function addAQ(){qc++;var sk=document.querySelector('[data-question-stack]');if(!sk)return;var d=document.createElement('div');d.className='assessment-question-card';d.setAttribute('data-question-card','');d.innerHTML='<div class="question-card-head"><strong>Question '+qc+'</strong><button type="button" class="btn btn-secondary btn-sm" onclick="this.closest(\'.assessment-question-card\').remove()" style="margin-left:auto;">Remove</button></div><label>Question Type<select name="question_type" onchange="toggleQF(this)"><option value="Multiple Choice">Multiple Choice</option><option value="True or False">True or False</option><option value="Fill in the Blank">Fill in the Blank</option><option value="Essay">Essay</option></select></label><label>Question<textarea name="question_text" rows="2" required></textarea></label><div class="mc-fields"><label>Choice A<input type="text" name="choice_a" /></label><label>Choice B<input type="text" name="choice_b" /></label><label>Choice C<input type="text" name="choice_c" /></label><label>Choice D<input type="text" name="choice_d" /></label></div><label>Correct Answer<input type="text" name="correct_answer" placeholder="e.g. A, True, or the answer text" required /></label><label class="essay-field" style="display:none;">Expected Answer<textarea name="essay_rubric_keywords" rows="2"></textarea></label>';sk.appendChild(d);}
+  </script>
 
   <section class="panel-card">
     <div class="panel-card-head"><h3>Enrolled Students</h3></div>

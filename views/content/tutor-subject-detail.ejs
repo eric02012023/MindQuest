@@ -21,7 +21,7 @@
   <section class="panel-card">
     <div class="panel-card-head"><h3>Admin Modules</h3></div>
     <div class="list-stack">
-      <% if (!adminResources.length) { %><p class="empty-state">No admin modules uploaded yet.</p><% } %>
+      <% if (!adminResources.length) { %><p class="empty-state">No posted module yet.</p><% } %>
       <% adminResources.forEach((resource) => { %>
         <article class="list-card">
           <div>
@@ -29,7 +29,7 @@
             <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
             <% if (resource.module_origin === 'ai_generated') { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
             <p><%= resource.description || 'No description' %></p>
-            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open file</a><% } %>
+            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
           </div>
           <form method="post" action="/tutor/subjects/<%= subjectId %>/resources/share" class="stack-form" style="min-width:320px;">
             <input type="hidden" name="resource_id" value="<%= resource.id %>" />
@@ -56,7 +56,7 @@
             <strong><%= resource.title %></strong>
             <p><%= resource.description || 'No description' %></p>
             <p><strong>Assigned Student:</strong> <%= resource.student_name || '-' %></p>
-            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open file</a><% } %>
+            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
           </div>
           <form method="post" action="/tutor/resources/<%= resource.id %>/delete">
             <button class="btn btn-secondary btn-sm" type="submit">Remove</button>

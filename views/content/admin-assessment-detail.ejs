@@ -3,7 +3,15 @@
   <div class="panel-card">
     <div class="panel-card-head">
       <h2><%= assessment.title %></h2>
-      <p><%= assessment.assessment_type %> assessment for <%= assessment.first_name %> <%= assessment.last_name %></p>
+      <p>
+        <% if (assessment.assessment_type === 'pre' || assessment.assessment_type === 'post') { %>
+          <span class="badge badge-<%= assessment.assessment_type === 'pre' ? 'info' : 'success' %>"><%= assessment.assessment_type === 'pre' ? 'Pre' : 'Post' %>-Assessment</span>
+        <% } else { %>
+          <%= assessment.assessment_type %> assessment
+        <% } %>
+        for <%= assessment.first_name %> <%= assessment.last_name %>
+        <% if (assessment.source_module_title) { %> — Module: <strong><%= assessment.source_module_title %></strong><% } %>
+      </p>
     </div>
     <% if (assessment.result) { %>
       <div class="stat-grid assessment-result-grid">
@@ -22,13 +30,19 @@
       <% assessment.questions.forEach((question, index) => { %>
         <article class="question-view-card">
           <h4><%= index + 1 %>. <%= question.question_text %></h4>
-          <ul>
-            <li>A. <%= question.choice_a %></li>
-            <li>B. <%= question.choice_b %></li>
-            <li>C. <%= question.choice_c %></li>
-            <li>D. <%= question.choice_d %></li>
-          </ul>
+          <small class="badge badge-info"><%= question.question_type || 'Multiple Choice' %></small>
+          <% if (question.question_type === 'Multiple Choice') { %>
+            <ul>
+              <li>A. <%= question.choice_a %></li>
+              <li>B. <%= question.choice_b %></li>
+              <% if (question.choice_c) { %><li>C. <%= question.choice_c %></li><% } %>
+              <% if (question.choice_d) { %><li>D. <%= question.choice_d %></li><% } %>
+            </ul>
+          <% } %>
           <p><strong>Correct Answer:</strong> <%= question.correct_answer %></p>
+          <% if (question.question_type === 'Essay' && question.essay_rubric_keywords) { %>
+            <p><strong>Expected Answer:</strong> <%= question.essay_rubric_keywords %></p>
+          <% } %>
         </article>
       <% }) %>
     </div>

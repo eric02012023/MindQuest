@@ -376,5 +376,65 @@ module.exports = {
   generateAssessmentFromModule,
   generateModuleFromAssessmentResult,
   gradeEssayAnswer,
+  gradeEssayAnswers,
   getAiStatus
 };
+
+/**
+ * Batch-grade essay answers. Returns array of { isCorrect, score, feedback } for each essay.
+ * Uses AI if configured, otherwise falls back to semantic text comparison.
+ *
+ * @param {Array<{questionText: string, studentAnswer: string, expectedAnswer: string}>} essays
+ * @returns {Promise<Array<{isCorrect: boolean, score: number, feedback: string}>>}
+ */
+async function gradeEssayAnswers(essays = []) {
+  if (!essays.length) return [];
+
+  // Try AI batch grading via a single API call
+  if (isOpenAIConfigured()) {
+    try {
+      const systemPrompt = `You are an expert teacher grading student essay answers. For each question, determine if the student's answer conveys the same idea as the expected answer. It does NOT need to be an exact match — if the core idea is similar or correct, mark it as correct.
+
+Return a JSON object with a "results" array. Each result must have:
+- "isCorrect": boolean (true if the student's answer conveys the correct idea)
+- "score": number 0-1 (confidence)
+- "feedback": brief feedback (1 sentence)`;
+
+      const questionsText = essays.map((e, i) =>
+        `Q${i + 1}: ${e.questionText}\nExpected: ${e.expectedAnswer}\nStudent: ${e.studentAnswer || '(no answer)'}`
+      ).join('\n\n');
+
+      const { result } = await callOpenAI(systemPrompt, `Grade these ${essays.length} essay answers:\n\n${questionsText}`);
+      const results = Array.isArray(result.results) ? result.results : [];
+
+      return essays.map((_, i) => ({
+        isCorrect: !!(results[i] && results[i].isCorrect),
+        score: results[i]?.score || 0,
+        feedback: results[i]?.feedback || ''
+      }));
+    } catch (err) {
+      console.error('[aiService] Batch essay grading failed, falling back to text comparison:', err.message);
+    }
+  }
+
+  // Fallback: simple semantic comparison (case-insensitive, keyword overlap)
+  return essays.map(e => {
+    const student = String(e.studentAnswer || '').trim().toLowerCase();
+    const expected = String(e.expectedAnswer || '').trim().toLowerCase();
+    if (!student || student.length < 3) return { isCorrect: false, score: 0, feedback: 'No meaningful answer provided.' };
+    if (!expected) return { isCorrect: true, score: 1, feedback: 'No expected answer to compare.' };
+
+    // Check if student answer contains the key words from expected answer
+    const expectedWords = expected.split(/\s+/).filter(w => w.length > 3);
+    const matchingWords = expectedWords.filter(w => student.includes(w));
+    const matchRatio = expectedWords.length > 0 ? matchingWords.length / expectedWords.length : 0;
+
+    // 50% keyword overlap = correct
+    const isCorrect = matchRatio >= 0.5;
+    return {
+      isCorrect,
+      score: Number(matchRatio.toFixed(2)),
+      feedback: isCorrect ? 'Your answer captures the key ideas.' : 'Your answer does not sufficiently match the expected answer.'
+    };
+  });
+}

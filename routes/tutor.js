@@ -252,7 +252,7 @@ router.get('/subjects', async (req, res, next) => {
   try {
     const [subjects, scheduleOverview] = await Promise.all([getTutorAssignedSubjects(req.session.user.id), getTutorScheduleOverview(req.session.user.id)]);
     const shell = await buildShell(req, {
-      pageTitle: 'My Subject',
+      pageTitle: 'My Subjects',
       section: 'subjects',
       contentView: '../content/tutor-subjects',
       subjects,

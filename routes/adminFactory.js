@@ -83,7 +83,10 @@ const {
   getAdminSubjectResourcesWithArchived,
   getStudentAnalytics,
   // Phase 3: Analytics imports
-  getAllStudentsForAnalytics
+  getAllStudentsForAnalytics,
+  // Phase 4: Admin pre/post assessments
+  createSubjectAssessment,
+  getSubjectAssessments
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { query } = require('../config/db');
@@ -1140,7 +1143,8 @@ function createAdminRouter(role) {
         archivedTutors,
         assignmentStudents: students,
         assignableStudentsByTutorId,
-        adminResources
+        adminResources,
+        subjectAssessments: await getSubjectAssessments(req.params.id)
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -1195,6 +1199,69 @@ function createAdminRouter(role) {
       res.redirect(`${basePath}/subjects/${req.params.id}`);
     } catch (error) {
       next(error);
+    }
+  });
+
+  // Route: Create pre/post assessment for a subject
+  router.post('/subjects/:id/assessments/create', async (req, res, next) => {
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can create assessments.');
+        return res.redirect(`${basePath}/subjects/${req.params.id}`);
+      }
+
+      const questions = [];
+      const questionTexts = Array.isArray(req.body.question_text) ? req.body.question_text : [req.body.question_text];
+      const questionTypes = Array.isArray(req.body.question_type) ? req.body.question_type : [req.body.question_type];
+      const choiceA = Array.isArray(req.body.choice_a) ? req.body.choice_a : [req.body.choice_a];
+      const choiceB = Array.isArray(req.body.choice_b) ? req.body.choice_b : [req.body.choice_b];
+      const choiceC = Array.isArray(req.body.choice_c) ? req.body.choice_c : [req.body.choice_c];
+      const choiceD = Array.isArray(req.body.choice_d) ? req.body.choice_d : [req.body.choice_d];
+      const correctAnswers = Array.isArray(req.body.correct_answer) ? req.body.correct_answer : [req.body.correct_answer];
+      const essayKeywords = Array.isArray(req.body.essay_rubric_keywords) ? req.body.essay_rubric_keywords : [req.body.essay_rubric_keywords];
+
+      for (let i = 0; i < questionTexts.length; i++) {
+        if (!questionTexts[i]) continue;
+        questions.push({
+          question_text: questionTexts[i],
+          question_type: questionTypes[i] || 'Multiple Choice',
+          choice_a: choiceA[i] || '',
+          choice_b: choiceB[i] || '',
+          choice_c: choiceC[i] || '',
+          choice_d: choiceD[i] || '',
+          correct_answer: correctAnswers[i] || '',
+          essay_rubric_keywords: essayKeywords[i] || null,
+          points: 1
+        });
+      }
+
+      await createSubjectAssessment(req.params.id, req.session.user.id, {
+        assessment_type: req.body.assessment_type || 'pre',
+        source_module_title: req.body.source_module_title || null,
+        questions
+      });
+
+      setFlash(req, 'success', `${req.body.assessment_type === 'post' ? 'Post' : 'Pre'}-Assessment created successfully.`);
+      res.redirect(`${basePath}/subjects/${req.params.id}`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not create assessment.');
+      res.redirect(`${basePath}/subjects/${req.params.id}`);
+    }
+  });
+
+  // Route: Publish a post assessment
+  router.post('/subjects/:id/assessments/:assessmentId/publish', async (req, res, next) => {
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can publish assessments.');
+        return res.redirect(`${basePath}/subjects/${req.params.id}`);
+      }
+      await query('UPDATE assessments SET is_published = 1 WHERE id = ? AND subject_id = ?', [req.params.assessmentId, req.params.id]);
+      setFlash(req, 'success', 'Post-Assessment published! Students can now take it.');
+      res.redirect(`${basePath}/subjects/${req.params.id}`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not publish assessment.');
+      res.redirect(`${basePath}/subjects/${req.params.id}`);
     }
   });
 

@@ -55,7 +55,9 @@ const {
   getAssessmentRequestsForStudent,
   getAcceptedAssessmentRequest,
   createPayMongoPayment,
-  getAdminSubjectResources
+  getAdminSubjectResources,
+  // Phase 4: Admin pre/post assessments
+  getSubjectAssessmentForStudent
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { generateAssessmentFromModule } = require('../services/aiService');
@@ -193,6 +195,13 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       [req.session.user.id, req.params.subjectId]
     );
 
+    // Phase 4: Get pre/post assessments for this student in this subject
+    const subjectAssessments = await getSubjectAssessmentForStudent(req.session.user.id, req.params.subjectId);
+    const preAssessment = subjectAssessments.find(a => a.assessment_type === 'pre');
+    const postAssessment = subjectAssessments.find(a => a.assessment_type === 'post');
+    const preAssessmentRequired = !!preAssessment;
+    const preAssessmentTaken = !!(preAssessment && preAssessment.taken_at);
+
     const shell = await buildShell(req, {
       pageTitle: assignment.subject_name,
       section: 'subjects',
@@ -204,7 +213,12 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       tutor,
       attendanceLogs,
       assessmentRequests,
-      completedAssessments
+      completedAssessments,
+      subjectAssessments,
+      preAssessment,
+      postAssessment,
+      preAssessmentRequired,
+      preAssessmentTaken
     });
     res.render('shells/dashboard', shell);
   } catch (error) {

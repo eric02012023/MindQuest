@@ -23,15 +23,37 @@
             </thead>
             <tbody>
               <% assessment.questions.forEach((question, index) => { %>
-                <% const selected = String(submittedAnswers[String(question.id)] || submittedAnswers[question.id] || '').trim().toUpperCase(); %>
-                <% const selectedDisplay = selected || '-'; %>
-                <% const correct = String(question.correct_answer || '').trim().toUpperCase(); %>
-                <% const isCorrect = !!selected && selected === correct; %>
+                <% const selected = String(submittedAnswers[String(question.id)] || submittedAnswers[question.id] || '').trim(); %>
+                <% const qType = String(question.question_type || 'Multiple Choice').trim(); %>
+                <% const correct = String(question.correct_answer || '').trim(); %>
+                <%
+                  let isCorrect = false;
+                  let studentDisplay = selected || 'No answer';
+                  let correctDisplay = correct;
+
+                  if (qType === 'Multiple Choice') {
+                    const selectedUpper = selected.toUpperCase();
+                    const correctUpper = correct.toUpperCase();
+                    isCorrect = !!(selectedUpper && correctUpper && selectedUpper === correctUpper);
+                    studentDisplay = selectedUpper ? (selectedUpper + '. ' + (question['choice_' + selectedUpper.toLowerCase()] || '')) : 'No answer';
+                    correctDisplay = correctUpper + '. ' + (question['choice_' + correctUpper.toLowerCase()] || '');
+                  } else if (qType === 'True or False') {
+                    isCorrect = selected.toLowerCase() === correct.toLowerCase();
+                  } else if (qType === 'Fill in the Blank') {
+                    isCorrect = !!(selected && correct && selected.toLowerCase() === correct.toLowerCase());
+                  } else if (qType === 'Essay') {
+                    // Essay is AI graded - show as scored based on result
+                    isCorrect = false; // can't easily determine from review table
+                    correctDisplay = '(AI graded)';
+                  } else {
+                    isCorrect = selected.toLowerCase() === correct.toLowerCase();
+                  }
+                %>
                 <tr>
                   <td><%= index + 1 %></td>
-                  <td><%= question.question_text %></td>
-                  <td><strong><%= selectedDisplay %></strong><br /><span class="empty-state"><%= selected ? (question['choice_' + selected.toLowerCase()] || '') : 'No answer' %></span></td>
-                  <td><strong><%= correct %></strong><br /><span class="empty-state"><%= question['choice_' + correct.toLowerCase()] || '' %></span></td>
+                  <td><%= question.question_text %><br><small class="badge badge-info"><%= qType %></small></td>
+                  <td><%= studentDisplay %></td>
+                  <td><%= correctDisplay %></td>
                   <td><span class="badge <%= isCorrect ? 'badge-success' : 'badge-danger' %>"><%= isCorrect ? 'Correct' : 'Wrong' %></span></td>
                 </tr>
               <% }) %>
@@ -57,9 +79,12 @@
               <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
               <label><input type="radio" name="answer_<%= question.id %>" value="true" /> True</label>
               <label><input type="radio" name="answer_<%= question.id %>" value="false" /> False</label>
-            <% } else if (question.question_type === 'Identification') { %>
+            <% } else if (question.question_type === 'Identification' || question.question_type === 'Fill in the Blank') { %>
               <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label>Your Answer<input type="text" name="answer_<%= question.id %>" /></label>
+              <label>Your Answer<input type="text" name="answer_<%= question.id %>" placeholder="Type your answer here" /></label>
+            <% } else if (question.question_type === 'Essay') { %>
+              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+              <label>Your Answer<textarea name="answer_<%= question.id %>" rows="4" placeholder="Write your answer here..."></textarea></label>
             <% } else { %>
               <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
               <label><input type="radio" name="answer_<%= question.id %>" value="A" /> A. <%= question.choice_a %></label>
