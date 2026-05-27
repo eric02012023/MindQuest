@@ -63,12 +63,19 @@
       </section>
     <% } else { %>
       <%# Anti-cheat warning banner %>
-      <div class="panel-card" style="background:linear-gradient(135deg,#ff6b35 0%,#f7c948 100%);color:#fff;padding:16px;margin-bottom:16px;border-radius:8px;">
+      <div class="panel-card" id="assessment-container" style="display:none;background:linear-gradient(135deg,#ff6b35 0%,#f7c948 100%);color:#fff;padding:16px;margin-bottom:16px;border-radius:8px;">
         <h4 style="margin:0 0 8px;">⚠️ Assessment Anti-Cheat Policy</h4>
-        <p style="margin:0;font-size:0.9rem;">Do <strong>NOT</strong> switch tabs, minimize the browser, or navigate away during this assessment. Violations are tracked and may result in <strong>automatic submission</strong> of your current answers.</p>
+        <p style="margin:0;font-size:0.9rem;">Do <strong>NOT</strong> switch tabs, minimize the browser, or navigate away during this assessment. You have a maximum of 3 warnings. On the 3rd tab switch, your test will be <strong>automatically submitted</strong>.</p>
       </div>
 
-      <form id="assessmentForm" method="post" action="/student/assessments/<%= assessment.id %>/submit" class="stack-form">
+      <%# Start Overlay %>
+      <div id="start-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.95);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;">
+        <h2 style="color:var(--primary);">Ready to start?</h2>
+        <p style="max-width:500px;margin-bottom:24px;line-height:1.6;">This assessment requires Fullscreen mode. You are only allowed <strong>3 tab switches/minimizations</strong> before your test is automatically submitted.</p>
+        <button id="btnStartAssessment" class="btn btn-primary" style="font-size:1.1rem;padding:12px 30px;">Enter Fullscreen & Start</button>
+      </div>
+
+      <form id="assessmentForm" method="post" action="/student/assessments/<%= assessment.id %>/submit" class="stack-form" style="display:none;">
         <input type="hidden" name="time_started" value="<%= Date.now() %>" />
         <input type="hidden" name="auto_submitted" id="autoSubmittedFlag" value="0" />
         <input type="hidden" name="auto_submit_reason" id="autoSubmitReason" value="" />
@@ -100,8 +107,8 @@
       <%# Tab-switch warning modal (custom, replaces browser popup) — inescapable %>
       <div class="global-modal" id="tab-switch-warning-modal" data-no-backdrop-close>
         <div class="global-modal-card small">
-          <h3>⚠️ Warning: You will switch Tabs</h3>
-          <p style="line-height:1.6;">When you leave the assessment, your current answers will be automatically saved. Your score will be based only on the correct answers you answered before you left.</p>
+          <h3 id="modalWarningTitle">⚠️ Warning: You will switch Tabs</h3>
+          <p id="modalWarningText" style="line-height:1.6;">When you leave the assessment, your current answers will be automatically saved. Your score will be based only on the correct answers you answered before you left.</p>
           <div class="confirm-actions" style="margin-top:16px;display:grid;gap:10px;">
             <button type="button" class="btn btn-secondary" id="tabSwitchStay" style="width:100%;">Cancel — Stay on Assessment</button>
             <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="width:100%;background:#e74c3c;border-color:#e74c3c;">Accept — Auto Save</button>
@@ -128,6 +135,33 @@
         var isModalOpen = false;
         var isSubmitting = false;
         var pendingNavigationUrl = null;
+        var hasStarted = false;
+        var tabSwitchCount = 0;
+
+        // Start Assessment Button
+        var startBtn = document.getElementById('btnStartAssessment');
+        if (startBtn) {
+          startBtn.addEventListener('click', function() {
+            var docEl = document.documentElement;
+            var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            if (requestFullScreen) {
+              requestFullScreen.call(docEl).then(function() {
+                document.getElementById('start-overlay').style.display = 'none';
+                document.getElementById('assessment-container').style.display = 'block';
+                document.getElementById('assessmentForm').style.display = 'flex';
+                hasStarted = true;
+              }).catch(function(err) {
+                alert('Error attempting to enable fullscreen mode: ' + err.message);
+              });
+            } else {
+              // Fallback if fullscreen API not supported
+              document.getElementById('start-overlay').style.display = 'none';
+              document.getElementById('assessment-container').style.display = 'block';
+              document.getElementById('assessmentForm').style.display = 'flex';
+              hasStarted = true;
+            }
+          });
+        }
 
         function logViolationToServer(eventType) {
           try {
@@ -170,12 +204,43 @@
           }
         }
 
-        function showTabSwitchModal() {
-          if (isModalOpen || isSubmitting) return;
+        function showTabSwitchModal(isRealTabSwitch) {
+          if (isModalOpen || isSubmitting || !hasStarted) return;
+          
+          if (isRealTabSwitch) {
+            tabSwitchCount++;
+            if (tabSwitchCount >= 3) {
+              doAutoSave();
+              return;
+            }
+          }
+
           isModalOpen = true;
           var modal = document.getElementById('tab-switch-warning-modal');
+          var stayBtn = document.getElementById('tabSwitchStay');
+          var acceptBtn = document.getElementById('tabSwitchAccept');
+          var title = document.getElementById('modalWarningTitle');
+          var text = document.getElementById('modalWarningText');
+
+          if (isRealTabSwitch) {
+            if (title) title.innerText = '⚠️ Tab Switch Detected (Warning ' + tabSwitchCount + ' of 3)';
+            if (text) text.innerHTML = 'You have switched tabs or exited fullscreen.<br><br><b>On the 3rd time, your test will be automatically submitted without warning.</b>';
+            if (stayBtn) stayBtn.innerText = 'Back to Assessment';
+          } else {
+            if (title) title.innerText = '⚠️ Warning: You are leaving the assessment';
+            if (text) text.innerHTML = 'When you leave the assessment, your current answers will be automatically saved. Your score will be based only on the correct answers you answered before you left.';
+            if (stayBtn) stayBtn.innerText = 'Cancel — Stay on Assessment';
+          }
+
           if (modal) modal.classList.add('is-open');
         }
+
+        // Listen for fullscreen exit
+        document.addEventListener('fullscreenchange', function() {
+          if (!document.fullscreenElement && hasStarted && !isSubmitting) {
+            showTabSwitchModal(true);
+          }
+        });
 
         // Stay on assessment button
         var stayBtn = document.getElementById('tabSwitchStay');
@@ -185,6 +250,13 @@
             pendingNavigationUrl = null;
             var modal = document.getElementById('tab-switch-warning-modal');
             if (modal) modal.classList.remove('is-open');
+            
+            // Re-request fullscreen
+            var docEl = document.documentElement;
+            var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            if (requestFullScreen && !document.fullscreenElement) {
+              requestFullScreen.call(docEl).catch(function(e){});
+            }
           });
         }
 
@@ -199,17 +271,17 @@
         // Listen for tab switch / visibility change
         document.addEventListener('visibilitychange', function() {
           if (document.hidden && !isSubmitting) {
-            showTabSwitchModal();
+            showTabSwitchModal(true);
           }
         });
 
         window.addEventListener('blur', function() {
-          if (!isSubmitting) showTabSwitchModal();
+          if (!isSubmitting) showTabSwitchModal(true);
         });
 
         // Use custom beforeunload that we can disable
         window.onbeforeunload = function(e) {
-          if (isSubmitting) return undefined; // allow navigation during submit
+          if (isSubmitting || !hasStarted) return undefined; // allow navigation during submit
           // The browser may still show its own popup for external navigation
           e.preventDefault();
           e.returnValue = '';
@@ -218,7 +290,7 @@
 
         // Intercept ALL link clicks (internal navigation) to show warning modal
         document.addEventListener('click', function(e) {
-          if (isSubmitting) return;
+          if (isSubmitting || !hasStarted) return;
           var link = e.target.closest('a[href]');
           if (link && link.getAttribute('href') && link.getAttribute('href') !== '#') {
             // Allow close-modal buttons inside the tab-switch modal itself
@@ -226,24 +298,24 @@
             e.preventDefault();
             e.stopPropagation();
             pendingNavigationUrl = link.getAttribute('href');
-            showTabSwitchModal();
+            showTabSwitchModal(false);
           }
         }, true);
 
         // Intercept sidebar navigation with capture phase
         document.querySelectorAll('.sidebar-nav a').forEach(function(link) {
           link.addEventListener('click', function(e) {
-            if (isSubmitting) return;
+            if (isSubmitting || !hasStarted) return;
             e.preventDefault();
             e.stopPropagation();
             pendingNavigationUrl = link.getAttribute('href');
-            showTabSwitchModal();
+            showTabSwitchModal(false);
           }, true);
         });
 
         // Block keyboard shortcuts (Ctrl+W, Ctrl+T, etc.) — show modal
         document.addEventListener('keydown', function(e) {
-          if (isSubmitting) return;
+          if (isSubmitting || !hasStarted) return;
           // Block Escape key from closing the modal
           if (e.key === 'Escape' && isModalOpen) {
             e.preventDefault();
