@@ -170,10 +170,24 @@
           }
         }
 
-        function showTabSwitchModal() {
+        function showTabSwitchModal(isRealTabSwitch) {
           if (isModalOpen || isSubmitting) return;
           isModalOpen = true;
           var modal = document.getElementById('tab-switch-warning-modal');
+          var stayBtn = document.getElementById('tabSwitchStay');
+          var title = modal ? modal.querySelector('h3') : null;
+          
+          if (isRealTabSwitch) {
+            if (stayBtn) stayBtn.style.display = 'none';
+            if (title) title.innerText = '⚠️ Tab Switch Detected';
+            // Hide the form so they can't peek at questions
+            var form = document.getElementById('assessmentForm');
+            if (form) form.style.visibility = 'hidden';
+          } else {
+            if (stayBtn) stayBtn.style.display = 'block';
+            if (title) title.innerText = '⚠️ Warning: You are leaving the assessment';
+          }
+          
           if (modal) modal.classList.add('is-open');
         }
 
@@ -199,12 +213,12 @@
         // Listen for tab switch / visibility change
         document.addEventListener('visibilitychange', function() {
           if (document.hidden && !isSubmitting) {
-            showTabSwitchModal();
+            showTabSwitchModal(true);
           }
         });
 
         window.addEventListener('blur', function() {
-          if (!isSubmitting) showTabSwitchModal();
+          if (!isSubmitting) showTabSwitchModal(true);
         });
 
         // Use custom beforeunload that we can disable
@@ -226,7 +240,7 @@
             e.preventDefault();
             e.stopPropagation();
             pendingNavigationUrl = link.getAttribute('href');
-            showTabSwitchModal();
+            showTabSwitchModal(false);
           }
         }, true);
 
@@ -237,7 +251,7 @@
             e.preventDefault();
             e.stopPropagation();
             pendingNavigationUrl = link.getAttribute('href');
-            showTabSwitchModal();
+            showTabSwitchModal(false);
           }, true);
         });
 
