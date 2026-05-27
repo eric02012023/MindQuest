@@ -7,7 +7,7 @@
       <% const seenIds = new Set(); %>
       <% students.forEach((student) => { %>
         <% if (!seenIds.has(Number(student.student_id))) { seenIds.add(Number(student.student_id)); %>
-          <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>">
+          <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>/analytics">
             <div>
               <strong><%= student.full_name %></strong>
               <span><%= student.year_level %> <%= student.grade_level %></span>
