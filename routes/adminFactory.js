@@ -1213,6 +1213,7 @@ function createAdminRouter(role) {
       const questions = [];
       const questionTexts = Array.isArray(req.body.question_text) ? req.body.question_text : [req.body.question_text];
       const questionTypes = Array.isArray(req.body.question_type) ? req.body.question_type : [req.body.question_type];
+      const sourceModuleTitles = Array.isArray(req.body.q_source_module_title) ? req.body.q_source_module_title : [req.body.q_source_module_title];
       const choiceA = Array.isArray(req.body.choice_a) ? req.body.choice_a : [req.body.choice_a];
       const choiceB = Array.isArray(req.body.choice_b) ? req.body.choice_b : [req.body.choice_b];
       const choiceC = Array.isArray(req.body.choice_c) ? req.body.choice_c : [req.body.choice_c];
@@ -1225,6 +1226,7 @@ function createAdminRouter(role) {
         questions.push({
           question_text: questionTexts[i],
           question_type: questionTypes[i] || 'Multiple Choice',
+          source_module_title: sourceModuleTitles[i] || null,
           choice_a: choiceA[i] || '',
           choice_b: choiceB[i] || '',
           choice_c: choiceC[i] || '',
@@ -1237,7 +1239,7 @@ function createAdminRouter(role) {
 
       await createSubjectAssessment(req.params.id, req.session.user.id, {
         assessment_type: req.body.assessment_type || 'pre',
-        source_module_title: req.body.source_module_title || null,
+        source_module_title: null, // Module is now assigned per-question
         questions
       });
 
@@ -1261,6 +1263,35 @@ function createAdminRouter(role) {
       res.redirect(`${basePath}/subjects/${req.params.id}`);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not publish assessment.');
+      res.redirect(`${basePath}/subjects/${req.params.id}`);
+    }
+  });
+
+  // Route: Copy a pre-assessment as a post-assessment
+  router.post('/subjects/:id/assessments/:assessmentId/copy-as-post', async (req, res, next) => {
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can copy assessments.');
+        return res.redirect(`${basePath}/subjects/${req.params.id}`);
+      }
+
+      const { getAssessmentById, createSubjectAssessment } = require('../../lib/data');
+      const original = await getAssessmentById(req.params.assessmentId);
+      if (!original || original.assessment_type !== 'pre' || Number(original.subject_id) !== Number(req.params.id)) {
+        setFlash(req, 'error', 'Invalid assessment to copy.');
+        return res.redirect(`${basePath}/subjects/${req.params.id}`);
+      }
+
+      await createSubjectAssessment(req.params.id, req.session.user.id, {
+        assessment_type: 'post',
+        source_module_title: original.source_module_title,
+        questions: original.questions
+      });
+
+      setFlash(req, 'success', 'Pre-Assessment copied and published as Post-Assessment successfully!');
+      res.redirect(`${basePath}/subjects/${req.params.id}`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not copy assessment.');
       res.redirect(`${basePath}/subjects/${req.params.id}`);
     }
   });
