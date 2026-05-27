@@ -62,19 +62,25 @@
     <div class="panel-card-head"><h3>Questions</h3></div>
     <div class="list-stack">
       <% assessment.questions.forEach((question, index) => { %>
+        <% const qType = String(question.question_type || 'Multiple Choice').trim(); %>
         <article class="question-view-card">
           <h4><%= index + 1 %>. <%= question.question_text %></h4>
-          <small class="badge badge-info"><%= question.question_type || 'Multiple Choice' %></small>
-          <% if (question.question_type === 'Multiple Choice') { %>
+          <small class="badge badge-info"><%= qType %></small>
+          <% if (qType === 'Multiple Choice') { %>
             <ul>
               <li>A. <%= question.choice_a %></li>
               <li>B. <%= question.choice_b %></li>
               <% if (question.choice_c) { %><li>C. <%= question.choice_c %></li><% } %>
               <% if (question.choice_d) { %><li>D. <%= question.choice_d %></li><% } %>
             </ul>
+          <% } else if (qType === 'True or False') { %>
+            <ul>
+              <li>True</li>
+              <li>False</li>
+            </ul>
           <% } %>
           <p><strong>Correct Answer:</strong> <%= question.correct_answer %></p>
-          <% if (question.question_type === 'Essay' && question.essay_rubric_keywords) { %>
+          <% if (qType === 'Essay' && question.essay_rubric_keywords) { %>
             <p><strong>Expected Answer:</strong> <%= question.essay_rubric_keywords %></p>
           <% } %>
         </article>

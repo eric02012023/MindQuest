@@ -84,6 +84,53 @@
   </section>
   <% } %>
 
+  <%# Consolidated Assessment Section (after pre-assessment is taken) %>
+  <% if (typeof preAssessmentTaken !== 'undefined' && preAssessmentTaken) { %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Module Assessment</h3></div>
+    <div class="list-stack">
+      <%
+        // Find the consolidated assessment for all admin modules (tutor-generated)
+        const consolidatedAssessment = (typeof completedAssessments !== 'undefined' ? completedAssessments : []).find((a) => a.title && a.title.includes('AI Assessment'));
+      %>
+      <% if (consolidatedAssessment) { %>
+        <article class="list-card">
+          <div>
+            <strong><%= consolidatedAssessment.title %></strong>
+            <span class="badge badge-success" style="margin-left:8px;">✅ Completed</span>
+            <p><small><strong>Score:</strong> <%= consolidatedAssessment.score %>/<%= consolidatedAssessment.total_questions %> (<%= consolidatedAssessment.percentage %>%)</small></p>
+            <p><small><strong>Level:</strong> <%= consolidatedAssessment.level %></small></p>
+          </div>
+          <div class="row-actions">
+            <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= consolidatedAssessment.id %>">View Result</a>
+          </div>
+        </article>
+      <% } else if (typeof pendingConsolidatedAssessment !== 'undefined' && pendingConsolidatedAssessment) { %>
+        <article class="list-card">
+          <div>
+            <strong><%= pendingConsolidatedAssessment.title %></strong>
+            <span class="badge badge-info" style="margin-left:8px;">Ready</span>
+            <p><small><%= pendingConsolidatedAssessment.question_count || 0 %> items</small></p>
+          </div>
+          <div class="row-actions">
+            <a class="btn btn-primary btn-sm" href="/student/assessments/<%= pendingConsolidatedAssessment.id %>">Take Assessment</a>
+          </div>
+        </article>
+      <% } else { %>
+        <article class="list-card">
+          <div>
+            <strong>Module Assessment</strong>
+            <p><small>Your tutor will generate an assessment based on all the modules in this subject.</small></p>
+          </div>
+          <div class="row-actions">
+            <span class="badge badge-warning" style="font-size:12px;">No assessment yet</span>
+          </div>
+        </article>
+      <% } %>
+    </div>
+  </section>
+  <% } %>
+
   <section class="panel-card">
     <div class="panel-card-head"><h3>Modules</h3></div>
     <% if (typeof preAssessmentRequired !== 'undefined' && preAssessmentRequired && !preAssessmentTaken) { %>
@@ -95,13 +142,7 @@
       <% if (!(modules || []).length) { %>
         <p class="empty-state">No posted module yet.</p>
       <% } %>
-      <% (modules || []).forEach((resource) => {
-        const reqsForModule = (typeof assessmentRequests !== 'undefined' ? assessmentRequests : []).filter((r) => Number(r.resource_id) === Number(resource.id) && Number(r.subject_id) === Number(assignment.subject_id));
-        const pendingReq = reqsForModule.find((r) => r.status === 'pending');
-        const acceptedReq = reqsForModule.find((r) => r.status === 'accepted');
-        const declinedReq = reqsForModule.find((r) => r.status === 'declined' && !acceptedReq && !pendingReq);
-        const completedForModule = (typeof completedAssessments !== 'undefined' ? completedAssessments : []).find((a) => Number(a.source_resource_id) === Number(resource.id));
-      %>
+      <% (modules || []).forEach((resource) => { %>
         <article class="list-card">
           <div>
             <strong><%= resource.title %></strong>
@@ -117,37 +158,6 @@
             <% } %>
             <% if (resource.file_path || resource.content_text) { %>
               <a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a>
-            <% } %>
-          </div>
-          <div class="row-actions" style="flex-direction:column;gap:6px;">
-            <% if (completedForModule) { %>
-              <div style="text-align:center;padding:8px;background:var(--bg-2);border-radius:8px;">
-                <span class="badge badge-success" style="font-size:12px;margin-bottom:4px;">✅ Assessment Completed</span><br>
-                <small><strong>Score:</strong> <%= completedForModule.score %>/<%= completedForModule.total_questions %> (<%= completedForModule.percentage %>%)</small><br>
-                <small><strong>Level:</strong> <%= completedForModule.level %></small><br>
-                <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= completedForModule.id %>" style="margin-top:6px;">View Result</a>
-              </div>
-            <% } else if (!resource.is_read) { %>
-              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/read">
-                <button class="btn btn-primary btn-sm" type="submit">Mark as Read</button>
-              </form>
-            <% } else if (acceptedReq) { %>
-              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/generate-assessment" data-confirm-message="Generate an AI assessment based on this module? The number of items was set by your tutor.">
-                <button class="btn btn-primary btn-sm" type="submit">Take Assessment</button>
-              </form>
-              <span class="badge badge-success" style="font-size:11px;">✓ Tutor Approved</span>
-            <% } else if (pendingReq) { %>
-              <span class="badge badge-warning" style="font-size:11px;">⏳ Awaiting Tutor Approval</span>
-            <% } else if (declinedReq) { %>
-              <span class="badge badge-danger" style="font-size:11px;margin-bottom:4px;">✗ Declined</span>
-              <% if (declinedReq.tutor_message) { %><small style="color:var(--text-soft);"><%= declinedReq.tutor_message %></small><% } %>
-              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/request-assessment" data-confirm-message="Request tutor approval to take this assessment?">
-                <button class="btn btn-secondary btn-sm" type="submit">Request Again</button>
-              </form>
-            <% } else { %>
-              <form method="post" action="/student/subjects/<%= assignment.subject_id %>/modules/<%= resource.id %>/request-assessment" data-confirm-message="Request tutor approval to take this assessment?">
-                <button class="btn btn-primary btn-sm" type="submit">Request Assessment</button>
-              </form>
             <% } %>
           </div>
         </article>

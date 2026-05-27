@@ -202,6 +202,24 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     const preAssessmentRequired = !!preAssessment;
     const preAssessmentTaken = !!(preAssessment && preAssessment.taken_at);
 
+    // Find a pending consolidated assessment (published but not taken yet by the student)
+    let pendingConsolidatedAssessment = null;
+    if (preAssessmentTaken) {
+      const pendingRows = await dbQuery(
+        `SELECT a.id, a.title, a.assessment_type,
+                (SELECT COUNT(*) FROM assessment_questions aq WHERE aq.assessment_id = a.id) AS question_count
+         FROM assessments a
+         LEFT JOIN assessment_results ar ON ar.assessment_id = a.id AND ar.student_id = a.assigned_student_id
+         WHERE a.assigned_student_id = ? AND a.subject_id = ? AND a.is_published = 1
+           AND a.assessment_origin = 'ai_generated' AND ar.id IS NULL
+         ORDER BY a.created_at DESC`,
+        [req.session.user.id, req.params.subjectId]
+      );
+      if (pendingRows.length) {
+        pendingConsolidatedAssessment = pendingRows[0];
+      }
+    }
+
     const shell = await buildShell(req, {
       pageTitle: assignment.subject_name,
       section: 'subjects',
@@ -218,7 +236,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       preAssessment,
       postAssessment,
       preAssessmentRequired,
-      preAssessmentTaken
+      preAssessmentTaken,
+      pendingConsolidatedAssessment
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -432,62 +451,32 @@ router.post('/assessments/:id/submit', async (req, res, next) => {
 
     const result = await submitAssessment(req.params.id, req.session.user.id, req.body || {});
 
-    // Auto-generate a follow-up module based on the result
+    // Auto-generate a single follow-up module based on ALL admin modules
     try {
       const { generateModuleFromAssessmentResult } = require('../services/aiService');
       const { query: dbQuery } = require('../config/db');
 
-      // Get the source module content — trace through source_resource_id chain
-      const sourceResourceId = assessment.source_resource_id;
-      let originalContent = '';
-      let originalTitle = '';
       let subjectName = assessment.subject_name || '';
       const subjectId = assessment.subject_id;
 
-      if (sourceResourceId) {
-        const moduleRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceResourceId]);
-        if (moduleRows.length) {
-          originalContent = moduleRows[0].content_text || '';
-          originalTitle = moduleRows[0].title || '';
-          // If no content_text, trace through source_resource_id (tutor_share or AI modules)
-          if (!originalContent && moduleRows[0].source_resource_id) {
-            const sourceRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [moduleRows[0].source_resource_id]);
-            if (sourceRows.length) {
-              originalContent = sourceRows[0].content_text || sourceRows[0].description || '';
-              originalTitle = sourceRows[0].title || originalTitle;
-              // Trace one more level if needed
-              if (!originalContent && sourceRows[0].source_resource_id) {
-                const deepRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceRows[0].source_resource_id]);
-                if (deepRows.length) {
-                  originalContent = deepRows[0].content_text || deepRows[0].description || '';
-                  originalTitle = deepRows[0].title || originalTitle;
-                }
-              }
-            }
-          }
-          // Use description as fallback
-          if (!originalContent) {
-            originalContent = moduleRows[0].description || '';
-          }
-        }
+      // Gather ALL admin modules for this subject
+      const adminModules = await getAdminSubjectResources(subjectId);
+      let originalContent = '';
+      let originalTitle = '';
+
+      if (adminModules.length) {
+        // Combine all admin module content into one
+        originalContent = adminModules.map((mod) => {
+          const content = mod.content_text || mod.description || '';
+          return `## Module: ${mod.title}\n${content}`;
+        }).join('\n\n---\n\n');
+        originalTitle = adminModules.map((m) => m.title).join(', ');
       }
 
-      // Fallback: get any admin module with content for this subject
-      if (!originalContent && subjectId) {
-        const adminModules = await getAdminSubjectResources(subjectId);
-        for (const am of adminModules) {
-          const content = am.content_text || am.description || '';
-          if (content && content.length >= 10) {
-            originalContent = content;
-            originalTitle = am.title || originalTitle;
-            break;
-          }
-        }
-      }
-
-      // Last resort: use title + description
+      // Fallback: use assessment title
       if (!originalContent || originalContent.length < 10) {
-        originalContent = `${originalTitle}\n${assessment.title || ''}`.trim();
+        originalContent = `${assessment.title || ''}`.trim();
+        originalTitle = assessment.title || 'Subject Review';
       }
 
       if (!subjectName && subjectId) {
@@ -500,8 +489,8 @@ router.post('/assessments/:id/submit', async (req, res, next) => {
 
       // Get or create learning cycle
       let activeCycle = await getActiveLearningCycle(req.session.user.id, subjectId);
-      if (!activeCycle && sourceResourceId) {
-        const cycleId = await createLearningCycle(req.session.user.id, subjectId, Number(sourceResourceId), 1);
+      if (!activeCycle) {
+        const cycleId = await createLearningCycle(req.session.user.id, subjectId, adminModules[0]?.id || 0, 1);
         activeCycle = { id: cycleId, round_number: 1 };
       }
 
@@ -554,7 +543,7 @@ router.post('/assessments/:id/submit', async (req, res, next) => {
   <div class="header">
     <h1>${aiModule.title}</h1>
     <p><strong>Subject:</strong> ${subjectName}</p>
-    <p><strong>Student:</strong> ${studentName}</p>
+    <p><strong>Created by:</strong> System</p>
     <p><strong>Assessment Score:</strong> ${result.score}/${result.total_questions} (${result.percentage.toFixed(1)}%)</p>
     <span class="badge">${result.level} Level Review</span>
     <span class="badge">Round ${round}</span>
@@ -582,7 +571,7 @@ ${aiModule.content}
         type_of_module: `${result.level} Level Review`,
         content_text: aiModule.content,
         module_origin: 'ai_generated',
-        source_resource_id: sourceResourceId || null,
+        source_resource_id: null,
         assigned_student_id: req.session.user.id
       });
 
@@ -591,7 +580,7 @@ ${aiModule.content}
         generation_type: 'module_from_result',
         student_id: req.session.user.id,
         subject_id: subjectId,
-        resource_id: sourceResourceId || null,
+        resource_id: null,
         input_summary: `Assessment result: ${result.level} (${result.percentage.toFixed(1)}%)`,
         output_summary: `Generated ${result.level}-level module: ${aiModule.title}`,
         ai_provider: aiModule.provider,

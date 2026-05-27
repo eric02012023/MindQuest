@@ -38,7 +38,7 @@
             <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
             <% if (resource.module_origin === 'ai_generated') { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
             <p><%= resource.description || 'No description' %></p>
-            <p><strong>Uploaded by:</strong> <%= resource.tutor_name %></p>
+            <p><strong>Posted by:</strong> <% if (resource.module_origin === 'ai_generated') { %>System<% } else if (resource.created_by_role === 'admin_template') { %>Admin<% } else { %><%= resource.tutor_name %><% } %></p>
             <% if (resource.difficulty_level) { %><p><strong>Difficulty:</strong> <%= resource.difficulty_level %></p><% } %>
             <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
             <% if (resource.is_archived) { %><span class="badge badge-danger" style="margin-left:8px;">Archived</span><% } %>

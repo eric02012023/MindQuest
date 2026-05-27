@@ -270,11 +270,10 @@ router.get('/subjects', async (req, res, next) => {
 
 router.get('/subjects/:subjectId', async (req, res, next) => {
   try {
-    const [students, subjectOptions, adminResources, sharedResources] = await Promise.all([
+    const [students, subjectOptions, adminResources] = await Promise.all([
       getTutorStudentsBySubject(req.session.user.id, req.params.subjectId),
       getTutorAssignedSubjects(req.session.user.id),
-      getAdminSubjectResources(req.params.subjectId),
-      getTutorSharedResources(req.params.subjectId, req.session.user.id)
+      getAdminSubjectResources(req.params.subjectId)
     ]);
     const currentSubject = subjectOptions.find((item) => Number(item.subject_id) === Number(req.params.subjectId));
     if (!currentSubject) {
@@ -287,8 +286,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       contentView: '../content/tutor-subject-detail',
       subjectId: req.params.subjectId,
       students,
-      adminResources,
-      sharedResources
+      adminResources
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -391,6 +389,85 @@ router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', async
   }
 });
 
+// Phase 8: Consolidated assessment from ALL admin modules
+router.post('/subjects/:subjectId/post-consolidated-assessment', async (req, res, next) => {
+  try {
+    const { query: dbQuery } = require('../config/db');
+    const { generateAssessmentFromModule } = require('../services/aiService');
+    const { getSubjectById, logAiGeneration } = require('../lib/data');
+
+    const itemCount = Number(req.body.item_count) || 10;
+    if (itemCount < 5 || itemCount > 50) {
+      setFlash(req, 'error', 'Please enter a valid number of items (5–50).');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+
+    // Get ALL admin modules for this subject
+    const adminModules = await getAdminSubjectResources(req.params.subjectId);
+    if (!adminModules.length) {
+      setFlash(req, 'error', 'No admin modules found in this subject.');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+
+    // Combine all module content into one
+    const combinedContent = adminModules.map((mod) => {
+      const content = mod.content_text || mod.description || '';
+      return `## Module: ${mod.title}\n${content}`;
+    }).join('\n\n---\n\n');
+
+    const subject = await getSubjectById(req.params.subjectId);
+    if (!subject) {
+      setFlash(req, 'error', 'Subject not found.');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+
+    // Determine level group from first module
+    const levelGroup = adminModules[0].type_of_module || 'General';
+
+    // Generate a single AI assessment from the combined content
+    const aiResult = await generateAssessmentFromModule({
+      moduleContent: combinedContent,
+      subject: subject.name,
+      levelGroup,
+      questionCount: itemCount
+    });
+
+    const tutorStudents = await getTutorStudentsBySubject(req.session.user.id, req.params.subjectId);
+    if (!tutorStudents.length) {
+      setFlash(req, 'error', 'No students assigned to you in this subject.');
+      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+    }
+
+    const title = `AI Assessment: ${subject.name}`;
+    const moduleTitles = adminModules.map((m) => m.title).join(', ');
+
+    for (const student of tutorStudents) {
+      const insertResult = await dbQuery(
+        `INSERT INTO assessments (title, assessment_type, assigned_student_id, created_by, is_published, subject_id, assessment_origin, source_module_title)
+         VALUES (?, 'post', ?, ?, 1, ?, 'ai_generated', ?)`,
+        [title, student.student_id, req.session.user.id, req.params.subjectId, moduleTitles]
+      );
+      const assessmentId = insertResult.insertId;
+      for (const q of aiResult.questions) {
+        await dbQuery(
+          `INSERT INTO assessment_questions (assessment_id, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, question_type, points)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [assessmentId, q.question_text, q.choice_a || '', q.choice_b || '', q.choice_c || '', q.choice_d || '', q.correct_answer, q.question_type || 'Multiple Choice', q.points || 1]
+        );
+      }
+    }
+
+    try {
+      await logAiGeneration({ student_id: tutorStudents[0].student_id, subject_id: req.params.subjectId, generation_type: 'tutor_consolidated_assessment', provider: aiResult.provider, model: aiResult.model, tokens_used: aiResult.tokensUsed });
+    } catch(e) { /* non-critical */ }
+
+    setFlash(req, 'success', `AI Assessment published to ${tutorStudents.length} student(s) with ${aiResult.questions.length} items based on ${adminModules.length} admin module(s)!`);
+    res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not publish assessment.');
+    res.redirect(`/tutor/subjects/${req.params.subjectId}`);
+  }
+});
 
 
 

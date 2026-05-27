@@ -31,48 +31,23 @@
             <p><%= resource.description || 'No description' %></p>
             <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
           </div>
-          <div style="display:grid;gap:10px;min-width:320px;">
-            <form method="post" action="/tutor/subjects/<%= subjectId %>/resources/share" class="stack-form">
-              <input type="hidden" name="resource_id" value="<%= resource.id %>" />
-              <label>Post to students</label>
-              <div class="list-stack" style="max-height:180px;overflow:auto;">
-                <% students.forEach((student) => { %>
-                  <label class="checkbox-card"><input type="checkbox" name="assigned_student_ids" value="<%= student.student_id %>" /> <span><strong><%= student.full_name %></strong> - <%= student.year_level %><%= student.grade_level ? ' / ' + student.grade_level : '' %></span></label>
-                <% }) %>
-              </div>
-              <button type="submit" class="btn btn-primary btn-sm">Post to Selected Students</button>
-            </form>
-            <% if (resource.module_origin === 'ai_generated') { %>
-              <form method="post" action="/tutor/subjects/<%= subjectId %>/modules/<%= resource.id %>/publish-assessment" class="stack-form" data-confirm-message="Generate and publish an AI assessment from this module? Students will be able to take it immediately." style="border-top:1px solid var(--border);padding-top:10px;">
-                <label>Number of items
-                  <input type="number" name="item_count" value="10" min="5" max="50" required style="width:100px;" />
-                </label>
-                <button type="submit" class="btn btn-primary btn-sm">Publish Assessment</button>
-              </form>
-            <% } %>
-          </div>
         </article>
       <% }) %>
     </div>
+    <% if (adminResources.length && students.length) { %>
+      <div style="border-top:1px solid var(--border);padding:16px;margin-top:8px;">
+        <form method="post" action="/tutor/subjects/<%= subjectId %>/post-consolidated-assessment" class="stack-form" data-confirm-message="Generate and publish an AI assessment based on ALL admin modules for your students? They will be able to take it immediately.">
+          <h4 style="margin:0 0 8px;">Post Assessment to Students</h4>
+          <p style="margin:0 0 12px;color:var(--text-soft);font-size:13px;">This will generate a single AI assessment based on all the admin modules above.</p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:8px;">Number of items
+              <input type="number" name="item_count" value="10" min="5" max="50" required style="width:80px;" />
+            </label>
+            <button type="submit" class="btn btn-primary btn-sm">Post Assessment to Students</button>
+          </div>
+        </form>
+      </div>
+    <% } %>
   </section>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Modules Posted to Students</h3></div>
-    <div class="list-stack">
-      <% if (!sharedResources.length) { %><p class="empty-state">You have not posted any admin modules to students yet.</p><% } %>
-      <% sharedResources.forEach((resource) => { %>
-        <article class="list-card">
-          <div>
-            <strong><%= resource.title %></strong>
-            <p><%= resource.description || 'No description' %></p>
-            <p><strong>Assigned Student:</strong> <%= resource.student_name || '-' %></p>
-            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
-          </div>
-          <form method="post" action="/tutor/resources/<%= resource.id %>/delete">
-            <button class="btn btn-secondary btn-sm" type="submit">Remove</button>
-          </form>
-        </article>
-      <% }) %>
-    </div>
-  </section>
 </section>
