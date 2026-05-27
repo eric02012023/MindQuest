@@ -62,70 +62,90 @@
         </div>
       </section>
     <% } else { %>
-      <%# Anti-cheat warning banner %>
-      <div class="panel-card" id="assessment-container" style="display:none;background:linear-gradient(135deg,#ff6b35 0%,#f7c948 100%);color:#fff;padding:16px;margin-bottom:16px;border-radius:8px;">
-        <h4 style="margin:0 0 8px;">⚠️ Assessment Anti-Cheat Policy</h4>
-        <p style="margin:0;font-size:0.9rem;">Do <strong>NOT</strong> switch tabs, minimize the browser, or navigate away during this assessment. You have a maximum of 3 warnings. On the 3rd tab switch, your test will be <strong>automatically submitted</strong>.</p>
-      </div>
-
       <%# Start Overlay %>
       <div id="start-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.95);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;">
-        <h2 style="color:var(--primary);">Ready to start?</h2>
-        <p style="max-width:500px;margin-bottom:24px;line-height:1.6;">This assessment requires Fullscreen mode. You are only allowed <strong>3 tab switches/minimizations</strong> before your test is automatically submitted.</p>
-        <button id="btnStartAssessment" class="btn btn-primary" style="font-size:1.1rem;padding:12px 30px;">Enter Fullscreen & Start</button>
+        <h2 style="color:var(--primary);font-size:2rem;margin-bottom:16px;">Ready to start?</h2>
+        <p style="max-width:500px;margin-bottom:32px;line-height:1.6;font-size:1.1rem;color:var(--text-soft);">This assessment requires Fullscreen mode. You are only allowed <strong>3 tab switches or window minimizations</strong> before your test is automatically submitted.</p>
+        <button id="btnStartAssessment" class="btn btn-primary" style="font-size:1.2rem;padding:16px 40px;border-radius:8px;box-shadow:0 4px 15px rgba(26,86,50,0.3);">Enter Fullscreen & Start Assessment</button>
       </div>
 
-      <form id="assessmentForm" method="post" action="/student/assessments/<%= assessment.id %>/submit" class="stack-form" style="display:none;">
-        <input type="hidden" name="time_started" value="<%= Date.now() %>" />
-        <input type="hidden" name="auto_submitted" id="autoSubmittedFlag" value="0" />
-        <input type="hidden" name="auto_submit_reason" id="autoSubmitReason" value="" />
-        <% assessment.questions.forEach((question, index) => { %>
-          <article class="question-view-card">
-            <h4><%= index + 1 %>. <%= question.question_text %></h4>
-            <% if (question.question_type === 'True or False') { %>
-              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label><input type="radio" name="answer_<%= question.id %>" value="true" /> True</label>
-              <label><input type="radio" name="answer_<%= question.id %>" value="false" /> False</label>
-            <% } else if (question.question_type === 'Identification' || question.question_type === 'Fill in the Blank') { %>
-              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label>Your Answer<input type="text" name="answer_<%= question.id %>" placeholder="Type your answer here" /></label>
-            <% } else if (question.question_type === 'Essay') { %>
-              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label>Your Answer<textarea name="answer_<%= question.id %>" rows="4" placeholder="Write your answer here..."></textarea></label>
-            <% } else { %>
-              <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
-              <label><input type="radio" name="answer_<%= question.id %>" value="A" /> A. <%= question.choice_a %></label>
-              <label><input type="radio" name="answer_<%= question.id %>" value="B" /> B. <%= question.choice_b %></label>
-              <% if (question.choice_c) { %><label><input type="radio" name="answer_<%= question.id %>" value="C" /> C. <%= question.choice_c %></label><% } %>
-              <% if (question.choice_d) { %><label><input type="radio" name="answer_<%= question.id %>" value="D" /> D. <%= question.choice_d %></label><% } %>
-            <% } %>
-          </article>
-        <% }) %>
-        <button class="btn btn-primary" type="submit">Submit Assessment</button>
-      </form>
+      <%# Fullscreen Wrapper - This is what goes fullscreen, hiding sidebar/header %>
+      <div id="assessment-fullscreen-wrapper" style="display:none; background:#f4f7f6; width:100%; height:100%; overflow-y:auto; position:relative;">
+        <div style="max-width:800px; margin:0 auto; padding:40px 20px;">
+          
+          <%# Anti-cheat warning banner %>
+          <div class="panel-card" style="background:linear-gradient(135deg,#ff6b35 0%,#f7c948 100%);color:#fff;padding:20px;margin-bottom:24px;border-radius:12px;box-shadow:0 4px 12px rgba(255,107,53,0.2);">
+            <h4 style="margin:0 0 10px;font-size:1.2rem;display:flex;align-items:center;gap:8px;">⚠️ Assessment Anti-Cheat Policy</h4>
+            <p style="margin:0;font-size:1rem;line-height:1.5;">Do <strong>NOT</strong> switch tabs, minimize the browser, or exit fullscreen. You have a maximum of 3 warnings. On the 3rd violation, your test will be <strong>automatically submitted</strong>.</p>
+          </div>
 
-      <%# Tab-switch warning modal (custom, replaces browser popup) — inescapable %>
-      <div class="global-modal" id="tab-switch-warning-modal" data-no-backdrop-close>
-        <div class="global-modal-card small">
-          <h3 id="modalWarningTitle">⚠️ Warning: You will switch Tabs</h3>
-          <p id="modalWarningText" style="line-height:1.6;">When you leave the assessment, your current answers will be automatically saved. Your score will be based only on the correct answers you answered before you left.</p>
-          <div class="confirm-actions" style="margin-top:16px;display:grid;gap:10px;">
-            <button type="button" class="btn btn-secondary" id="tabSwitchStay" style="width:100%;">Cancel — Stay on Assessment</button>
-            <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="width:100%;background:#e74c3c;border-color:#e74c3c;">Accept — Auto Save</button>
+          <form id="assessmentForm" method="post" action="/student/assessments/<%= assessment.id %>/submit" class="stack-form">
+            <input type="hidden" name="time_started" value="<%= Date.now() %>" />
+            <input type="hidden" name="auto_submitted" id="autoSubmittedFlag" value="0" />
+            <input type="hidden" name="auto_submit_reason" id="autoSubmitReason" value="" />
+            
+            <div style="background:#fff;padding:24px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.05);margin-bottom:24px;">
+              <h2 style="margin:0 0 8px;color:var(--text-main);"><%= assessment.title %></h2>
+              <p style="margin:0;color:var(--text-soft);font-size:0.95rem;">Answer all questions carefully before submitting.</p>
+            </div>
+
+            <% assessment.questions.forEach((question, index) => { %>
+              <article class="question-view-card" style="background:#fff;border:none;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);margin-bottom:20px;padding:24px;">
+                <h4 style="margin-top:0;font-size:1.15rem;color:var(--text-main);line-height:1.5;"><span style="color:var(--primary);margin-right:8px;"><%= index + 1 %>.</span> <%= question.question_text %></h4>
+                
+                <div style="margin-top:16px;display:flex;flex-direction:column;gap:12px;">
+                <% if (question.question_type === 'True or False') { %>
+                  <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+                  <label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="true" style="margin-right:12px;" /> True</label>
+                  <label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="false" style="margin-right:12px;" /> False</label>
+                <% } else if (question.question_type === 'Identification' || question.question_type === 'Fill in the Blank') { %>
+                  <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+                  <label style="font-weight:600;color:var(--text-soft);">Your Answer</label>
+                  <input type="text" name="answer_<%= question.id %>" placeholder="Type your answer here" style="padding:12px;border:1px solid #ccc;border-radius:8px;width:100%;font-size:1rem;" />
+                <% } else if (question.question_type === 'Essay') { %>
+                  <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+                  <label style="font-weight:600;color:var(--text-soft);">Your Answer</label>
+                  <textarea name="answer_<%= question.id %>" rows="5" placeholder="Write your answer here..." style="padding:12px;border:1px solid #ccc;border-radius:8px;width:100%;font-size:1rem;resize:vertical;"></textarea>
+                <% } else { %>
+                  <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
+                  <label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="A" style="margin-right:12px;" /> A. <%= question.choice_a %></label>
+                  <label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="B" style="margin-right:12px;" /> B. <%= question.choice_b %></label>
+                  <% if (question.choice_c) { %><label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="C" style="margin-right:12px;" /> C. <%= question.choice_c %></label><% } %>
+                  <% if (question.choice_d) { %><label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="D" style="margin-right:12px;" /> D. <%= question.choice_d %></label><% } %>
+                <% } %>
+                </div>
+              </article>
+            <% }) %>
+            
+            <div style="text-align:center;margin-top:32px;margin-bottom:60px;">
+              <button class="btn btn-primary" type="submit" style="font-size:1.15rem;padding:14px 40px;border-radius:30px;box-shadow:0 4px 15px rgba(26,86,50,0.3);">Submit Assessment</button>
+            </div>
+          </form>
+        </div>
+
+        <%# Tab-switch warning modal (Must be inside the fullscreen wrapper!) %>
+        <div class="global-modal" id="tab-switch-warning-modal" data-no-backdrop-close style="position:absolute;">
+          <div class="global-modal-card small" style="border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+            <h3 id="modalWarningTitle" style="color:#e74c3c;">⚠️ Warning: You will switch Tabs</h3>
+            <p id="modalWarningText" style="line-height:1.6;color:var(--text-soft);font-size:1rem;">When you leave the assessment, your current answers will be automatically saved. Your score will be based only on the correct answers you answered before you left.</p>
+            <div class="confirm-actions" style="margin-top:24px;display:grid;gap:12px;">
+              <button type="button" class="btn btn-secondary" id="tabSwitchStay" style="width:100%;padding:12px;">Cancel — Stay on Assessment</button>
+              <button type="button" class="btn btn-primary" id="tabSwitchAccept" style="width:100%;background:#e74c3c;border-color:#e74c3c;padding:12px;">Accept — Auto Save</button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <%# Auto-save loading modal %>
-      <div class="global-modal" id="autosave-loading-modal" data-no-backdrop-close>
-        <div class="global-modal-card small" style="text-align:center;">
-          <h3>Saving your assessment...</h3>
-          <div class="mqtc-dot-loader" style="display:flex;gap:8px;justify-content:center;margin:20px 0;">
-            <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;"></span>
-            <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;animation-delay:0.15s;"></span>
-            <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;animation-delay:0.3s;"></span>
+        <%# Auto-save loading modal (Must be inside the fullscreen wrapper!) %>
+        <div class="global-modal" id="autosave-loading-modal" data-no-backdrop-close style="position:absolute;">
+          <div class="global-modal-card small" style="text-align:center;border-radius:12px;">
+            <h3>Saving your assessment...</h3>
+            <div class="mqtc-dot-loader" style="display:flex;gap:8px;justify-content:center;margin:24px 0;">
+              <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;"></span>
+              <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;animation-delay:0.15s;"></span>
+              <span style="width:14px;height:14px;border-radius:50%;background:var(--primary,#1a5632);animation:mqtcDotBounce 1.2s infinite ease-in-out;animation-delay:0.3s;"></span>
+            </div>
+            <p style="color:var(--text-soft);">Please wait while we save your current answers...</p>
           </div>
-          <p style="color:var(--text-soft);">Please wait while we save your current answers...</p>
         </div>
       </div>
 
@@ -142,23 +162,19 @@
         var startBtn = document.getElementById('btnStartAssessment');
         if (startBtn) {
           startBtn.addEventListener('click', function() {
-            var docEl = document.documentElement;
-            var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            var wrapper = document.getElementById('assessment-fullscreen-wrapper');
+            var requestFullScreen = wrapper.requestFullscreen || wrapper.mozRequestFullScreen || wrapper.webkitRequestFullscreen || wrapper.msRequestFullscreen;
+            
+            document.getElementById('start-overlay').style.display = 'none';
+            wrapper.style.display = 'block';
+            document.getElementById('assessmentForm').style.display = 'block';
+            document.getElementById('assessment-container').style.display = 'block';
+            hasStarted = true;
+
             if (requestFullScreen) {
-              requestFullScreen.call(docEl).then(function() {
-                document.getElementById('start-overlay').style.display = 'none';
-                document.getElementById('assessment-container').style.display = 'block';
-                document.getElementById('assessmentForm').style.display = 'flex';
-                hasStarted = true;
-              }).catch(function(err) {
-                alert('Error attempting to enable fullscreen mode: ' + err.message);
+              requestFullScreen.call(wrapper).catch(function(err) {
+                console.warn('Fullscreen prevented by browser:', err.message);
               });
-            } else {
-              // Fallback if fullscreen API not supported
-              document.getElementById('start-overlay').style.display = 'none';
-              document.getElementById('assessment-container').style.display = 'block';
-              document.getElementById('assessmentForm').style.display = 'flex';
-              hasStarted = true;
             }
           });
         }
@@ -252,10 +268,10 @@
             if (modal) modal.classList.remove('is-open');
             
             // Re-request fullscreen
-            var docEl = document.documentElement;
-            var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            var wrapper = document.getElementById('assessment-fullscreen-wrapper');
+            var requestFullScreen = wrapper.requestFullscreen || wrapper.mozRequestFullScreen || wrapper.webkitRequestFullscreen || wrapper.msRequestFullscreen;
             if (requestFullScreen && !document.fullscreenElement) {
-              requestFullScreen.call(docEl).catch(function(e){});
+              requestFullScreen.call(wrapper).catch(function(e){});
             }
           });
         }
