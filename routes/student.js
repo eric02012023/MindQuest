@@ -202,6 +202,24 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     const preAssessmentRequired = !!preAssessment;
     const preAssessmentTaken = !!(preAssessment && preAssessment.taken_at);
 
+    // Admin-module lock logic: admin-uploaded modules are locked until the student
+    // takes the subject assessment. AI-generated modules are always unlocked.
+    let adminModulesLocked = true;
+    let adminModuleLockReason = '';
+    const hasAnyPostedAssessment = subjectAssessments.some(a => Number(a.is_published) === 1);
+    const hasAnyTakenAssessment = subjectAssessments.some(a => a.taken_at);
+
+    if (!hasAnyPostedAssessment) {
+      adminModulesLocked = true;
+      adminModuleLockReason = 'waiting'; // Admin hasn't posted an assessment yet
+    } else if (!hasAnyTakenAssessment) {
+      adminModulesLocked = true;
+      adminModuleLockReason = 'not_taken'; // Assessment posted but student hasn't taken it
+    } else {
+      adminModulesLocked = false;
+      adminModuleLockReason = '';
+    }
+
     // Find a pending consolidated assessment (published but not taken yet by the student)
     let pendingConsolidatedAssessment = null;
     if (preAssessmentTaken) {
@@ -237,7 +255,9 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       postAssessment,
       preAssessmentRequired,
       preAssessmentTaken,
-      pendingConsolidatedAssessment
+      pendingConsolidatedAssessment,
+      adminModulesLocked,
+      adminModuleLockReason
     });
     res.render('shells/dashboard', shell);
   } catch (error) {

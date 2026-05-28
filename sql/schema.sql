@@ -934,3 +934,25 @@ IF OBJECT_ID('dbo.online_payments','U') IS NOT NULL AND COL_LENGTH('dbo.online_p
 IF OBJECT_ID('dbo.assessment_requests','U') IS NOT NULL AND COL_LENGTH('dbo.assessment_requests','item_count') IS NULL
   ALTER TABLE dbo.assessment_requests ADD item_count INT NULL;
 
+-- 22. assessments — additional AI columns
+IF OBJECT_ID('dbo.assessments','U') IS NOT NULL AND COL_LENGTH('dbo.assessments','assessment_origin') IS NULL
+  ALTER TABLE dbo.assessments ADD assessment_origin NVARCHAR(50) NULL CONSTRAINT df_assessments_origin DEFAULT 'manual';
+
+IF OBJECT_ID('dbo.assessments','U') IS NOT NULL AND COL_LENGTH('dbo.assessments','source_module_title') IS NULL
+  ALTER TABLE dbo.assessments ADD source_module_title NVARCHAR(200) NULL;
+
+-- 23. assessment_questions — additional AI columns
+IF OBJECT_ID('dbo.assessment_questions','U') IS NOT NULL AND COL_LENGTH('dbo.assessment_questions','essay_rubric_keywords') IS NULL
+  ALTER TABLE dbo.assessment_questions ADD essay_rubric_keywords NVARCHAR(MAX) NULL;
+
+IF OBJECT_ID('dbo.assessment_questions','U') IS NOT NULL AND COL_LENGTH('dbo.assessment_questions','source_module_title') IS NULL
+  ALTER TABLE dbo.assessment_questions ADD source_module_title NVARCHAR(200) NULL;
+
+-- 24. assessment_results — per-module breakdown
+IF OBJECT_ID('dbo.assessment_results','U') IS NOT NULL AND COL_LENGTH('dbo.assessment_results','per_module_scores_json') IS NULL
+  ALTER TABLE dbo.assessment_results ADD per_module_scores_json NVARCHAR(MAX) NULL;
+
+-- 25. assessment_template_questions — additional AI columns
+IF OBJECT_ID('dbo.assessment_template_questions','U') IS NOT NULL AND COL_LENGTH('dbo.assessment_template_questions','essay_rubric_keywords') IS NULL
+  ALTER TABLE dbo.assessment_template_questions ADD essay_rubric_keywords NVARCHAR(MAX) NULL;
+

@@ -25,6 +25,28 @@ router.get('/module/:id', async (req, res) => {
         </body></html>`);
     }
 
+    // Security check: block students from accessing locked admin modules
+    const userRole = req.session.user?.role;
+    if (userRole === 'student' && resource.module_origin !== 'ai_generated') {
+      const { getSubjectAssessmentForStudent } = require('../lib/data');
+      const subjectId = resource.subject_id;
+      if (subjectId) {
+        const subjectAssessments = await getSubjectAssessmentForStudent(req.session.user.id, subjectId);
+        const hasAnyTakenAssessment = subjectAssessments.some(a => a.taken_at);
+        if (!hasAnyTakenAssessment) {
+          return res.status(403).send(`
+            <html><body style="font-family:Inter,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;background:#f9fafb;">
+              <div style="text-align:center;">
+                <span style="font-size:48px;">🔒</span>
+                <h2>Module Locked</h2>
+                <p>You need to complete the assessment first before you can access this module.</p>
+                <a href="javascript:history.back()" style="color:#1a5632;font-weight:600;">Go Back</a>
+              </div>
+            </body></html>`);
+        }
+      }
+    }
+
     // If physical file exists, serve it
     if (resource.file_path) {
       const cleaned = resource.file_path.replace(/\\/g, '/');
