@@ -223,6 +223,8 @@ async function generateAssessmentFromModule(options = {}) {
     try {
       const systemPrompt = `You are an expert educational assessment creator. Generate exactly ${questionCount} assessment questions for a ${levelGroup || 'general'} level student studying ${subject || 'general subject'}. 
 
+CRITICAL REQUIREMENT: The difficulty of these questions MUST STRICTLY match the '${levelGroup}' level. Do not make the questions too easy or too hard for this specific level. 
+
 Return a JSON object with a "questions" array. Each question object must have:
 - "question_text": the question
 - "question_type": one of "Multiple Choice", "True or False", or "Identification"
@@ -232,7 +234,7 @@ Return a JSON object with a "questions" array. Each question object must have:
 - "points": always 1
 
 Mix question types: ~50% Multiple Choice, ~25% True or False, ~25% Identification.
-Make questions appropriate for the student's education level.`;
+Make questions perfectly appropriate for the student's education level.`;
 
       const userPrompt = `Generate ${questionCount} questions based on this module content:\n\n${String(moduleContent || subject || 'General knowledge').substring(0, 3000)}`;
 

@@ -405,7 +405,7 @@ router.post('/subjects/:subjectId/post-consolidated-assessment', async (req, res
   try {
     const { query: dbQuery } = require('../config/db');
     const { generateAssessmentFromModule } = require('../services/aiService');
-    const { getSubjectById, logAiGeneration } = require('../lib/data');
+    const { getSubjectById, logAiGeneration, getActiveLearningCycle, getAdminSubjectResources, advanceLearningCycle } = require('../lib/data');
 
     if (isNaN(subjectId) || isNaN(tutorUserId)) {
       setFlash(req, 'error', 'Invalid request parameters.');
@@ -418,35 +418,11 @@ router.post('/subjects/:subjectId/post-consolidated-assessment', async (req, res
       return res.redirect(`/tutor/subjects/${subjectId}`);
     }
 
-    // Get ALL admin modules for this subject
-    const adminModules = await getAdminSubjectResources(subjectId);
-    if (!adminModules.length) {
-      setFlash(req, 'error', 'No admin modules found in this subject.');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    // Combine all module content into one
-    const combinedContent = adminModules.map((mod) => {
-      const content = mod.content_text || mod.description || '';
-      return `## Module: ${mod.title}\n${content}`;
-    }).join('\n\n---\n\n');
-
     const subject = await getSubjectById(subjectId);
     if (!subject) {
       setFlash(req, 'error', 'Subject not found.');
       return res.redirect(`/tutor/subjects/${subjectId}`);
     }
-
-    // Determine level group from first module
-    const levelGroup = adminModules[0].type_of_module || 'General';
-
-    // Generate a single AI assessment from the combined content
-    const aiResult = await generateAssessmentFromModule({
-      moduleContent: combinedContent,
-      subject: subject.name,
-      levelGroup,
-      questionCount: itemCount
-    });
 
     const tutorStudents = await getTutorStudentsBySubject(tutorUserId, subjectId);
     if (!tutorStudents.length) {
@@ -454,17 +430,71 @@ router.post('/subjects/:subjectId/post-consolidated-assessment', async (req, res
       return res.redirect(`/tutor/subjects/${subjectId}`);
     }
 
-    const title = `AI Assessment: ${subject.name}`;
-    const moduleTitles = adminModules.map((m) => m.title).join(', ');
+    // Prepare fallback content from Admin Modules
+    const adminModules = await getAdminSubjectResources(subjectId);
+    const fallbackCombinedContent = adminModules.map((mod) => {
+      const content = mod.content_text || mod.description || '';
+      return `## Module: ${mod.title}\n${content}`;
+    }).join('\n\n---\n\n');
+    const fallbackLevelGroup = adminModules.length ? (adminModules[0].type_of_module || 'General') : 'General';
+    const fallbackModuleTitles = adminModules.map((m) => m.title).join(', ');
+
+    let generatedCount = 0;
+    let skippedCount = 0;
 
     for (const student of tutorStudents) {
       const studentId = parseInt(student.student_id, 10);
+
+      // Check if student has a pending AI assessment
+      const pendingRows = await dbQuery(
+        `SELECT a.id FROM assessments a
+         LEFT JOIN assessment_results ar ON ar.assessment_id = a.id AND ar.student_id = a.assigned_student_id
+         WHERE a.assigned_student_id = ? AND a.subject_id = ? AND a.is_published = 1
+           AND a.assessment_origin = 'ai_generated' AND ar.id IS NULL`,
+        [studentId, subjectId]
+      );
+      
+      if (pendingRows.length > 0) {
+        skippedCount++;
+        continue; // Skip this student
+      }
+
+      // Determine content to base the assessment on
+      let moduleContent = fallbackCombinedContent;
+      let levelGroup = fallbackLevelGroup;
+      let sourceModuleTitle = fallbackModuleTitles;
+      let cycleId = null;
+
+      const activeCycle = await getActiveLearningCycle(studentId, subjectId);
+      if (activeCycle && activeCycle.resource_content) {
+        moduleContent = activeCycle.resource_content;
+        levelGroup = activeCycle.result_level || 'General';
+        sourceModuleTitle = activeCycle.resource_title || 'AI Generated Module';
+        cycleId = activeCycle.id;
+      }
+
+      if (!moduleContent || moduleContent.trim() === '') {
+        skippedCount++;
+        continue;
+      }
+
+      // Generate personalized assessment
+      const aiResult = await generateAssessmentFromModule({
+        moduleContent,
+        subject: subject.name,
+        levelGroup,
+        questionCount: itemCount
+      });
+
+      const title = `AI Assessment: ${subject.name} - ${levelGroup}`;
+
       const insertResult = await dbQuery(
-        `INSERT INTO assessments (title, assessment_type, assigned_student_id, created_by, is_published, subject_id, assessment_origin, source_module_title)
-         VALUES (?, 'post', ?, ?, 1, ?, 'ai_generated', ?)`,
-        [title, studentId, tutorUserId, subjectId, moduleTitles]
+        `INSERT INTO assessments (title, assessment_type, assigned_student_id, created_by, is_published, subject_id, assessment_origin, source_module_title, cycle_id)
+         VALUES (?, 'post', ?, ?, 1, ?, 'ai_generated', ?, ?)`,
+        [title, studentId, tutorUserId, subjectId, sourceModuleTitle, cycleId]
       );
       const assessmentId = insertResult.insertId;
+
       for (const q of aiResult.questions) {
         await dbQuery(
           `INSERT INTO assessment_questions (assessment_id, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, question_type, points)
@@ -472,13 +502,32 @@ router.post('/subjects/:subjectId/post-consolidated-assessment', async (req, res
           [assessmentId, q.question_text, q.choice_a || '', q.choice_b || '', q.choice_c || '', q.choice_d || '', q.correct_answer, q.question_type || 'Multiple Choice', q.points || 1]
         );
       }
+
+      // Advance learning cycle to pending assessment
+      if (cycleId) {
+        await advanceLearningCycle(cycleId, {
+          status: 'assessment_pending',
+          assessment_id: assessmentId
+        });
+      }
+
+      try {
+        await logAiGeneration({ student_id: studentId, subject_id: subjectId, generation_type: 'tutor_consolidated_assessment', provider: aiResult.provider, model: aiResult.model, tokens_used: aiResult.tokensUsed });
+      } catch(e) { /* non-critical */ }
+
+      generatedCount++;
     }
 
-    try {
-      await logAiGeneration({ student_id: parseInt(tutorStudents[0].student_id, 10), subject_id: subjectId, generation_type: 'tutor_consolidated_assessment', provider: aiResult.provider, model: aiResult.model, tokens_used: aiResult.tokensUsed });
-    } catch(e) { /* non-critical */ }
-
-    setFlash(req, 'success', `AI Assessment published to ${tutorStudents.length} student(s) with ${aiResult.questions.length} items based on ${adminModules.length} admin module(s)!`);
+    if (generatedCount > 0) {
+      setFlash(req, 'success', `AI Assessment generated for ${generatedCount} student(s). ${skippedCount > 0 ? `Skipped ${skippedCount} student(s) who already have pending assessments.` : ''}`);
+    } else {
+      if (skippedCount > 0) {
+        setFlash(req, 'info', `No new assessments generated. All ${skippedCount} student(s) already have pending assessments to answer.`);
+      } else {
+        setFlash(req, 'error', 'Failed to generate assessments. Please check if modules are available.');
+      }
+    }
+    
     res.redirect(`/tutor/subjects/${subjectId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not publish assessment.');

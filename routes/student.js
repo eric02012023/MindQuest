@@ -220,10 +220,10 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       adminModuleLockReason = '';
     }
 
-    // Find a pending consolidated assessment (published but not taken yet by the student)
-    let pendingConsolidatedAssessment = null;
+    // Find all pending AI assessments (published but not taken yet by the student)
+    let pendingAiAssessments = [];
     if (preAssessmentTaken) {
-      const pendingRows = await dbQuery(
+      pendingAiAssessments = await dbQuery(
         `SELECT a.id, a.title, a.assessment_type,
                 (SELECT COUNT(*) FROM assessment_questions aq WHERE aq.assessment_id = a.id) AS question_count
          FROM assessments a
@@ -233,9 +233,6 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
          ORDER BY a.created_at DESC`,
         [req.session.user.id, req.params.subjectId]
       );
-      if (pendingRows.length) {
-        pendingConsolidatedAssessment = pendingRows[0];
-      }
     }
 
     const shell = await buildShell(req, {
@@ -255,7 +252,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       postAssessment,
       preAssessmentRequired,
       preAssessmentTaken,
-      pendingConsolidatedAssessment,
+      pendingAiAssessments,
       adminModulesLocked,
       adminModuleLockReason
     });

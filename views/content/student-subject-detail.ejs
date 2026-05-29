@@ -84,39 +84,45 @@
   </section>
   <% } %>
 
-  <%# Consolidated Assessment Section (after pre-assessment is taken) %>
+  <%# Module Assessment Section (after pre-assessment is taken) %>
   <% if (typeof preAssessmentTaken !== 'undefined' && preAssessmentTaken) { %>
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Module Assessment</h3></div>
+    <div class="panel-card-head"><h3>Module Assessments</h3></div>
     <div class="list-stack">
       <%
-        // Find the consolidated assessment for all admin modules (tutor-generated)
-        const consolidatedAssessment = (typeof completedAssessments !== 'undefined' ? completedAssessments : []).find((a) => a.title && a.title.includes('AI Assessment'));
+        // Find all completed AI assessments
+        const completedAiAssessments = (typeof completedAssessments !== 'undefined' ? completedAssessments : []).filter((a) => a.title && a.title.includes('AI Assessment'));
+        const pendingAssessments = (typeof pendingAiAssessments !== 'undefined' ? pendingAiAssessments : []);
       %>
-      <% if (consolidatedAssessment) { %>
+      
+      <% completedAiAssessments.forEach(assessment => { %>
         <article class="list-card">
           <div>
-            <strong><%= consolidatedAssessment.title %></strong>
+            <strong><%= assessment.title %></strong>
             <span class="badge badge-success" style="margin-left:8px;">✅ Completed</span>
-            <p><small><strong>Score:</strong> <%= consolidatedAssessment.score %>/<%= consolidatedAssessment.total_questions %> (<%= consolidatedAssessment.percentage %>%)</small></p>
-            <p><small><strong>Level:</strong> <%= consolidatedAssessment.level %></small></p>
+            <p><small><strong>Score:</strong> <%= assessment.score %>/<%= assessment.total_questions %> (<%= assessment.percentage %>%)</small></p>
+            <p><small><strong>Level:</strong> <%= assessment.level %></small></p>
           </div>
           <div class="row-actions">
-            <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= consolidatedAssessment.id %>">View Result</a>
+            <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= assessment.id %>">View Result</a>
           </div>
         </article>
-      <% } else if (typeof pendingConsolidatedAssessment !== 'undefined' && pendingConsolidatedAssessment) { %>
+      <% }); %>
+
+      <% pendingAssessments.forEach(assessment => { %>
         <article class="list-card">
           <div>
-            <strong><%= pendingConsolidatedAssessment.title %></strong>
+            <strong><%= assessment.title %></strong>
             <span class="badge badge-info" style="margin-left:8px;">Ready</span>
-            <p><small><%= pendingConsolidatedAssessment.question_count || 0 %> items</small></p>
+            <p><small><%= assessment.question_count || 0 %> items</small></p>
           </div>
           <div class="row-actions">
-            <a class="btn btn-primary btn-sm" href="/student/assessments/<%= pendingConsolidatedAssessment.id %>">Take Assessment</a>
+            <a class="btn btn-primary btn-sm" href="/student/assessments/<%= assessment.id %>">Take Assessment</a>
           </div>
         </article>
-      <% } else { %>
+      <% }); %>
+
+      <% if (completedAiAssessments.length === 0 && pendingAssessments.length === 0) { %>
         <article class="list-card">
           <div>
             <strong>Module Assessment</strong>
