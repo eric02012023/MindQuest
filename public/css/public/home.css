@@ -1489,7 +1489,7 @@ body {
 }
 
 .reserve-block h3 {
-  font-size: clamp(32px, 4vw, 52px);
+  font-size: clamp(22px, 4vw, 42px);
   margin: 0 0 10px;
 }
 
@@ -1499,7 +1499,7 @@ body {
 }
 
 .mq-phone-footer {
-  font-size: clamp(22px, 4vw, 28px);
+  font-size: clamp(16px, 4vw, 22px);
   color: white;
 }
 
@@ -1517,11 +1517,18 @@ body {
   margin: 0 auto;
   display: grid;
   place-items: center;
-  background: #b8c3d0;
-  color: #fff;
+  background: #ffffff;
+  color: #007f11;
   font-size: 42px;
   font-weight: 700;
   text-decoration: none;
+}
+
+.footer-copyright {
+  padding-top: 60px;
+  padding-bottom: 0;
+  padding-right: 0;
+  padding-left: 0;
 }
 
 @media (max-width: 1200px) {
@@ -1814,7 +1821,10 @@ body {
 }
 
 .reserve-block {
-  padding: 100px 20px 0;
+  padding-top: 50px;
+  padding-right: 20px;
+  padding-bottom: 0px;
+  padding-left: 20px;
   color: white;
 }
 
