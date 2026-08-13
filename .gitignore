@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.live
+.env.local
 
 # Ignore everything in uploads
 public/uploads/**
