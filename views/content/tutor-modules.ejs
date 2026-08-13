@@ -1,0 +1,47 @@
+<%# Tutor Modules Listing View %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Modules & Assessments</h2>
+      <p style="color: var(--text-soft); font-size: 14px; margin: 4px 0 0;">View uploaded modules per subject and create assessments for your students.</p>
+    </div>
+
+    <% if (!(subjectsWithModules || []).length) { %>
+      <p class="empty-state">You have no assigned subjects yet.</p>
+    <% } else { %>
+      <% subjectsWithModules.forEach(subject => { %>
+        <div class="module-subject-group">
+          <h3 class="module-subject-title"><%= subject.subject_name %></h3>
+          <% if (!subject.modules || !subject.modules.length) { %>
+            <p class="module-empty-text" style="text-align:left; padding: 12px 0;">No modules uploaded for this subject yet. The admin needs to upload modules first.</p>
+          <% } else { %>
+            <div class="module-level-cards">
+              <% subject.modules.forEach(mod => { %>
+                <div class="module-level-card filled level-<%= (mod.level || '').toLowerCase() %>">
+                  <div class="module-level-header">
+                    <span class="level-badge <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
+                  </div>
+                  <h4><%= mod.title %></h4>
+                  <% if (mod.description) { %>
+                    <p class="module-desc"><%= mod.description %></p>
+                  <% } %>
+                  <% if (mod.file_original_name) { %>
+                    <div class="module-meta">
+                      <span>📄 <%= mod.file_original_name %></span>
+                    </div>
+                  <% } %>
+                  <div class="module-actions">
+                    <a class="btn btn-primary btn-sm" href="/tutor/modules/<%= mod.id %>">View & Manage</a>
+                    <% if (mod.file_path) { %>
+                      <a class="btn btn-secondary btn-sm" href="<%= mod.file_path %>" target="_blank">Open Handout</a>
+                    <% } %>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+      <% }) %>
+    <% } %>
+  </section>
+</section>

@@ -1,0 +1,201 @@
+<%# Student Take Tutor Assessment View — Used for Pre-Assessment, Activity, and Post-Assessment %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2><%= assessment.title %></h2>
+      <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
+        <% if (isPre) { %>
+          <span class="pill partial">Pre-Assessment</span>
+        <% } else { %>
+          <span class="pill"><%= assessment.purpose === 'post' ? 'Post-Assessment' : 'Activity' %></span>
+        <% } %>
+        <span style="color: var(--text-soft); font-size: 13px;"><%= subjectName %></span>
+      </div>
+    </div>
+
+    <% if (isPre) { %>
+      <div class="pre-assessment-banner">
+        <div class="banner-icon">📝</div>
+        <div>
+          <strong>This is a Pre-Assessment</strong>
+          <p>Your score will determine your learning level for this subject. Answer each question carefully.</p>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (assessment.instructions) { %>
+      <div class="assessment-instructions">
+        <strong>Instructions:</strong> <%= assessment.instructions %>
+      </div>
+    <% } %>
+
+    <form method="post" action="<%= isPre ? `/student/subjects/${subjectId}/pre-assessment` : `/student/tutor-assessments/${assessment.id}/submit` %>" id="assessment-form">
+      <input type="hidden" name="assessment_id" value="<%= assessment.id %>" />
+
+      <div class="questions-list">
+        <% (assessment.questions || []).forEach((q, i) => { %>
+          <div class="question-item">
+            <div class="question-item-header">
+              <span class="q-badge">Q<%= i + 1 %></span>
+              <span class="q-type-badge"><%= q.question_type === 'multiple_choice' ? 'Multiple Choice' : q.question_type === 'true_false' ? 'True / False' : 'Fill in the Blank' %></span>
+              <span class="q-points-badge"><%= q.points %> pt<%= q.points > 1 ? 's' : '' %></span>
+            </div>
+            <p class="question-text"><%= q.question_text %></p>
+
+            <% if (q.question_type === 'multiple_choice') { %>
+              <div class="mcq-options">
+                <% (q.options || []).forEach(opt => { %>
+                  <label class="mcq-option">
+                    <input type="radio" name="answer_<%= q.id %>" value="<%= opt.option_label %>" required />
+                    <span class="mcq-label"><%= opt.option_label %></span>
+                    <span class="mcq-text"><%= opt.option_text %></span>
+                  </label>
+                <% }) %>
+              </div>
+            <% } else if (q.question_type === 'true_false') { %>
+              <div class="mcq-options tf-options">
+                <label class="mcq-option">
+                  <input type="radio" name="answer_<%= q.id %>" value="True" required />
+                  <span class="mcq-label">T</span>
+                  <span class="mcq-text">True</span>
+                </label>
+                <label class="mcq-option">
+                  <input type="radio" name="answer_<%= q.id %>" value="False" required />
+                  <span class="mcq-label">F</span>
+                  <span class="mcq-text">False</span>
+                </label>
+              </div>
+            <% } else { %>
+              <div class="fill-blank-input">
+                <input type="text" name="answer_<%= q.id %>" placeholder="Type your answer here..." required />
+              </div>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+
+      <div class="assessment-submit-area">
+        <button type="submit" class="btn btn-primary btn-lg" onclick="return confirm('Are you sure you want to submit? You cannot change your answers after submission.')">
+          Submit Assessment
+        </button>
+        <a href="/student/subjects/<%= subjectId %>" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </section>
+</section>
+
+<style>
+  .pre-assessment-banner {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 16px;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-radius: var(--radius-sm);
+    margin-bottom: 20px;
+    border-left: 4px solid #f59e0b;
+  }
+  .pre-assessment-banner .banner-icon { font-size: 28px; }
+  .pre-assessment-banner p { font-size: 13px; color: #92400e; margin: 4px 0 0; }
+  .pre-assessment-banner strong { color: #78350f; }
+
+  .assessment-instructions {
+    padding: 12px 16px;
+    background: var(--surface-soft);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    color: var(--text-soft);
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+  }
+
+  .questions-list { display: flex; flex-direction: column; gap: 20px; }
+  .question-item {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 20px;
+    background: var(--surface);
+    transition: box-shadow 0.2s;
+  }
+  .question-item:hover { box-shadow: var(--shadow-md); }
+  .question-item-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .q-badge {
+    background: var(--gradient-main);
+    color: #fff;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .q-type-badge {
+    font-size: 12px; color: var(--text-soft); background: var(--surface-muted);
+    padding: 3px 10px; border-radius: 999px; font-weight: 500;
+  }
+  .q-points-badge {
+    font-size: 11px; color: var(--primary-700); font-weight: 600;
+    margin-left: auto;
+  }
+  .question-text {
+    font-size: 15px; line-height: 1.6; margin-bottom: 16px; color: var(--text);
+  }
+
+  .mcq-options { display: flex; flex-direction: column; gap: 10px; }
+  .mcq-option {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+  }
+  .mcq-option:hover {
+    border-color: var(--primary-500);
+    background: var(--surface-soft);
+  }
+  .mcq-option input[type="radio"] { display: none; }
+  .mcq-option input[type="radio"]:checked + .mcq-label {
+    background: var(--gradient-main);
+    color: #fff;
+  }
+  .mcq-option:has(input:checked) {
+    border-color: var(--primary-600);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.05));
+  }
+  .mcq-label {
+    min-width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--surface-muted);
+    font-weight: 700; font-size: 13px;
+    transition: all 0.2s;
+  }
+  .mcq-text { font-size: 14px; color: var(--text); }
+
+  .fill-blank-input input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    transition: border-color 0.2s;
+  }
+  .fill-blank-input input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+  }
+
+  .assessment-submit-area {
+    display: flex; gap: 12px; margin-top: 30px; padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-lg { padding: 14px 32px; font-size: 16px; }
+</style>

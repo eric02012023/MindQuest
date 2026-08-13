@@ -29,6 +29,80 @@
   </section>
   <% } %>
 
+  <%# Phase 6: Module Level System Gate %>
+  <% if (typeof studentLevel !== 'undefined') { %>
+  <section class="panel-card" style="border: 1px solid rgba(99,102,241,0.2); background: linear-gradient(135deg, rgba(99,102,241,0.04), rgba(139,92,246,0.03));">
+    <div class="panel-card-head">
+      <h3>📚 Module Level System</h3>
+    </div>
+
+    <% if (!studentLevel) { %>
+      <%# No level assigned — Pre-Assessment gate %>
+      <% if (typeof hasTutorPreAssessment !== 'undefined' && hasTutorPreAssessment) { %>
+        <div style="text-align: center; padding: 24px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
+          <h3 style="margin: 0 0 8px; color: var(--text);">Pre-Assessment Required</h3>
+          <p style="color: var(--text-soft); font-size: 14px; max-width: 500px; margin: 0 auto 20px;">
+            Before you can access the learning modules, you need to take a pre-assessment.
+            Your score will determine your learning level for this subject.
+          </p>
+          <div style="display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-bottom: 16px;">
+            <div style="padding: 8px 16px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 13px; font-weight: 600;">0-59% → Beginner</div>
+            <div style="padding: 8px 16px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 600;">60-79% → Intermediate</div>
+            <div style="padding: 8px 16px; border-radius: 999px; background: #fecaca; color: #991b1b; font-size: 13px; font-weight: 600;">80-100% → Advanced</div>
+          </div>
+          <br />
+          <a href="/student/subjects/<%= assignment.subject_id %>/pre-assessment" class="btn btn-primary" style="padding: 14px 32px; font-size: 16px; font-weight: 700;">
+            🚀 Take Pre-Assessment
+          </a>
+        </div>
+      <% } else { %>
+        <div style="text-align: center; padding: 24px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">⏳</div>
+          <h3 style="margin: 0 0 8px;">Waiting for Pre-Assessment</h3>
+          <p style="color: var(--text-soft); font-size: 14px;">Your tutor hasn't created a pre-assessment for this subject yet. Please check back later.</p>
+        </div>
+      <% } %>
+
+    <% } else { %>
+      <%# Level IS assigned — show level badge + module link %>
+      <div style="display: flex; align-items: center; gap: 20px; padding: 16px; flex-wrap: wrap;">
+        <div style="text-align: center; flex-shrink: 0;">
+          <div style="width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            background: conic-gradient(#6366f1 <%= Number(studentLevel.percentage || 0) %>%, #e5e7eb <%= Number(studentLevel.percentage || 0) %>%);">
+            <div style="width: 62px; height: 62px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center;">
+              <span style="font-size: 16px; font-weight: 800; color: #6366f1;"><%= Number(studentLevel.percentage || 0).toFixed(0) %>%</span>
+            </div>
+          </div>
+        </div>
+        <div style="flex: 1;">
+          <p style="margin: 0 0 4px; font-size: 13px; color: var(--text-soft);">Your Assigned Level</p>
+          <h3 style="margin: 0 0 8px;">
+            <span style="padding: 6px 16px; border-radius: 999px; color: #fff; font-size: 14px; font-weight: 700;
+              background: <%= studentLevel.level === 'Advanced' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : studentLevel.level === 'Intermediate' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'linear-gradient(135deg, #22c55e, #16a34a)' %>;">
+              <%= studentLevel.level %>
+            </span>
+          </h3>
+          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">
+            Pre-Assessment Score: <strong><%= studentLevel.score || 0 %>/<%= studentLevel.total_points || 0 %></strong>
+          </p>
+        </div>
+        <div>
+          <% if (typeof assignedModule !== 'undefined' && assignedModule) { %>
+            <a href="/student/modules/<%= assignedModule.id %>" class="btn btn-primary" style="padding: 12px 28px; font-weight: 700;">
+              📖 Open My Module →
+            </a>
+          <% } else { %>
+            <span style="padding: 8px 16px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px;">
+              ⏳ Module not uploaded yet
+            </span>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+  </section>
+  <% } %>
+
   <%# Phase 4: Pre/Post Assessment Section %>
   <% if (typeof preAssessmentRequired !== 'undefined' && preAssessmentRequired) { %>
   <section class="panel-card">

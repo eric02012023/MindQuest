@@ -57,8 +57,19 @@ const {
   createPayMongoPayment,
   getAdminSubjectResources,
   // Phase 4: Admin pre/post assessments
-  getSubjectAssessmentForStudent
+  getSubjectAssessmentForStudent,
+  // Phase 5/6: Module & Level System
+  getStudentSubjectLevel,
+  setStudentSubjectLevel,
+  getModuleBySubjectAndLevel,
+  getModulesBySubject,
+  getTutorAssessmentsByModule,
+  getTutorAssessmentById,
+  submitTutorAssessment,
+  getStudentSubmissions,
+  getStudentProgress
 } = require('../lib/data');
+const { determineLevel } = require('../config/levelThresholds');
 const { normalizeArray } = require('../lib/utils');
 const { generateAssessmentFromModule } = require('../services/aiService');
 
@@ -235,6 +246,30 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       );
     }
 
+    // Phase 6: Module Level System — check if student has a level for this subject
+    const studentLevel = await getStudentSubjectLevel(req.session.user.id, Number(req.params.subjectId));
+    let assignedModule = null;
+    let moduleAssessments = [];
+    let moduleSubmissions = [];
+    if (studentLevel) {
+      assignedModule = await getModuleBySubjectAndLevel(Number(req.params.subjectId), studentLevel.level);
+      if (assignedModule) {
+        moduleAssessments = await getTutorAssessmentsByModule(assignedModule.id);
+        moduleSubmissions = await getStudentSubmissions(req.session.user.id, Number(req.params.subjectId));
+      }
+    }
+    // Check if a tutor pre-assessment exists for this subject (purpose = 'pre')
+    const { query: dbQuery2 } = require('../config/db');
+    const tutorPreAssessments = await dbQuery2(
+      `SELECT ta.id, ta.title, ta.module_id,
+              (SELECT COUNT(*) FROM tutor_assessment_questions WHERE assessment_id = ta.id) as question_count
+       FROM tutor_assessments ta
+       JOIN modules m ON m.id = ta.module_id
+       WHERE ta.subject_id = ? AND ta.purpose = 'pre' AND ta.is_published = 1 AND ta.is_archived = 0`,
+      [req.params.subjectId]
+    );
+    const hasTutorPreAssessment = tutorPreAssessments.length > 0;
+
     const shell = await buildShell(req, {
       pageTitle: assignment.subject_name,
       section: 'subjects',
@@ -254,7 +289,14 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       preAssessmentTaken,
       pendingAiAssessments,
       adminModulesLocked,
-      adminModuleLockReason
+      adminModuleLockReason,
+      // Phase 6 additions
+      studentLevel,
+      assignedModule,
+      moduleAssessments,
+      moduleSubmissions,
+      hasTutorPreAssessment,
+      tutorPreAssessments
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -943,6 +985,336 @@ router.get('/analytics', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+// ==========================================================================
+// Phase 6: Module Level System — Pre-Assessment, Module View, Assessment
+// ==========================================================================
+
+// Student: Render pre-assessment for a subject
+router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
+  try {
+    const subjectId = Number(req.params.subjectId);
+    const studentId = req.session.user.id;
+
+    // Verify enrollment
+    const assignments = await getStudentAssignments(studentId);
+    const assignment = assignments.find(a => Number(a.subject_id) === subjectId);
+    if (!assignment) {
+      setFlash(req, 'error', 'Subject not found in your account.');
+      return res.redirect('/student/subjects');
+    }
+
+    // Check if already has a level
+    const existingLevel = await getStudentSubjectLevel(studentId, subjectId);
+    if (existingLevel) {
+      setFlash(req, 'info', `You already have a level assigned: ${existingLevel.level}.`);
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+
+    // Find the pre-assessment (tutor_assessment with purpose='pre' for any module in this subject)
+    const { query: dbQuery } = require('../config/db');
+    const preAssessments = await dbQuery(
+      `SELECT ta.id FROM tutor_assessments ta
+       JOIN modules m ON m.id = ta.module_id
+       WHERE ta.subject_id = ? AND ta.purpose = 'pre' AND ta.is_published = 1 AND ta.is_archived = 0
+       ORDER BY ta.created_at ASC`,
+      [subjectId]
+    );
+
+    if (!preAssessments.length) {
+      setFlash(req, 'error', 'No pre-assessment is available for this subject yet. Please wait for your tutor to create one.');
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+
+    const assessment = await getTutorAssessmentById(preAssessments[0].id);
+    if (!assessment) {
+      setFlash(req, 'error', 'Pre-assessment not found.');
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+
+    const shell = await buildShell(req, {
+      pageTitle: `Pre-Assessment: ${assignment.subject_name}`,
+      section: 'subjects',
+      contentView: '../content/student-take-tutor-assessment',
+      assessment,
+      subjectId,
+      subjectName: assignment.subject_name,
+      isPre: true
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Student: Submit pre-assessment
+router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
+  try {
+    const subjectId = Number(req.params.subjectId);
+    const studentId = req.session.user.id;
+
+    // Verify enrollment
+    const assignments = await getStudentAssignments(studentId);
+    const assignment = assignments.find(a => Number(a.subject_id) === subjectId);
+    if (!assignment) {
+      setFlash(req, 'error', 'Subject not found.');
+      return res.redirect('/student/subjects');
+    }
+
+    // Check if already has a level
+    const existingLevel = await getStudentSubjectLevel(studentId, subjectId);
+    if (existingLevel) {
+      setFlash(req, 'info', 'You have already completed the pre-assessment.');
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+
+    const assessmentId = Number(req.body.assessment_id);
+    // Build answers array from form data: answer_<questionId> = value
+    const answers = [];
+    for (const key of Object.keys(req.body)) {
+      if (key.startsWith('answer_')) {
+        const questionId = Number(key.replace('answer_', ''));
+        answers.push({ question_id: questionId, student_answer: req.body[key] });
+      }
+    }
+
+    // Submit and grade
+    const result = await submitTutorAssessment({
+      assessment_id: assessmentId,
+      student_id: studentId,
+      answers
+    });
+
+    // Determine level from percentage
+    const level = determineLevel(result.percentage);
+
+    // Save the level assignment
+    await setStudentSubjectLevel({
+      student_id: studentId,
+      subject_id: subjectId,
+      level,
+      pre_assessment_id: assessmentId,
+      score: result.score,
+      total_points: result.total,
+      percentage: result.percentage
+    });
+
+    // Redirect to assessment result page
+    setFlash(req, 'success', `Pre-Assessment completed! Your level: ${level} (${Number(result.percentage).toFixed(1)}%)`);
+    res.redirect(`/student/assessment-result/${result.submissionId}?isPre=1&subjectId=${subjectId}&level=${level}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not submit pre-assessment.');
+    res.redirect(`/student/subjects/${req.params.subjectId}`);
+  }
+});
+
+// Student: View module detail page
+router.get('/modules/:moduleId', async (req, res, next) => {
+  try {
+    const studentId = req.session.user.id;
+    const { query: dbQuery } = require('../config/db');
+
+    const moduleRows = await dbQuery(
+      'SELECT m.*, s.name as subject_name FROM modules m JOIN subjects s ON s.id = m.subject_id WHERE m.id = ? AND m.is_archived = 0',
+      [req.params.moduleId]
+    );
+    if (!moduleRows.length) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect('/student/subjects');
+    }
+    const mod = moduleRows[0];
+
+    // Check the student has the right level for this module
+    const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
+    if (!studentLevel || studentLevel.level !== mod.level) {
+      setFlash(req, 'error', 'You do not have access to this module.');
+      return res.redirect(`/student/subjects/${mod.subject_id}`);
+    }
+
+    // Get assessments and submissions for this module
+    const assessments = await getTutorAssessmentsByModule(mod.id);
+    const submissions = await getStudentSubmissions(studentId, mod.subject_id);
+
+    // Calculate progress
+    const activities = assessments.filter(a => a.purpose === 'activity');
+    const postAssessments = assessments.filter(a => a.purpose === 'post');
+    const completedActivities = activities.filter(a => submissions.some(s => Number(s.assessment_id) === Number(a.id)));
+    const completedPost = postAssessments.filter(a => submissions.some(s => Number(s.assessment_id) === Number(a.id)));
+
+    // Progress: handout (always available) + activities + post
+    const totalTasks = 1 + activities.length + postAssessments.length; // 1 for handout
+    const completedTasks = completedActivities.length + completedPost.length;
+    // We count handout as completed if student has viewed it (we'll track via query param)
+    const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+    const shell = await buildShell(req, {
+      pageTitle: `${mod.title} — ${mod.level}`,
+      section: 'subjects',
+      contentView: '../content/student-module-view',
+      mod,
+      assessments,
+      submissions,
+      activities,
+      postAssessments,
+      completedActivities,
+      completedPost,
+      progressPercent,
+      totalTasks,
+      completedTasks,
+      studentLevel
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Student: Take a tutor assessment (activity or post)
+router.get('/tutor-assessments/:id', async (req, res, next) => {
+  try {
+    const assessment = await getTutorAssessmentById(Number(req.params.id));
+    if (!assessment) {
+      setFlash(req, 'error', 'Assessment not found.');
+      return res.redirect('/student/subjects');
+    }
+
+    // Check enrollment
+    const assignments = await getStudentAssignments(req.session.user.id);
+    const assignment = assignments.find(a => Number(a.subject_id) === Number(assessment.subject_id));
+    if (!assignment) {
+      setFlash(req, 'error', 'You are not enrolled in this subject.');
+      return res.redirect('/student/subjects');
+    }
+
+    // Check if already submitted
+    const submissions = await getStudentSubmissions(req.session.user.id, assessment.subject_id);
+    const alreadySubmitted = submissions.find(s => Number(s.assessment_id) === Number(assessment.id));
+    if (alreadySubmitted) {
+      setFlash(req, 'info', 'You have already completed this assessment.');
+      return res.redirect(`/student/assessment-result/${alreadySubmitted.id}`);
+    }
+
+    const shell = await buildShell(req, {
+      pageTitle: assessment.title,
+      section: 'subjects',
+      contentView: '../content/student-take-tutor-assessment',
+      assessment,
+      subjectId: assessment.subject_id,
+      subjectName: assignment.subject_name,
+      isPre: false
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Student: Submit a tutor assessment (activity or post)
+router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
+  try {
+    const assessmentId = Number(req.params.id);
+    const studentId = req.session.user.id;
+
+    const assessment = await getTutorAssessmentById(assessmentId);
+    if (!assessment) {
+      setFlash(req, 'error', 'Assessment not found.');
+      return res.redirect('/student/subjects');
+    }
+
+    // Build answers from form
+    const answers = [];
+    for (const key of Object.keys(req.body)) {
+      if (key.startsWith('answer_')) {
+        const questionId = Number(key.replace('answer_', ''));
+        answers.push({ question_id: questionId, student_answer: req.body[key] });
+      }
+    }
+
+    const result = await submitTutorAssessment({
+      assessment_id: assessmentId,
+      student_id: studentId,
+      answers
+    });
+
+    setFlash(req, 'success', `Assessment submitted! Score: ${result.score}/${result.total} (${Number(result.percentage).toFixed(1)}%)`);
+    res.redirect(`/student/assessment-result/${result.submissionId}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not submit assessment.');
+    res.redirect('/student/subjects');
+  }
+});
+
+// Student: View assessment result
+router.get('/assessment-result/:submissionId', async (req, res, next) => {
+  try {
+    const { query: dbQuery } = require('../config/db');
+    const submissions = await dbQuery(
+      `SELECT tas.*, ta.title as assessment_title, ta.purpose, ta.instructions,
+              m.level, m.title as module_title, m.id as module_id, s.name as subject_name
+       FROM tutor_assessment_submissions tas
+       JOIN tutor_assessments ta ON ta.id = tas.assessment_id
+       JOIN modules m ON m.id = ta.module_id
+       JOIN subjects s ON s.id = ta.subject_id
+       WHERE tas.id = ? AND tas.student_id = ?`,
+      [req.params.submissionId, req.session.user.id]
+    );
+    if (!submissions.length) {
+      setFlash(req, 'error', 'Result not found.');
+      return res.redirect('/student/subjects');
+    }
+    const submission = submissions[0];
+
+    const answers = await dbQuery(
+      `SELECT tsa.*, taq.question_text, taq.question_type, taq.points, taq.explanation
+       FROM tutor_student_answers tsa
+       JOIN tutor_assessment_questions taq ON taq.id = tsa.question_id
+       WHERE tsa.submission_id = ?
+       ORDER BY taq.id ASC`,
+      [req.params.submissionId]
+    );
+
+    const isPre = req.query.isPre === '1';
+    const assignedLevel = req.query.level || null;
+
+    const shell = await buildShell(req, {
+      pageTitle: `Result: ${submission.assessment_title}`,
+      section: 'subjects',
+      contentView: '../content/student-assessment-result',
+      submission,
+      answers,
+      isPre,
+      assignedLevel
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Student: Progress page
+router.get('/progress', async (req, res, next) => {
+  try {
+    const progress = await getStudentProgress(req.session.user.id);
+    const assignments = await getStudentAssignments(req.session.user.id);
+
+    // For each subject with a level, get submission stats
+    const enrichedProgress = [];
+    for (const p of progress) {
+      const submissions = await getStudentSubmissions(req.session.user.id, p.subject_id);
+      const assignedModule = await getModuleBySubjectAndLevel(p.subject_id, p.level);
+      enrichedProgress.push({
+        ...p,
+        submissions,
+        assignedModule,
+        totalSubmissions: submissions.length,
+        avgScore: submissions.length > 0
+          ? (submissions.reduce((sum, s) => sum + Number(s.percentage || 0), 0) / submissions.length).toFixed(1)
+          : '0.0'
+      });
+    }
+
+    const shell = await buildShell(req, {
+      pageTitle: 'My Progress',
+      section: 'progress',
+      contentView: '../content/student-progress',
+      progress: enrichedProgress,
+      assignments
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
 });
 
 module.exports = router;

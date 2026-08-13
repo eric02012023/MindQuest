@@ -1,0 +1,42 @@
+<%# Admin Assessment Monitoring View %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Assessment Monitoring</h2>
+    </div>
+    <% if (!(assessments || []).length) { %>
+      <p class="empty-state">No tutor-created assessments yet.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Subject</th>
+              <th>Module</th>
+              <th>Level</th>
+              <th>Purpose</th>
+              <th>Tutor</th>
+              <th>Items</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% assessments.forEach(a => { %>
+              <tr>
+                <td><strong><%= a.title %></strong></td>
+                <td><%= a.subject_name %></td>
+                <td><%= a.module_title %></td>
+                <td><span class="level-badge <%= (a.level || '').toLowerCase() %>"><%= a.level %></span></td>
+                <td><span class="pill <%= a.purpose === 'pre' ? 'partial' : a.purpose === 'post' ? 'paid' : '' %>"><%= a.purpose %></span></td>
+                <td><%= a.first_name %> <%= a.last_name %></td>
+                <td><%= a.question_count %></td>
+                <td><%= new Date(a.created_at).toLocaleDateString() %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+</section>

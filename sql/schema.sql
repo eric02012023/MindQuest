@@ -956,3 +956,139 @@ IF OBJECT_ID('dbo.assessment_results','U') IS NOT NULL AND COL_LENGTH('dbo.asses
 IF OBJECT_ID('dbo.assessment_template_questions','U') IS NOT NULL AND COL_LENGTH('dbo.assessment_template_questions','essay_rubric_keywords') IS NULL
   ALTER TABLE dbo.assessment_template_questions ADD essay_rubric_keywords NVARCHAR(MAX) NULL;
 
+
+-- ============================================================================
+-- Phase 4: Module Management & Tutor Assessment System
+-- ============================================================================
+
+-- 26. NEW TABLE: modules — Admin-uploaded learning modules per subject + level
+IF OBJECT_ID('dbo.modules', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.modules (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    subject_id INT NOT NULL,
+    level NVARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advanced')),
+    title NVARCHAR(200) NOT NULL,
+    description NVARCHAR(MAX) NULL,
+    file_path NVARCHAR(500) NULL,
+    file_original_name NVARCHAR(255) NULL,
+    file_type NVARCHAR(120) NULL,
+    uploaded_by INT NULL,
+    is_archived BIT NOT NULL DEFAULT 0,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_modules_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_modules_uploader FOREIGN KEY (uploaded_by) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT uniq_module_subject_level UNIQUE (subject_id, level)
+  );
+END;
+
+-- 27. NEW TABLE: student_subject_levels — Per-subject level assignment from Pre-Assessment
+IF OBJECT_ID('dbo.student_subject_levels', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.student_subject_levels (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    student_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    level NVARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advanced')),
+    pre_assessment_id INT NULL,
+    score INT NULL,
+    total_points INT NULL,
+    percentage DECIMAL(5,2) NULL,
+    assigned_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_ssl_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_ssl_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
+    CONSTRAINT uniq_ssl_student_subject UNIQUE (student_id, subject_id)
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ssl_student_subject' AND object_id = OBJECT_ID('dbo.student_subject_levels'))
+  CREATE INDEX IX_ssl_student_subject ON dbo.student_subject_levels(student_id, subject_id);
+
+-- 28. NEW TABLE: tutor_assessments — Tutor-created assessments tied to Subject > Module > Level
+IF OBJECT_ID('dbo.tutor_assessments', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_assessments (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    subject_id INT NOT NULL,
+    module_id INT NOT NULL,
+    tutor_id INT NOT NULL,
+    title NVARCHAR(200) NOT NULL,
+    instructions NVARCHAR(MAX) NULL,
+    purpose NVARCHAR(20) NOT NULL CHECK (purpose IN ('pre','activity','post')),
+    is_published BIT NOT NULL DEFAULT 1,
+    is_archived BIT NOT NULL DEFAULT 0,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_ta_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_ta_module FOREIGN KEY (module_id) REFERENCES dbo.modules(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_ta_tutor FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE NO ACTION
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ta_subject_module' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
+  CREATE INDEX IX_ta_subject_module ON dbo.tutor_assessments(subject_id, module_id, purpose);
+
+-- 29. NEW TABLE: tutor_assessment_questions — Questions for tutor assessments
+IF OBJECT_ID('dbo.tutor_assessment_questions', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_assessment_questions (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    assessment_id INT NOT NULL,
+    question_text NVARCHAR(MAX) NOT NULL,
+    question_type NVARCHAR(30) NOT NULL CHECK (question_type IN ('multiple_choice','true_false','fill_blank')),
+    points INT NOT NULL DEFAULT 1,
+    correct_answer NVARCHAR(500) NOT NULL,
+    explanation NVARCHAR(MAX) NULL,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_taq_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.tutor_assessments(id) ON DELETE CASCADE
+  );
+END;
+
+-- 30. NEW TABLE: tutor_question_options — MCQ choices
+IF OBJECT_ID('dbo.tutor_question_options', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_question_options (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    question_id INT NOT NULL,
+    option_label NVARCHAR(10) NOT NULL,
+    option_text NVARCHAR(500) NOT NULL,
+    CONSTRAINT fk_tqo_question FOREIGN KEY (question_id) REFERENCES dbo.tutor_assessment_questions(id) ON DELETE CASCADE
+  );
+END;
+
+-- 31. NEW TABLE: tutor_assessment_submissions — Student submissions
+IF OBJECT_ID('dbo.tutor_assessment_submissions', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_assessment_submissions (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    assessment_id INT NOT NULL,
+    student_id INT NOT NULL,
+    score INT NOT NULL DEFAULT 0,
+    total_points INT NOT NULL DEFAULT 0,
+    percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+    submitted_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_tas_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.tutor_assessments(id) ON DELETE CASCADE,
+    CONSTRAINT fk_tas_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tas_student_assessment' AND object_id = OBJECT_ID('dbo.tutor_assessment_submissions'))
+  CREATE INDEX IX_tas_student_assessment ON dbo.tutor_assessment_submissions(student_id, assessment_id);
+
+-- 32. NEW TABLE: tutor_student_answers — Individual answers per submission
+IF OBJECT_ID('dbo.tutor_student_answers', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_student_answers (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    submission_id INT NOT NULL,
+    question_id INT NOT NULL,
+    student_answer NVARCHAR(MAX) NULL,
+    correct_answer NVARCHAR(500) NOT NULL,
+    is_correct BIT NOT NULL DEFAULT 0,
+    points_earned INT NOT NULL DEFAULT 0,
+    CONSTRAINT fk_tsa_submission FOREIGN KEY (submission_id) REFERENCES dbo.tutor_assessment_submissions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_tsa_question FOREIGN KEY (question_id) REFERENCES dbo.tutor_assessment_questions(id) ON DELETE NO ACTION
+  );
+END;
+

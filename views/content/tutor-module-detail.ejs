@@ -1,0 +1,66 @@
+<%# Tutor Module Detail View %>
+<section class="page-stack">
+
+  <%# Module Info Card %>
+  <section class="panel-card">
+    <div class="panel-card-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <h2><%= mod.title %></h2>
+        <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
+          <span class="level-badge <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
+          <span style="color: var(--text-soft); font-size: 13px;"><%= mod.subject_name %></span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <% if (mod.file_path) { %>
+          <a class="btn btn-secondary btn-sm" href="<%= mod.file_path %>" target="_blank">📄 Open Handout</a>
+        <% } %>
+        <a class="btn btn-primary btn-sm" href="/tutor/modules/<%= mod.id %>/create-assessment">+ Create Assessment</a>
+      </div>
+    </div>
+    <% if (mod.description) { %>
+      <p style="color: var(--text-soft); margin: 12px 0 0; font-size: 14px; line-height: 1.6;"><%= mod.description %></p>
+    <% } %>
+  </section>
+
+  <%# Existing Assessments %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Assessments for this Module</h2>
+    </div>
+    <% if (!(assessments || []).length) { %>
+      <p class="empty-state">No assessments created yet. Click "Create Assessment" to build one.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Purpose</th>
+              <th>Questions</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% assessments.forEach(a => { %>
+              <tr>
+                <td><strong><%= a.title %></strong></td>
+                <td>
+                  <span class="pill <%= a.purpose === 'pre' ? 'partial' : a.purpose === 'post' ? 'paid' : 'unpaid' %>">
+                    <%= a.purpose === 'pre' ? 'Pre-Assessment' : a.purpose === 'post' ? 'Post-Assessment' : 'Activity' %>
+                  </span>
+                </td>
+                <td>—</td>
+                <td><%= a.is_published ? '✅ Published' : '🔒 Draft' %></td>
+                <td><%= new Date(a.created_at).toLocaleDateString() %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <a href="/tutor/modules" class="btn btn-secondary" style="margin-top: 10px;">← Back to Modules</a>
+</section>

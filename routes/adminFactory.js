@@ -86,7 +86,13 @@ const {
   getAllStudentsForAnalytics,
   // Phase 4: Admin pre/post assessments
   createSubjectAssessment,
-  getSubjectAssessments
+  getSubjectAssessments,
+  // Phase 5: Module Management
+  upsertModule,
+  deleteModule,
+  getAllModulesAdmin,
+  getAllTutorAssessmentsAdmin,
+  getStudentResultsAdmin
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { query } = require('../config/db');
@@ -1747,6 +1753,109 @@ function createAdminRouter(role) {
     } catch (error) {
       next(error);
     }
+  });
+
+  // ==========================================================================
+  // Phase 5: Module Management
+  // ==========================================================================
+  const moduleUploader = createUploader('modules');
+
+  router.get('/modules', async (req, res, next) => {
+    try {
+      const [modules, subjects] = await Promise.all([
+        getAllModulesAdmin(),
+        getSubjects(false)
+      ]);
+      // Group modules by subject
+      const subjectMap = {};
+      for (const m of modules) {
+        if (!subjectMap[m.subject_id]) subjectMap[m.subject_id] = { name: m.subject_name, modules: [] };
+        subjectMap[m.subject_id].modules.push(m);
+      }
+      const shell = await buildShellData(req, {
+        pageTitle: 'Module Management',
+        section: 'modules',
+        contentView: '../content/admin-modules',
+        modules,
+        subjects,
+        subjectMap
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/modules', moduleUploader.single('file'), async (req, res, next) => {
+    try {
+      const { subject_id, level, title, description } = req.body;
+      if (!subject_id || !level || !title) {
+        setFlash(req, 'error', 'Subject, Level, and Title are required.');
+        return res.redirect(`${basePath}/modules`);
+      }
+      // Validate file type
+      if (req.file) {
+        const ext = (req.file.originalname || '').split('.').pop().toLowerCase();
+        const allowed = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt'];
+        if (!allowed.includes(ext)) {
+          setFlash(req, 'error', 'Invalid file type. Allowed: PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT.');
+          return res.redirect(`${basePath}/modules`);
+        }
+      }
+      await upsertModule({
+        subject_id: Number(subject_id),
+        level: String(level),
+        title: String(title).trim(),
+        description: String(description || '').trim(),
+        file_path: req.file ? `/uploads/modules/${req.file.filename}` : null,
+        file_original_name: req.file ? req.file.originalname : null,
+        file_type: req.file ? req.file.mimetype : null,
+        uploaded_by: req.session.user.id
+      });
+      setFlash(req, 'success', `Module "${title}" (${level}) uploaded successfully.`);
+      res.redirect(`${basePath}/modules`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not upload module.');
+      res.redirect(`${basePath}/modules`);
+    }
+  });
+
+  router.post('/modules/:id/delete', async (req, res, next) => {
+    try {
+      await deleteModule(Number(req.params.id));
+      setFlash(req, 'success', 'Module removed successfully.');
+      res.redirect(`${basePath}/modules`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not delete module.');
+      res.redirect(`${basePath}/modules`);
+    }
+  });
+
+  // ==========================================================================
+  // Phase 7: Assessment Monitoring & Student Results
+  // ==========================================================================
+  router.get('/assessment-monitoring', async (req, res, next) => {
+    try {
+      const assessments = await getAllTutorAssessmentsAdmin();
+      const shell = await buildShellData(req, {
+        pageTitle: 'Assessment Monitoring',
+        section: 'assessment_monitoring',
+        contentView: '../content/admin-assessment-monitoring',
+        assessments
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  router.get('/student-results', async (req, res, next) => {
+    try {
+      const results = await getStudentResultsAdmin();
+      const shell = await buildShellData(req, {
+        pageTitle: 'Student Results',
+        section: 'student_results',
+        contentView: '../content/admin-student-results',
+        results
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
   });
 
   return router;

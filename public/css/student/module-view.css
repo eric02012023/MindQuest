@@ -1,0 +1,276 @@
+/* ============================================================================
+   Student Module View — Premium CSS
+   Features: Circular progress ring, glassmorphism, accordion animations
+   ============================================================================ */
+
+/* Module Hero Card */
+.module-hero-card {
+  display: flex;
+  gap: 30px;
+  align-items: center;
+  padding: 30px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 24px rgba(99, 102, 241, 0.08);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+/* Circular Progress Ring */
+.module-progress-ring {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: conic-gradient(
+    #6366f1 calc(var(--progress) * 1%),
+    #e5e7eb calc(var(--progress) * 1%)
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+  animation: ringPulse 3s ease-in-out infinite;
+}
+@keyframes ringPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.2); }
+  50% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.35); }
+}
+.progress-ring-inner {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.progress-pct {
+  font-size: 32px;
+  font-weight: 800;
+  color: #6366f1;
+  line-height: 1;
+}
+.progress-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+/* Hero Right */
+.module-hero-right { flex: 1; min-width: 250px; }
+.module-hero-badges { display: flex; gap: 8px; margin-bottom: 10px; }
+.level-badge-lg {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.level-badge-lg.beginner { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.level-badge-lg.intermediate { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.level-badge-lg.advanced { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.subject-badge {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+  background: rgba(0, 0, 0, 0.05);
+}
+.module-hero-title {
+  font-size: 24px;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.module-hero-desc {
+  font-size: 14px;
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.module-hero-stats {
+  display: flex;
+  gap: 24px;
+}
+.mh-stat { display: flex; flex-direction: column; align-items: center; }
+.mh-stat-num { font-size: 20px; font-weight: 700; color: var(--text); }
+.mh-stat-label { font-size: 11px; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Accordion Sections */
+.module-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.3s ease;
+}
+.module-section:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.module-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+  user-select: none;
+}
+.module-section-header:hover {
+  background: var(--surface-soft);
+}
+.section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-icon { font-size: 22px; }
+.section-header-left h3 { margin: 0; font-size: 16px; }
+.section-count {
+  font-size: 12px;
+  color: var(--text-soft);
+  background: var(--surface-muted);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.section-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.section-status.done { background: #dcfce7; color: #166534; }
+.section-status.partial { background: #fef3c7; color: #92400e; }
+.section-status.pending { background: #f1f5f9; color: #64748b; }
+
+.section-chevron {
+  font-size: 12px;
+  color: var(--text-soft);
+  transition: transform 0.3s ease;
+}
+.section-chevron.rotated { transform: rotate(180deg); }
+
+/* Accordion body */
+.module-section-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, padding 0.3s ease;
+  padding: 0 20px;
+}
+.module-section-body.open {
+  max-height: 1200px;
+  padding: 0 20px 20px;
+}
+
+/* Handout Card */
+.handout-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04), rgba(139, 92, 246, 0.04));
+  border: 1px solid var(--border);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.handout-info p { font-size: 13px; color: var(--text-soft); margin: 6px 0 0; }
+.handout-filename {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+.handout-btn {
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* Assessment Items */
+.assessment-list { display: flex; flex-direction: column; gap: 10px; }
+.assessment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  transition: all 0.2s;
+  gap: 12px;
+}
+.assessment-item:hover {
+  border-color: var(--primary-400);
+  transform: translateX(4px);
+}
+.assessment-item.completed {
+  border-left: 4px solid #22c55e;
+  background: rgba(34, 197, 94, 0.03);
+}
+.assessment-item-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.assessment-check {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+.assessment-item.completed .assessment-check {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+}
+.assessment-check.post {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+}
+.assessment-item.completed .assessment-check.post {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+.assessment-item-left h4 { margin: 0; font-size: 15px; }
+.assessment-score { font-size: 12px; color: #22c55e; font-weight: 600; }
+.assessment-item-right { flex-shrink: 0; }
+
+.section-empty {
+  color: var(--text-soft);
+  font-size: 14px;
+  text-align: center;
+  padding: 20px 0;
+}
+.no-file { font-size: 13px; color: var(--text-soft); }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .module-hero-card { flex-direction: column; text-align: center; }
+  .module-hero-stats { justify-content: center; }
+  .module-hero-badges { justify-content: center; }
+  .handout-card { flex-direction: column; text-align: center; }
+  .assessment-item { flex-direction: column; text-align: left; }
+}

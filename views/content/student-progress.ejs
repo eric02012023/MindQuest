@@ -1,0 +1,128 @@
+<%# Student Progress View — Phase 7 %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>My Progress</h2>
+      <p style="color: var(--text-soft); font-size: 14px; margin: 4px 0 0;">Track your learning level and assessment performance across all subjects.</p>
+    </div>
+
+    <% if (!(progress || []).length) { %>
+      <div class="empty-state" style="text-align: center; padding: 40px 0;">
+        <div style="font-size: 48px; margin-bottom: 12px;">📊</div>
+        <h3 style="margin: 0 0 8px;">No Progress Yet</h3>
+        <p style="color: var(--text-soft);">Complete a Pre-Assessment in any subject to see your progress here.</p>
+        <a href="/student/subjects" class="btn btn-primary" style="margin-top: 16px;">Go to My Subjects</a>
+      </div>
+    <% } else { %>
+      <div class="progress-grid">
+        <% progress.forEach(p => { %>
+          <div class="progress-card">
+            <div class="progress-card-header">
+              <div class="progress-card-top">
+                <h3><%= p.subject_name %></h3>
+                <span class="level-badge <%= (p.level || '').toLowerCase() %>"><%= p.level %></span>
+              </div>
+              <p class="progress-assigned">Level assigned on <%= new Date(p.assigned_at).toLocaleDateString() %></p>
+            </div>
+
+            <%# Score Ring %>
+            <div class="progress-ring-container">
+              <div class="progress-mini-ring" style="--pct: <%= p.percentage %>">
+                <div class="progress-mini-inner">
+                  <span><%= Number(p.percentage).toFixed(0) %>%</span>
+                </div>
+              </div>
+              <div class="progress-ring-label">
+                <span>Pre-Assessment Score</span>
+                <strong><%= p.score || 0 %>/<%= p.total_points || 0 %></strong>
+              </div>
+            </div>
+
+            <%# Stats %>
+            <div class="progress-stats-row">
+              <div class="progress-stat">
+                <span class="ps-num"><%= p.totalSubmissions %></span>
+                <span class="ps-label">Assessments Taken</span>
+              </div>
+              <div class="progress-stat">
+                <span class="ps-num"><%= p.avgScore %>%</span>
+                <span class="ps-label">Avg. Score</span>
+              </div>
+            </div>
+
+            <% if (p.assignedModule) { %>
+              <a href="/student/modules/<%= p.assignedModule.id %>" class="btn btn-primary btn-sm" style="width: 100%; margin-top: 12px;">View Module →</a>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+</section>
+
+<style>
+  .progress-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+  }
+  .progress-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    background: var(--surface);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .progress-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+  .progress-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .progress-card-top h3 { margin: 0; font-size: 17px; }
+  .level-badge { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; }
+  .level-badge.beginner { background: #32a65a; }
+  .level-badge.intermediate { background: #d28a1f; }
+  .level-badge.advanced { background: #d54c4c; }
+  .progress-assigned { font-size: 12px; color: var(--text-soft); margin: 4px 0 16px; }
+
+  .progress-ring-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(139, 92, 246, 0.04));
+    border-radius: 10px;
+    margin-bottom: 14px;
+  }
+  .progress-mini-ring {
+    width: 60px; height: 60px; border-radius: 50%; flex-shrink: 0;
+    background: conic-gradient(#6366f1 calc(var(--pct) * 1%), #e5e7eb calc(var(--pct) * 1%));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .progress-mini-inner {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: #fff; display: flex; align-items: center; justify-content: center;
+  }
+  .progress-mini-inner span { font-size: 14px; font-weight: 700; color: #6366f1; }
+  .progress-ring-label { display: flex; flex-direction: column; gap: 2px; }
+  .progress-ring-label span { font-size: 12px; color: var(--text-soft); }
+  .progress-ring-label strong { font-size: 15px; }
+
+  .progress-stats-row {
+    display: flex; gap: 12px;
+  }
+  .progress-stat {
+    flex: 1;
+    text-align: center;
+    padding: 10px;
+    background: var(--surface-soft);
+    border-radius: 8px;
+  }
+  .ps-num { display: block; font-size: 18px; font-weight: 700; color: var(--text); }
+  .ps-label { font-size: 11px; color: var(--text-soft); text-transform: uppercase; }
+</style>

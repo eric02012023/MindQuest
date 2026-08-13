@@ -1,0 +1,183 @@
+<%# Student Assessment Result View %>
+<section class="page-stack">
+
+  <%# Level Assignment Banner (for Pre-Assessments) %>
+  <% if (isPre && assignedLevel) { %>
+    <div class="level-assigned-banner">
+      <div class="level-assigned-icon">🎯</div>
+      <div class="level-assigned-content">
+        <h3>Level Assigned: <span class="level-badge <%= assignedLevel.toLowerCase() %>"><%= assignedLevel %></span></h3>
+        <p>Based on your pre-assessment score, you have been assigned to the <strong><%= assignedLevel %></strong> level. Your module has been unlocked!</p>
+      </div>
+    </div>
+  <% } %>
+
+  <%# Score Summary %>
+  <section class="panel-card result-hero-card">
+    <div class="result-hero">
+      <div class="result-ring-wrap">
+        <div class="result-ring" style="--pct: <%= submission.percentage %>">
+          <div class="result-ring-inner">
+            <span class="result-pct"><%= Number(submission.percentage).toFixed(0) %>%</span>
+          </div>
+        </div>
+      </div>
+      <div class="result-info">
+        <h2><%= submission.assessment_title %></h2>
+        <div class="result-meta-row">
+          <span class="level-badge <%= (submission.level || '').toLowerCase() %>"><%= submission.level %></span>
+          <span><%= submission.subject_name %></span>
+          <span>•</span>
+          <span><%= submission.module_title %></span>
+        </div>
+        <div class="result-stats">
+          <div class="stat-box">
+            <span class="stat-num"><%= submission.score %></span>
+            <span class="stat-label">Score</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-box">
+            <span class="stat-num"><%= submission.total_points %></span>
+            <span class="stat-label">Total</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-box">
+            <span class="stat-num"><%= (answers || []).filter(a => a.is_correct).length %></span>
+            <span class="stat-label">Correct</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-box">
+            <span class="stat-num"><%= (answers || []).filter(a => !a.is_correct).length %></span>
+            <span class="stat-label">Wrong</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%# Answer Review %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Answer Review</h2>
+    </div>
+    <% (answers || []).forEach((a, i) => { %>
+      <div class="answer-review-card <%= a.is_correct ? 'correct' : 'wrong' %>">
+        <div class="answer-review-header">
+          <span class="ar-num">Q<%= i + 1 %></span>
+          <span class="ar-type"><%= a.question_type === 'multiple_choice' ? 'MCQ' : a.question_type === 'true_false' ? 'T/F' : 'Fill' %></span>
+          <span class="ar-result <%= a.is_correct ? 'correct' : 'wrong' %>">
+            <%= a.is_correct ? '✓ Correct' : '✗ Incorrect' %> (<%= a.points_earned %>/<%= a.points %> pts)
+          </span>
+        </div>
+        <p class="ar-question"><%= a.question_text %></p>
+        <div class="ar-answers">
+          <div class="ar-answer-box <%= a.is_correct ? '' : 'wrong-bg' %>">
+            <span class="ar-label">Your Answer</span>
+            <span class="ar-value"><%= a.student_answer || '(no answer)' %></span>
+          </div>
+          <% if (!a.is_correct) { %>
+            <div class="ar-answer-box correct-bg">
+              <span class="ar-label">Correct Answer</span>
+              <span class="ar-value"><%= a.correct_answer %></span>
+            </div>
+          <% } %>
+        </div>
+        <% if (a.explanation) { %>
+          <p class="ar-explanation">💡 <%= a.explanation %></p>
+        <% } %>
+      </div>
+    <% }) %>
+  </section>
+
+  <div style="display: flex; gap: 12px; margin-top: 10px;">
+    <% if (isPre) { %>
+      <a href="/student/subjects/<%= submission.subject_id || '' %>" class="btn btn-primary">Go to My Module →</a>
+    <% } else { %>
+      <a href="/student/modules/<%= submission.module_id %>" class="btn btn-primary">← Back to Module</a>
+    <% } %>
+    <a href="/student/subjects" class="btn btn-secondary">All Subjects</a>
+  </div>
+</section>
+
+<style>
+  .level-assigned-banner {
+    display: flex; gap: 16px; align-items: center;
+    padding: 20px; border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+    border: 1px solid #6ee7b7; margin-bottom: 20px;
+  }
+  .level-assigned-icon { font-size: 36px; }
+  .level-assigned-content h3 { display: flex; align-items: center; gap: 10px; margin: 0; }
+  .level-assigned-content p { font-size: 14px; color: #065f46; margin: 6px 0 0; }
+  .level-badge { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; }
+  .level-badge.beginner { background: #32a65a; }
+  .level-badge.intermediate { background: #d28a1f; }
+  .level-badge.advanced { background: #d54c4c; }
+
+  .result-hero-card { overflow: visible; }
+  .result-hero {
+    display: flex; gap: 30px; align-items: center;
+    flex-wrap: wrap; padding: 10px 0;
+  }
+  .result-ring-wrap { flex-shrink: 0; }
+  .result-ring {
+    width: 120px; height: 120px; border-radius: 50%;
+    background: conic-gradient(
+      var(--primary-600) calc(var(--pct) * 1%),
+      #e5e7eb calc(var(--pct) * 1%)
+    );
+    display: flex; align-items: center; justify-content: center;
+  }
+  .result-ring-inner {
+    width: 90px; height: 90px; border-radius: 50%;
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .result-pct { font-size: 28px; font-weight: 800; color: var(--primary-700); }
+  .result-info { flex: 1; }
+  .result-info h2 { margin: 0 0 8px; }
+  .result-meta-row {
+    display: flex; gap: 8px; align-items: center;
+    font-size: 13px; color: var(--text-soft); margin-bottom: 16px;
+  }
+  .result-stats {
+    display: flex; gap: 0; align-items: center;
+    background: var(--surface-soft);
+    border-radius: var(--radius-sm);
+    padding: 12px 0;
+  }
+  .stat-box { flex: 1; text-align: center; }
+  .stat-num { font-size: 22px; font-weight: 700; color: var(--text); display: block; }
+  .stat-label { font-size: 11px; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-divider { width: 1px; height: 36px; background: var(--border); }
+
+  .answer-review-card {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 16px; margin-bottom: 14px; background: var(--surface);
+    border-left: 4px solid var(--border);
+  }
+  .answer-review-card.correct { border-left-color: #22c55e; }
+  .answer-review-card.wrong { border-left-color: #ef4444; }
+  .answer-review-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .ar-num {
+    background: var(--gradient-main); color: #fff;
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+  }
+  .ar-type { font-size: 11px; color: var(--text-soft); background: var(--surface-muted); padding: 2px 8px; border-radius: 999px; }
+  .ar-result { margin-left: auto; font-weight: 600; font-size: 13px; }
+  .ar-result.correct { color: #22c55e; }
+  .ar-result.wrong { color: #ef4444; }
+  .ar-question { font-size: 14px; line-height: 1.6; margin-bottom: 12px; }
+  .ar-answers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ar-answer-box {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border);
+  }
+  .wrong-bg { background: #fef2f2; border-color: #fecaca; }
+  .correct-bg { background: #f0fdf4; border-color: #bbf7d0; }
+  .ar-label { font-size: 10px; text-transform: uppercase; color: var(--text-soft); font-weight: 600; letter-spacing: 0.5px; }
+  .ar-value { font-weight: 600; font-size: 14px; }
+  .ar-explanation { font-size: 13px; color: var(--text-soft); font-style: italic; margin-top: 10px; }
+</style>

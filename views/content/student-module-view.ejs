@@ -1,0 +1,185 @@
+<%# Student Module View — Premium UI with progress ring and accordion sections %>
+<link rel="stylesheet" href="/css/student/module-view.css" />
+
+<section class="page-stack module-view-page">
+
+  <%# Module Hero Card %>
+  <section class="module-hero-card">
+    <div class="module-hero-left">
+      <div class="module-progress-ring" style="--progress: <%= progressPercent %>">
+        <div class="progress-ring-inner">
+          <span class="progress-pct"><%= progressPercent %>%</span>
+          <span class="progress-label">Complete</span>
+        </div>
+      </div>
+    </div>
+    <div class="module-hero-right">
+      <div class="module-hero-badges">
+        <span class="level-badge-lg <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
+        <span class="subject-badge"><%= mod.subject_name %></span>
+      </div>
+      <h1 class="module-hero-title"><%= mod.title %></h1>
+      <% if (mod.description) { %>
+        <p class="module-hero-desc"><%= mod.description %></p>
+      <% } %>
+      <div class="module-hero-stats">
+        <div class="mh-stat">
+          <span class="mh-stat-num"><%= completedTasks %> / <%= totalTasks %></span>
+          <span class="mh-stat-label">Tasks Done</span>
+        </div>
+        <div class="mh-stat">
+          <span class="mh-stat-num"><%= activities.length %></span>
+          <span class="mh-stat-label">Activities</span>
+        </div>
+        <div class="mh-stat">
+          <span class="mh-stat-num"><%= postAssessments.length %></span>
+          <span class="mh-stat-label">Post-Tests</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%# Handout Section %>
+  <section class="module-section">
+    <div class="module-section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <span class="section-icon">📄</span>
+        <h3>Learning Handout</h3>
+      </div>
+      <div class="section-header-right">
+        <span class="section-status done">✓ Available</span>
+        <span class="section-chevron">▼</span>
+      </div>
+    </div>
+    <div class="module-section-body open">
+      <div class="handout-card">
+        <div class="handout-info">
+          <% if (mod.file_original_name) { %>
+            <span class="handout-filename">📁 <%= mod.file_original_name %></span>
+          <% } %>
+          <p>Read through this handout to understand the key concepts before attempting the activities.</p>
+        </div>
+        <% if (mod.file_path) { %>
+          <a href="<%= mod.file_path %>" target="_blank" class="btn btn-primary handout-btn">
+            📖 OPEN HANDOUT
+          </a>
+        <% } else { %>
+          <span class="no-file">No handout file uploaded yet.</span>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+  <%# Activities Section %>
+  <section class="module-section">
+    <div class="module-section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <span class="section-icon">✏️</span>
+        <h3>Activities</h3>
+        <span class="section-count"><%= completedActivities.length %>/<%= activities.length %></span>
+      </div>
+      <div class="section-header-right">
+        <% if (completedActivities.length === activities.length && activities.length > 0) { %>
+          <span class="section-status done">✓ All Complete</span>
+        <% } else if (completedActivities.length > 0) { %>
+          <span class="section-status partial">In Progress</span>
+        <% } else { %>
+          <span class="section-status pending">Not Started</span>
+        <% } %>
+        <span class="section-chevron">▼</span>
+      </div>
+    </div>
+    <div class="module-section-body open">
+      <% if (!activities.length) { %>
+        <p class="section-empty">No activities have been created for this module yet.</p>
+      <% } else { %>
+        <div class="assessment-list">
+          <% activities.forEach((a, i) => {
+            const sub = (submissions || []).find(s => Number(s.assessment_id) === Number(a.id));
+            const isDone = !!sub;
+          %>
+            <div class="assessment-item <%= isDone ? 'completed' : '' %>">
+              <div class="assessment-item-left">
+                <span class="assessment-check"><%= isDone ? '✓' : (i + 1) %></span>
+                <div>
+                  <h4><%= a.title %></h4>
+                  <% if (isDone) { %>
+                    <span class="assessment-score">Score: <%= sub.score %>/<%= sub.total_points %> (<%= Number(sub.percentage).toFixed(0) %>%)</span>
+                  <% } %>
+                </div>
+              </div>
+              <div class="assessment-item-right">
+                <% if (isDone) { %>
+                  <a class="btn btn-secondary btn-sm" href="/student/assessment-result/<%= sub.id %>">View Result</a>
+                <% } else { %>
+                  <a class="btn btn-primary btn-sm" href="/student/tutor-assessments/<%= a.id %>">Start Activity</a>
+                <% } %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
+  <%# Post-Assessment Section %>
+  <section class="module-section">
+    <div class="module-section-header" onclick="toggleSection(this)">
+      <div class="section-header-left">
+        <span class="section-icon">🏆</span>
+        <h3>Post-Assessment</h3>
+        <span class="section-count"><%= completedPost.length %>/<%= postAssessments.length %></span>
+      </div>
+      <div class="section-header-right">
+        <% if (completedPost.length === postAssessments.length && postAssessments.length > 0) { %>
+          <span class="section-status done">✓ Complete</span>
+        <% } else { %>
+          <span class="section-status pending">Pending</span>
+        <% } %>
+        <span class="section-chevron">▼</span>
+      </div>
+    </div>
+    <div class="module-section-body open">
+      <% if (!postAssessments.length) { %>
+        <p class="section-empty">No post-assessment has been created for this module yet.</p>
+      <% } else { %>
+        <div class="assessment-list">
+          <% postAssessments.forEach((a, i) => {
+            const sub = (submissions || []).find(s => Number(s.assessment_id) === Number(a.id));
+            const isDone = !!sub;
+          %>
+            <div class="assessment-item <%= isDone ? 'completed' : '' %>">
+              <div class="assessment-item-left">
+                <span class="assessment-check post"><%= isDone ? '✓' : '★' %></span>
+                <div>
+                  <h4><%= a.title %></h4>
+                  <% if (isDone) { %>
+                    <span class="assessment-score">Score: <%= sub.score %>/<%= sub.total_points %> (<%= Number(sub.percentage).toFixed(0) %>%)</span>
+                  <% } %>
+                </div>
+              </div>
+              <div class="assessment-item-right">
+                <% if (isDone) { %>
+                  <a class="btn btn-secondary btn-sm" href="/student/assessment-result/<%= sub.id %>">View Result</a>
+                <% } else { %>
+                  <a class="btn btn-primary btn-sm" href="/student/tutor-assessments/<%= a.id %>">Take Post-Test</a>
+                <% } %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
+  <a href="/student/subjects/<%= mod.subject_id %>" class="btn btn-secondary" style="margin-top: 10px;">← Back to Subject</a>
+</section>
+
+<script>
+  function toggleSection(header) {
+    const body = header.nextElementSibling;
+    const chevron = header.querySelector('.section-chevron');
+    body.classList.toggle('open');
+    chevron.classList.toggle('rotated');
+  }
+</script>

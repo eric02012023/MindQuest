@@ -1,0 +1,265 @@
+<%# Tutor Create Assessment View %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Create Assessment</h2>
+      <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
+        <span class="level-badge <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
+        <span style="color: var(--text-soft); font-size: 13px;"><%= mod.subject_name %> — <%= mod.title %></span>
+      </div>
+    </div>
+
+    <form id="assessment-form" method="post" action="/tutor/modules/<%= mod.id %>/create-assessment" class="stack-form">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="assessment-title">Assessment Title</label>
+          <input type="text" name="title" id="assessment-title" placeholder="e.g. Chapter 1 Activity" required />
+        </div>
+        <div class="form-group">
+          <label for="assessment-purpose">Purpose</label>
+          <select name="purpose" id="assessment-purpose" required>
+            <option value="">Select Purpose</option>
+            <option value="pre">Pre-Assessment</option>
+            <option value="activity">Activity</option>
+            <option value="post">Post-Assessment</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="assessment-instructions">Instructions (optional)</label>
+        <textarea name="instructions" id="assessment-instructions" rows="3" placeholder="Instructions for students taking this assessment..."></textarea>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;" />
+
+      <div id="questions-container">
+        <h3 style="margin-bottom: 12px;">Questions</h3>
+        <p id="no-questions-msg" style="color: var(--text-soft); font-size: 14px;">No questions added yet. Click the button below to add your first question.</p>
+      </div>
+
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('multiple_choice')">+ Multiple Choice</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('true_false')">+ True / False</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('fill_blank')">+ Fill in the Blank</button>
+      </div>
+
+      <input type="hidden" name="questions" id="questions-json" />
+
+      <div style="display: flex; gap: 12px; margin-top: 24px;">
+        <button type="submit" class="btn btn-primary" id="submit-assessment-btn">Create Assessment</button>
+        <a href="/tutor/modules/<%= mod.id %>" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </section>
+</section>
+
+<script>
+  let questionCount = 0;
+  const questionsData = [];
+
+  function addQuestion(type) {
+    questionCount++;
+    document.getElementById('no-questions-msg').style.display = 'none';
+
+    const container = document.getElementById('questions-container');
+    const qDiv = document.createElement('div');
+    qDiv.className = 'question-card';
+    qDiv.id = `question-${questionCount}`;
+    qDiv.dataset.index = questionCount;
+
+    const typeLabels = {
+      multiple_choice: 'Multiple Choice',
+      true_false: 'True / False',
+      fill_blank: 'Fill in the Blank'
+    };
+
+    let html = `
+      <div class="question-header">
+        <span class="question-number">Q${questionCount}</span>
+        <span class="question-type-label">${typeLabels[type]}</span>
+        <button type="button" class="btn-remove-q" onclick="removeQuestion(${questionCount})" title="Remove">&times;</button>
+      </div>
+      <div class="question-body">
+        <div class="form-group">
+          <label>Question Text</label>
+          <textarea class="q-text" rows="2" placeholder="Enter your question..." required></textarea>
+        </div>
+        <input type="hidden" class="q-type" value="${type}" />
+        <div class="form-group">
+          <label>Points</label>
+          <input type="number" class="q-points" value="1" min="1" max="10" />
+        </div>
+    `;
+
+    if (type === 'multiple_choice') {
+      html += `
+        <div class="form-group">
+          <label>Choices</label>
+          <div class="choice-grid">
+            <div class="choice-item"><span class="choice-label">A</span><input type="text" class="q-opt-a" placeholder="Option A" required /></div>
+            <div class="choice-item"><span class="choice-label">B</span><input type="text" class="q-opt-b" placeholder="Option B" required /></div>
+            <div class="choice-item"><span class="choice-label">C</span><input type="text" class="q-opt-c" placeholder="Option C" required /></div>
+            <div class="choice-item"><span class="choice-label">D</span><input type="text" class="q-opt-d" placeholder="Option D" required /></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Correct Answer</label>
+          <select class="q-answer" required>
+            <option value="">Select</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+        </div>
+      `;
+    } else if (type === 'true_false') {
+      html += `
+        <div class="form-group">
+          <label>Correct Answer</label>
+          <select class="q-answer" required>
+            <option value="">Select</option>
+            <option value="True">True</option>
+            <option value="False">False</option>
+          </select>
+        </div>
+      `;
+    } else if (type === 'fill_blank') {
+      html += `
+        <div class="form-group">
+          <label>Correct Answer</label>
+          <input type="text" class="q-answer" placeholder="The expected answer..." required />
+        </div>
+      `;
+    }
+
+    html += `
+        <div class="form-group">
+          <label>Explanation (optional)</label>
+          <input type="text" class="q-explanation" placeholder="Why this is the correct answer..." />
+        </div>
+      </div>
+    `;
+
+    qDiv.innerHTML = html;
+    container.appendChild(qDiv);
+  }
+
+  function removeQuestion(num) {
+    const el = document.getElementById(`question-${num}`);
+    if (el) el.remove();
+    // Re-number remaining
+    const cards = document.querySelectorAll('.question-card');
+    if (!cards.length) {
+      document.getElementById('no-questions-msg').style.display = 'block';
+    }
+    cards.forEach((card, i) => {
+      card.querySelector('.question-number').textContent = `Q${i + 1}`;
+    });
+  }
+
+  document.getElementById('assessment-form').addEventListener('submit', function(e) {
+    const cards = document.querySelectorAll('.question-card');
+    if (!cards.length) {
+      e.preventDefault();
+      alert('Please add at least one question.');
+      return;
+    }
+    const questions = [];
+    cards.forEach(card => {
+      const type = card.querySelector('.q-type').value;
+      const q = {
+        question_text: card.querySelector('.q-text').value.trim(),
+        question_type: type,
+        points: Number(card.querySelector('.q-points').value) || 1,
+        correct_answer: type === 'fill_blank' ? card.querySelector('.q-answer').value.trim() : card.querySelector('.q-answer').value,
+        explanation: (card.querySelector('.q-explanation') || {}).value || ''
+      };
+
+      if (type === 'multiple_choice') {
+        q.options = [
+          { option_label: 'A', option_text: card.querySelector('.q-opt-a').value.trim() },
+          { option_label: 'B', option_text: card.querySelector('.q-opt-b').value.trim() },
+          { option_label: 'C', option_text: card.querySelector('.q-opt-c').value.trim() },
+          { option_label: 'D', option_text: card.querySelector('.q-opt-d').value.trim() }
+        ];
+      }
+      questions.push(q);
+    });
+    document.getElementById('questions-json').value = JSON.stringify(questions);
+  });
+</script>
+
+<style>
+  .question-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 18px;
+    margin-bottom: 16px;
+    background: var(--surface-soft);
+    position: relative;
+  }
+  .question-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .question-number {
+    font-weight: 700;
+    font-size: 15px;
+    background: var(--gradient-main);
+    color: #fff;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+  }
+  .question-type-label {
+    font-size: 13px;
+    color: var(--text-soft);
+    font-weight: 500;
+  }
+  .btn-remove-q {
+    margin-left: auto;
+    border: none;
+    background: var(--danger);
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .question-body {
+    display: grid;
+    gap: 12px;
+  }
+  .choice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .choice-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .choice-label {
+    font-weight: 700;
+    color: var(--primary-700);
+    min-width: 18px;
+  }
+  .choice-item input {
+    flex: 1;
+  }
+</style>

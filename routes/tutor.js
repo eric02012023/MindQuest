@@ -48,7 +48,14 @@ const {
   getAssessmentRequestsForTutor,
   respondToAssessmentRequest,
   getTutorStudentsForAnalytics,
-  getAttendanceBySubject
+  getAttendanceBySubject,
+  // Phase 5: Modules & Assessments
+  getModulesBySubject,
+  getModuleBySubjectAndLevel,
+  createTutorAssessment,
+  getTutorAssessmentsByModule,
+  getTutorAssessmentById,
+  getTutorStudentResults
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 
@@ -1173,6 +1180,177 @@ router.post('/assessment-requests/:id/decline', async (req, res, next) => {
     setFlash(req, 'error', error.message || 'Could not decline request.');
     res.redirect('/tutor/analytics');
   }
+});
+
+// ==========================================================================
+// Phase 5: Modules & Assessment Creation
+// ==========================================================================
+
+// Tutor: View all assigned subjects and their modules
+router.get('/modules', async (req, res, next) => {
+  try {
+    const subjects = await getTutorAssignedSubjects(req.session.user.id);
+    // For each subject, fetch modules
+    const subjectsWithModules = [];
+    for (const s of subjects) {
+      const modules = await getModulesBySubject(s.subject_id);
+      subjectsWithModules.push({
+        ...s,
+        modules
+      });
+    }
+    const shell = await buildShell(req, {
+      pageTitle: 'Modules & Assessments',
+      section: 'modules',
+      contentView: '../content/tutor-modules',
+      subjectsWithModules
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Tutor: View a specific module and its assessments
+router.get('/modules/:id', async (req, res, next) => {
+  try {
+    const { query: dbQuery } = require('../config/db');
+    const moduleRows = await dbQuery('SELECT m.*, s.name as subject_name FROM modules m JOIN subjects s ON s.id = m.subject_id WHERE m.id = ? AND m.is_archived = 0', [req.params.id]);
+    if (!moduleRows.length) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect('/tutor/modules');
+    }
+    const mod = moduleRows[0];
+    const assessments = await getTutorAssessmentsByModule(mod.id);
+    const shell = await buildShell(req, {
+      pageTitle: `${mod.title} — ${mod.level}`,
+      section: 'modules',
+      contentView: '../content/tutor-module-detail',
+      mod,
+      assessments
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Tutor: Render assessment creation form
+router.get('/modules/:id/create-assessment', async (req, res, next) => {
+  try {
+    const { query: dbQuery } = require('../config/db');
+    const moduleRows = await dbQuery('SELECT m.*, s.name as subject_name FROM modules m JOIN subjects s ON s.id = m.subject_id WHERE m.id = ? AND m.is_archived = 0', [req.params.id]);
+    if (!moduleRows.length) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect('/tutor/modules');
+    }
+    const mod = moduleRows[0];
+    const shell = await buildShell(req, {
+      pageTitle: 'Create Assessment',
+      section: 'modules',
+      contentView: '../content/tutor-create-assessment',
+      mod
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Tutor: Submit new assessment (JSON payload)
+router.post('/modules/:id/create-assessment', async (req, res, next) => {
+  try {
+    const { query: dbQuery } = require('../config/db');
+    const moduleRows = await dbQuery('SELECT m.*, s.name as subject_name FROM modules m JOIN subjects s ON s.id = m.subject_id WHERE m.id = ? AND m.is_archived = 0', [req.params.id]);
+    if (!moduleRows.length) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect('/tutor/modules');
+    }
+    const mod = moduleRows[0];
+    const { title, instructions, purpose, questions } = req.body;
+
+    if (!title || !purpose || !questions || !questions.length) {
+      setFlash(req, 'error', 'Title, Purpose, and at least one Question are required.');
+      return res.redirect(`/tutor/modules/${req.params.id}/create-assessment`);
+    }
+
+    // Parse questions if they come as JSON string
+    let parsedQuestions = questions;
+    if (typeof questions === 'string') {
+      try { parsedQuestions = JSON.parse(questions); } catch (e) {
+        setFlash(req, 'error', 'Invalid question data format.');
+        return res.redirect(`/tutor/modules/${req.params.id}/create-assessment`);
+      }
+    }
+
+    await createTutorAssessment({
+      subject_id: mod.subject_id,
+      module_id: mod.id,
+      tutor_id: req.session.user.id,
+      title: String(title).trim(),
+      instructions: String(instructions || '').trim(),
+      purpose: String(purpose),
+      questions: parsedQuestions
+    });
+
+    setFlash(req, 'success', `Assessment "${title}" created successfully.`);
+    res.redirect(`/tutor/modules/${req.params.id}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not create assessment.');
+    res.redirect(`/tutor/modules/${req.params.id}`);
+  }
+});
+
+// Tutor: View student results
+router.get('/student-results', async (req, res, next) => {
+  try {
+    const results = await getTutorStudentResults(req.session.user.id);
+    const shell = await buildShell(req, {
+      pageTitle: 'Student Results',
+      section: 'student_results',
+      contentView: '../content/tutor-student-results',
+      results
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Tutor: View detailed result for a submission
+router.get('/student-results/:id', async (req, res, next) => {
+  try {
+    const { query: dbQuery } = require('../config/db');
+    // Get the submission
+    const submissions = await dbQuery(
+      `SELECT tas.*, ta.title as assessment_title, ta.purpose, ta.instructions,
+              m.level, m.title as module_title, s.name as subject_name,
+              u.first_name, u.last_name
+       FROM tutor_assessment_submissions tas
+       JOIN tutor_assessments ta ON ta.id = tas.assessment_id
+       JOIN modules m ON m.id = ta.module_id
+       JOIN subjects s ON s.id = ta.subject_id
+       JOIN users u ON u.id = tas.student_id
+       WHERE tas.id = ? AND ta.tutor_id = ?`,
+      [req.params.id, req.session.user.id]
+    );
+    if (!submissions.length) {
+      setFlash(req, 'error', 'Submission not found.');
+      return res.redirect('/tutor/student-results');
+    }
+    const submission = submissions[0];
+
+    // Get individual answers
+    const answers = await dbQuery(
+      `SELECT tsa.*, taq.question_text, taq.question_type, taq.points, taq.explanation
+       FROM tutor_student_answers tsa
+       JOIN tutor_assessment_questions taq ON taq.id = tsa.question_id
+       WHERE tsa.submission_id = ?
+       ORDER BY taq.id ASC`,
+      [req.params.id]
+    );
+
+    const shell = await buildShell(req, {
+      pageTitle: `Result: ${submission.first_name} ${submission.last_name}`,
+      section: 'student_results',
+      contentView: '../content/tutor-result-detail',
+      submission,
+      answers
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
 });
 
 module.exports = router;

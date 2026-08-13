@@ -1,0 +1,106 @@
+<%# Admin Module Management View %>
+<section class="page-stack">
+
+  <%# Upload Module Form %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Upload Module</h2>
+    </div>
+    <form method="post" action="<%= basePath %>/modules" enctype="multipart/form-data" class="stack-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="mod-subject">Subject</label>
+          <select name="subject_id" id="mod-subject" required>
+            <option value="">Select Subject</option>
+            <% (subjects || []).forEach(s => { %>
+              <option value="<%= s.id %>"><%= s.name %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="mod-level">Level</label>
+          <select name="level" id="mod-level" required>
+            <option value="">Select Level</option>
+            <option value="Beginner">Beginner</option>
+            <option value="Intermediate">Intermediate</option>
+            <option value="Advanced">Advanced</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="mod-title">Module Title</label>
+        <input type="text" name="title" id="mod-title" placeholder="e.g. Introduction to Algebra" required />
+      </div>
+      <div class="form-group">
+        <label for="mod-description">Description (optional)</label>
+        <textarea name="description" id="mod-description" rows="3" placeholder="Brief description of this module..."></textarea>
+      </div>
+      <div class="form-group">
+        <label for="mod-file">Handout File (PDF, DOCX, PPTX)</label>
+        <input type="file" name="file" id="mod-file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt" />
+      </div>
+      <button type="submit" class="btn btn-primary">Upload Module</button>
+    </form>
+  </section>
+
+  <%# Modules Table Grouped By Subject %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>All Modules</h2>
+    </div>
+
+    <% if (!modules || !modules.length) { %>
+      <p class="empty-state">No modules uploaded yet.</p>
+    <% } else { %>
+      <% const grouped = {};
+         modules.forEach(m => {
+           if (!grouped[m.subject_name]) grouped[m.subject_name] = [];
+           grouped[m.subject_name].push(m);
+         });
+      %>
+      <% Object.keys(grouped).forEach(subjectName => { %>
+        <div class="module-subject-group">
+          <h3 class="module-subject-title"><%= subjectName %></h3>
+          <div class="module-level-cards">
+            <% ['Beginner','Intermediate','Advanced'].forEach(level => { %>
+              <%
+                const mod = grouped[subjectName].find(m => m.level === level);
+              %>
+              <div class="module-level-card <%= mod ? 'filled' : 'empty' %> level-<%= level.toLowerCase() %>">
+                <div class="module-level-header">
+                  <span class="level-badge <%= level.toLowerCase() %>"><%= level %></span>
+                  <% if (mod) { %>
+                    <span class="module-status filled">✓ Uploaded</span>
+                  <% } else { %>
+                    <span class="module-status empty">Not Uploaded</span>
+                  <% } %>
+                </div>
+                <% if (mod) { %>
+                  <h4><%= mod.title %></h4>
+                  <% if (mod.description) { %><p class="module-desc"><%= mod.description %></p><% } %>
+                  <div class="module-meta">
+                    <% if (mod.file_original_name) { %>
+                      <span>📄 <%= mod.file_original_name %></span>
+                    <% } %>
+                    <span>By: <%= mod.first_name %> <%= mod.last_name %></span>
+                  </div>
+                  <div class="module-actions">
+                    <% if (mod.file_path) { %>
+                      <a class="btn btn-secondary btn-sm" href="<%= mod.file_path %>" target="_blank">Open File</a>
+                    <% } %>
+                    <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/delete" data-confirm-message="Remove this module?">
+                      <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                    </form>
+                  </div>
+                <% } else { %>
+                  <p class="module-empty-text">No module uploaded for this level yet.</p>
+                <% } %>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      <% }) %>
+    <% } %>
+  </section>
+
+</section>
