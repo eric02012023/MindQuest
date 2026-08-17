@@ -110,7 +110,7 @@ try {
 } catch (emailErr) {
   console.error('[OTP EMAIL ERROR]', emailErr.message);
   console.log(`[OTP FALLBACK] OTP for ${user.email}: ${otp}`);
-  req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+  req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
 }
 req.session.pendingLogin = { user: { ...user, password_hash: undefined } };
 return res.redirect('/login/verify');
