@@ -4,9 +4,9 @@
   <div class="global-modal-card small">
     <button type="button" class="modal-close" data-close-modal>&times;</button>
     <div style="font-size:42px;line-height:1;margin-bottom:8px;">
-      <%= flash.type === 'success' ? '✅' : 'ℹ️' %>
+      <% if (flash.type === 'success') { %>✅<% } else if (flash.type === 'error') { %>❌<% } else { %>ℹ️<% } %>
     </div>
-    <h3><%= flash.type === 'success' ? 'Done' : 'Notice' %></h3>
+    <h3><% if (flash.type === 'success') { %>Done<% } else if (flash.type === 'error') { %>Error<% } else { %>Notice<% } %></h3>
     <p><%= flash.message %></p>
     <button type="button" class="btn btn-primary" data-close-modal>OK</button>
   </div>

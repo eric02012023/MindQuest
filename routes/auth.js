@@ -182,7 +182,7 @@ router.post('/login/resend-otp', ensureGuest, async (req, res, next) => {
     } catch (emailErr) {
       console.error('[OTP EMAIL ERROR]', emailErr.message);
       console.log(`[OTP FALLBACK] OTP for ${pending.user.email}: ${otp}`);
-      req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+      req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
     }
     return res.redirect('/login/verify');
   } catch (error) {
@@ -240,7 +240,7 @@ router.post('/forgot-password', ensureGuest, async (req, res, next) => {
     } catch (emailErr) {
       console.error('[OTP EMAIL ERROR]', emailErr.message);
       console.log(`[OTP FALLBACK] Reset OTP for ${user.email}: ${otp}`);
-      req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+      req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
     }
 
     req.session.pendingReset = { userId: user.id, email: user.email };
@@ -321,7 +321,7 @@ router.post('/forgot-password/resend-otp', ensureGuest, async (req, res, next) =
     } catch (emailErr) {
       console.error('[OTP EMAIL ERROR]', emailErr.message);
       console.log(`[OTP FALLBACK] Reset OTP for ${pending.email}: ${otp}`);
-      req.session.flash = { type: 'success', message: 'OTP could not be emailed. Check the server console for your code.' };
+      req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
     }
 
     return res.redirect('/reset-password');
