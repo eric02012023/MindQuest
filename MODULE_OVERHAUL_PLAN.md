@@ -518,13 +518,48 @@ Staff logins in that run used **throwaway accounts created and deleted by the te
 
 **Exit criteria:** checklist items 5, 6, 7, 8 — met.
 
-### Phase 7 — Tutor: module assessments (Section 4a)
-1. `/tutor/modules` — list assigned subjects → modules, showing each module's target year levels (read-only).
-2. `/tutor/modules/:id/create-assessment` — already exists (`routes/tutor.js:1235`); extend the form with **question type** (MC / True-False / Fill-in-Blank / Essay / Mixed) and **item count**. Keep the manual hand-write path as the required baseline; add an optional "Draft with AI from this module's handouts" button reusing Phase 5's generator scoped to one module.
-3. Save with `assessment_kind='tutor_assessment'`; it must appear both in the tutor's module view and the student's module view.
-4. `/tutor/student-results/:id` — per-student attempt review (route exists at `routes/tutor.js:1313`; wire it to the new attempt tables).
+### Phase 7 — Tutor: module assessments (Section 4a) — ✅ **DONE 2026-08-19**
 
-**Exit criteria:** checklist items 9, 10, 11.
+| # | Change | Status |
+|---|---|---|
+| 1 | `/tutor/modules` rebuilt on `getSubjectModules` — Module 1..N with handout counts, assessment counts and target year levels, instead of the old three Beginner/Intermediate/Advanced cards | ✅ |
+| 2 | `/tutor/modules/:id` now shows Admin's **handouts** (readable, with the same "Text ready / No text for questions" provenance badge as the Admin page) alongside the tutor's assessments | ✅ |
+| 3 | The builder gained **question type** (MC / True or False / Fill in the Blank / Essay / Mixed) and **item count**, and **Essay** as a manual question type with a rubric field — the rubric is the answer key the AI grader marks against | ✅ |
+| 4 | **"Draft with AI"** reuses Phase 5's generator scoped to one module's handouts. It renders the questions **into the builder**, saving nothing: the tutor edits and presses Create, so the AI drafts but never publishes | ✅ |
+| 5 | Saved with `assessment_kind='tutor_assessment'`, the chosen `question_type`, the real `item_count`, and `source_module_id` on every question — so a tutor assessment feeds the same weak-area view as the Pre-Assessment | ✅ |
+| 6 | `/tutor/student-results/:id` and `/student/assessment-result/:id` now **redirect** to the Phase 6 breakdown | ✅ |
+
+#### The authorization hole this phase closed
+
+Every `/tutor/modules/*` route read the id straight from the URL. **Any tutor could open — and build an assessment on — any module in the system**, including subjects they do not teach. `resolveTutorModule()` now applies the same assigned-subject check as `/tutor/results/:id`. Proven by test: a module in an unassigned subject is not listed, and opening it directly redirects.
+
+#### Two dead-end paths removed rather than left in place
+
+- **`submitTutorAssessment()` deleted.** It was still the grader for every tutor assessment, and it was the function with audit finding #18 — the missing destructure that made `totalPoints` come out `NaN`. It also cannot grade an essay, which the builder can now create. `/student/tutor-assessments/:id/submit` uses `gradeAndSubmitAssessment` — the same engine as the Pre-Assessment — so per-question correctness and AI feedback are stored, and the breakdown page works for tutor assessments too.
+- **`tutor-result-detail.ejs` and `student-assessment-result.ejs` deleted.** Both were second, weaker copies of the breakdown — no weak areas, no source attribution, and both fed by queries that INNER JOIN `modules`. The old URLs still work; they redirect.
+
+**A real bug found by reading the take page:** an essay item rendered as a one-line text box labelled "Fill in the Blank", because that view's type check had no `essay` branch and fell through to its `else`. A one-line box invites a one-word answer to a question graded on key points. Now a textarea, labelled Essay.
+
+#### Verification — 48/48 over real HTTP
+
+A throwaway tutor and student, a real module with a real text handout, cleaned up afterwards:
+
+```
+PASS  tutor CANNOT open a module from an unassigned subject (and it is not listed)
+PASS  AI draft rendered 5 questions into the builder in 8.7s
+PASS  drafting saves NOTHING until the tutor presses Create
+PASS  stored as assessment_kind=tutor_assessment, purpose=activity, item_count=4
+PASS  the essay question was accepted (the old CHECK rejected essay outright)
+PASS  every question attributed to its module
+PASS  the tutor's assessment is visible to the student, essay as a textarea
+PASS  percentage is a real number (the old engine produced NaN here)
+PASS  the essay was graded by AI and its feedback stored
+PASS  tutor reviews the attempt; both old URLs redirect
+```
+
+Phase 6's 35/35 re-run clean afterwards.
+
+**Exit criteria:** checklist items 9, 10, 11 — met.
 
 ### Phase 8 — Post-Assessment (Section 4b)
 1. Completion check: all modules in the subject have handouts read/attempted **and** every `tutor_assessment` in the subject has a submission from that student → show "Create Post Assessment" on the tutor's subject page.

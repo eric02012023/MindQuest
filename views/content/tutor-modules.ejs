@@ -1,47 +1,67 @@
-<%# Tutor Modules Listing View %>
+<%# File: views/content/tutor-modules.ejs
+    Purpose: The tutor's entry point into the module system — every assigned
+    subject, its numbered modules, and the year levels each module is restricted
+    to. Read-only: Admin owns modules and handouts; the tutor builds assessments
+    on top of them. %>
 <section class="page-stack">
-  <section class="panel-card">
-    <div class="panel-card-head">
-      <h2>Modules & Assessments</h2>
-      <p style="color: var(--text-soft); font-size: 14px; margin: 4px 0 0;">View uploaded modules per subject and create assessments for your students.</p>
+  <div class="toolbar-card split">
+    <div>
+      <h2>Modules &amp; Assessments</h2>
+      <p class="res-subtitle">The modules Admin set up for your subjects. Open one to see its handouts and build an assessment.</p>
     </div>
+  </div>
 
-    <% if (!(subjectsWithModules || []).length) { %>
+  <% if (!(subjectsWithModules || []).length) { %>
+    <section class="panel-card">
       <p class="empty-state">You have no assigned subjects yet.</p>
-    <% } else { %>
-      <% subjectsWithModules.forEach(subject => { %>
-        <div class="module-subject-group">
-          <h3 class="module-subject-title"><%= subject.subject_name %></h3>
-          <% if (!subject.modules || !subject.modules.length) { %>
-            <p class="module-empty-text" style="text-align:left; padding: 12px 0;">No modules uploaded for this subject yet. The admin needs to upload modules first.</p>
-          <% } else { %>
-            <div class="module-level-cards">
-              <% subject.modules.forEach(mod => { %>
-                <div class="module-level-card filled level-<%= (mod.level || '').toLowerCase() %>">
-                  <div class="module-level-header">
-                    <span class="level-badge <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
-                  </div>
-                  <h4><%= mod.title %></h4>
-                  <% if (mod.description) { %>
-                    <p class="module-desc"><%= mod.description %></p>
-                  <% } %>
-                  <% if (mod.file_original_name) { %>
-                    <div class="module-meta">
-                      <span>📄 <%= mod.file_original_name %></span>
-                    </div>
-                  <% } %>
-                  <div class="module-actions">
-                    <a class="btn btn-primary btn-sm" href="/tutor/modules/<%= mod.id %>">View & Manage</a>
-                    <% if (mod.file_path) { %>
-                      <a class="btn btn-secondary btn-sm" href="<%= mod.file_path %>" target="_blank">Open Handout</a>
-                    <% } %>
-                  </div>
-                </div>
-              <% }) %>
+    </section>
+  <% } %>
+
+  <% subjectsWithModules.forEach((subject) => { %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3><%= subject.subject_name %></h3>
+        <span class="badge badge-info"><%= subject.modules.length %> module<%= subject.modules.length === 1 ? '' : 's' %></span>
+      </div>
+
+      <% if (!subject.modules.length) { %>
+        <p class="empty-state">No modules for this subject yet. Admin adds them from the subject page.</p>
+      <% } %>
+
+      <div class="module-grid">
+        <% subject.modules.forEach((mod) => { %>
+          <article class="module-card">
+            <div class="module-card-head">
+              <span class="module-number">Module <%= mod.order_number %></span>
+              <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>">
+                <%= mod.handout_count %> handout<%= Number(mod.handout_count) === 1 ? '' : 's' %>
+              </span>
             </div>
-          <% } %>
-        </div>
-      <% }) %>
-    <% } %>
-  </section>
+            <h4><%= mod.title %></h4>
+            <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
+
+            <div class="module-card-targets">
+              <strong>Visible to</strong>
+              <div class="target-chips">
+                <% if (!mod.target_year_levels.length) { %>
+                  <span class="target-chip target-chip-all">All year levels</span>
+                <% } else { %>
+                  <% mod.target_year_levels.forEach((lvl) => { %>
+                    <span class="target-chip"><%= lvl %></span>
+                  <% }) %>
+                <% } %>
+              </div>
+            </div>
+
+            <div class="module-card-foot">
+              <span class="module-card-meta">
+                <%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %>
+              </span>
+              <a class="btn btn-primary btn-sm" href="/tutor/modules/<%= mod.id %>">Open</a>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+  <% }) %>
 </section>

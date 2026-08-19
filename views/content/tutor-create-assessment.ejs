@@ -1,53 +1,109 @@
-<%# Tutor Create Assessment View %>
+<%# File: views/content/tutor-create-assessment.ejs
+    Purpose: The tutor writes an assessment for one module (spec Section 4a).
+
+    Two paths to the same builder: write the questions by hand, or draft them from
+    this module's handouts with AI and then edit them. The AI path never saves on
+    its own — it fills the builder and the tutor presses Create. %>
+<%
+  const f = form || {};
+  const draft = draftQuestions || null;
+  const typeLabels = {
+    multiple_choice: 'Multiple Choice',
+    true_false: 'True or False',
+    fill_blank: 'Fill in the Blank',
+    essay: 'Essay'
+  };
+%>
 <section class="page-stack">
+  <div class="toolbar-card split">
+    <div>
+      <h2>Create Assessment</h2>
+      <p class="res-subtitle">
+        <%= mod.subject_name %> &middot; Module <%= mod.order_number %> — <%= mod.title %>
+      </p>
+    </div>
+    <a class="btn btn-secondary" href="/tutor/modules/<%= mod.id %>">Cancel</a>
+  </div>
+
+  <%# ---- Draft with AI ----------------------------------------------------- %>
   <section class="panel-card">
     <div class="panel-card-head">
-      <h2>Create Assessment</h2>
-      <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
-        <span class="level-badge <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
-        <span style="color: var(--text-soft); font-size: 13px;"><%= mod.subject_name %> — <%= mod.title %></span>
-      </div>
+      <h3>Draft from this module's handouts</h3>
+      <span class="badge <%= draftableHandouts.length ? 'badge-success' : 'badge-warning' %>">
+        <%= draftableHandouts.length %> readable handout<%= draftableHandouts.length === 1 ? '' : 's' %>
+      </span>
     </div>
+    <p class="table-note">
+      Optional. The questions land in the builder below for you to edit — nothing is
+      published until you press Create Assessment.
+    </p>
 
+    <% if (!draftableHandouts.length) { %>
+      <p class="empty-state">
+        None of this module's handouts have readable text yet, so there is nothing to draft from.
+        Ask Admin to upload a text handout, or to run "Read with AI" on a scanned one.
+      </p>
+    <% } else { %>
+      <form method="post" action="/tutor/modules/<%= mod.id %>/draft-assessment" class="stack-form draft-form">
+        <div class="draft-row">
+          <label>Question type
+            <select name="question_type">
+              <option value="mixed" <%= f.question_type === 'mixed' || !f.question_type ? 'selected' : '' %>>Mixed (all four)</option>
+              <option value="multiple_choice" <%= f.question_type === 'multiple_choice' ? 'selected' : '' %>>Multiple Choice</option>
+              <option value="true_false" <%= f.question_type === 'true_false' ? 'selected' : '' %>>True or False</option>
+              <option value="fill_blank" <%= f.question_type === 'fill_blank' ? 'selected' : '' %>>Fill in the Blank</option>
+              <option value="essay" <%= f.question_type === 'essay' ? 'selected' : '' %>>Essay</option>
+            </select>
+          </label>
+          <label>Number of items
+            <input type="number" name="item_count" value="<%= f.item_count || 10 %>"
+                   min="<%= minItems %>" max="<%= maxItems %>" />
+          </label>
+          <button type="submit" class="btn btn-secondary">Draft with AI</button>
+        </div>
+        <p class="empty-state">This takes a few seconds — it reads the handouts before writing the questions.</p>
+      </form>
+    <% } %>
+  </section>
+
+  <%# ---- The builder ------------------------------------------------------- %>
+  <section class="panel-card">
     <form id="assessment-form" method="post" action="/tutor/modules/<%= mod.id %>/create-assessment" class="stack-form">
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="assessment-title">Assessment Title</label>
-          <input type="text" name="title" id="assessment-title" placeholder="e.g. Chapter 1 Activity" required />
-        </div>
-        <div class="form-group">
-          <label for="assessment-purpose">Purpose</label>
-          <select name="purpose" id="assessment-purpose" required>
-            <option value="">Select Purpose</option>
-            <option value="pre">Pre-Assessment</option>
-            <option value="activity">Activity</option>
-            <option value="post">Post-Assessment</option>
+      <div class="draft-row">
+        <label style="flex:2;">Assessment title
+          <input type="text" name="title" id="assessment-title" value="<%= f.title || '' %>"
+                 placeholder="e.g. Module <%= mod.order_number %> Activity" required />
+        </label>
+        <label>Question type
+          <select name="question_type">
+            <option value="mixed" <%= f.question_type === 'mixed' || !f.question_type ? 'selected' : '' %>>Mixed</option>
+            <option value="multiple_choice" <%= f.question_type === 'multiple_choice' ? 'selected' : '' %>>Multiple Choice</option>
+            <option value="true_false" <%= f.question_type === 'true_false' ? 'selected' : '' %>>True or False</option>
+            <option value="fill_blank" <%= f.question_type === 'fill_blank' ? 'selected' : '' %>>Fill in the Blank</option>
+            <option value="essay" <%= f.question_type === 'essay' ? 'selected' : '' %>>Essay</option>
           </select>
-        </div>
+        </label>
       </div>
 
-      <div class="form-group">
-        <label for="assessment-instructions">Instructions (optional)</label>
-        <textarea name="instructions" id="assessment-instructions" rows="3" placeholder="Instructions for students taking this assessment..."></textarea>
-      </div>
-
-      <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;" />
+      <label>Instructions (optional)
+        <textarea name="instructions" rows="2" placeholder="Instructions for students taking this assessment..."><%= f.instructions || '' %></textarea>
+      </label>
 
       <div id="questions-container">
-        <h3 style="margin-bottom: 12px;">Questions</h3>
-        <p id="no-questions-msg" style="color: var(--text-soft); font-size: 14px;">No questions added yet. Click the button below to add your first question.</p>
+        <h3 style="margin: 8px 0 12px;">Questions</h3>
+        <p id="no-questions-msg" class="empty-state">No questions yet. Add one below, or draft them from the handouts above.</p>
       </div>
 
-      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+      <div class="add-question-row">
         <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('multiple_choice')">+ Multiple Choice</button>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('true_false')">+ True / False</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('true_false')">+ True or False</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('fill_blank')">+ Fill in the Blank</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('essay')">+ Essay</button>
       </div>
 
       <input type="hidden" name="questions" id="questions-json" />
 
-      <div style="display: flex; gap: 12px; margin-top: 24px;">
+      <div class="row-actions">
         <button type="submit" class="btn btn-primary" id="submit-assessment-btn">Create Assessment</button>
         <a href="/tutor/modules/<%= mod.id %>" class="btn btn-secondary">Cancel</a>
       </div>
@@ -56,81 +112,103 @@
 </section>
 
 <script>
-  let questionCount = 0;
-  const questionsData = [];
+  // Questions drafted by AI, if the tutor pressed "Draft with AI". Serialised
+  // here rather than rendered as markup so one code path builds every card.
+  const DRAFT_QUESTIONS = <%- JSON.stringify(draft || []) %>;
 
-  function addQuestion(type) {
+  let questionCount = 0;
+
+  const TYPE_LABELS = {
+    multiple_choice: 'Multiple Choice',
+    true_false: 'True or False',
+    fill_blank: 'Fill in the Blank',
+    essay: 'Essay'
+  };
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function addQuestion(type, prefill) {
+    const q = prefill || {};
     questionCount++;
     document.getElementById('no-questions-msg').style.display = 'none';
 
     const container = document.getElementById('questions-container');
     const qDiv = document.createElement('div');
     qDiv.className = 'question-card';
-    qDiv.id = `question-${questionCount}`;
-    qDiv.dataset.index = questionCount;
-
-    const typeLabels = {
-      multiple_choice: 'Multiple Choice',
-      true_false: 'True / False',
-      fill_blank: 'Fill in the Blank'
-    };
+    qDiv.id = 'question-' + questionCount;
 
     let html = `
       <div class="question-header">
         <span class="question-number">Q${questionCount}</span>
-        <span class="question-type-label">${typeLabels[type]}</span>
+        <span class="question-type-label">${TYPE_LABELS[type]}</span>
         <button type="button" class="btn-remove-q" onclick="removeQuestion(${questionCount})" title="Remove">&times;</button>
       </div>
       <div class="question-body">
         <div class="form-group">
           <label>Question Text</label>
-          <textarea class="q-text" rows="2" placeholder="Enter your question..." required></textarea>
+          <textarea class="q-text" rows="2" placeholder="Enter your question..." required>${escapeHtml(q.question_text)}</textarea>
         </div>
         <input type="hidden" class="q-type" value="${type}" />
+        <input type="hidden" class="q-source-handout" value="${q.source_handout_id || ''}" />
         <div class="form-group">
           <label>Points</label>
-          <input type="number" class="q-points" value="1" min="1" max="10" />
+          <input type="number" class="q-points" value="${Number(q.points) || 1}" min="1" max="10" />
         </div>
     `;
 
     if (type === 'multiple_choice') {
+      const choices = q.choices || [];
+      const textOf = (label) => {
+        const found = choices.find((c) => (c.label || c.option_label) === label);
+        return escapeHtml(found ? (found.text || found.option_text) : '');
+      };
       html += `
         <div class="form-group">
           <label>Choices</label>
           <div class="choice-grid">
-            <div class="choice-item"><span class="choice-label">A</span><input type="text" class="q-opt-a" placeholder="Option A" required /></div>
-            <div class="choice-item"><span class="choice-label">B</span><input type="text" class="q-opt-b" placeholder="Option B" required /></div>
-            <div class="choice-item"><span class="choice-label">C</span><input type="text" class="q-opt-c" placeholder="Option C" required /></div>
-            <div class="choice-item"><span class="choice-label">D</span><input type="text" class="q-opt-d" placeholder="Option D" required /></div>
+            <div class="choice-item"><span class="choice-label">A</span><input type="text" class="q-opt-a" placeholder="Option A" value="${textOf('A')}" required /></div>
+            <div class="choice-item"><span class="choice-label">B</span><input type="text" class="q-opt-b" placeholder="Option B" value="${textOf('B')}" required /></div>
+            <div class="choice-item"><span class="choice-label">C</span><input type="text" class="q-opt-c" placeholder="Option C" value="${textOf('C')}" required /></div>
+            <div class="choice-item"><span class="choice-label">D</span><input type="text" class="q-opt-d" placeholder="Option D" value="${textOf('D')}" required /></div>
           </div>
         </div>
         <div class="form-group">
           <label>Correct Answer</label>
           <select class="q-answer" required>
             <option value="">Select</option>
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
+            ${['A', 'B', 'C', 'D'].map((l) => `<option value="${l}" ${q.correct_answer === l ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
       `;
     } else if (type === 'true_false') {
+      const answer = String(q.correct_answer || '').toLowerCase();
       html += `
         <div class="form-group">
           <label>Correct Answer</label>
           <select class="q-answer" required>
             <option value="">Select</option>
-            <option value="True">True</option>
-            <option value="False">False</option>
+            <option value="true" ${answer === 'true' ? 'selected' : ''}>True</option>
+            <option value="false" ${answer === 'false' ? 'selected' : ''}>False</option>
           </select>
         </div>
       `;
     } else if (type === 'fill_blank') {
       html += `
         <div class="form-group">
-          <label>Correct Answer</label>
-          <input type="text" class="q-answer" placeholder="The expected answer..." required />
+          <label>Correct Answer <span class="field-hint">write the blank as ____ in the question</span></label>
+          <input type="text" class="q-answer" placeholder="The expected answer..." value="${escapeHtml(q.correct_answer)}" required />
+        </div>
+      `;
+    } else {
+      // essay: the rubric IS the answer key — it is what the AI grader marks against.
+      html += `
+        <div class="form-group">
+          <label>Grading rubric <span class="field-hint">the key points a correct answer must mention</span></label>
+          <textarea class="q-rubric" rows="2" placeholder="e.g. Defines photosynthesis; mentions sunlight; mentions chlorophyll" required>${escapeHtml(q.answer_rubric || q.correct_answer)}</textarea>
         </div>
       `;
     }
@@ -138,7 +216,7 @@
     html += `
         <div class="form-group">
           <label>Explanation (optional)</label>
-          <input type="text" class="q-explanation" placeholder="Why this is the correct answer..." />
+          <input type="text" class="q-explanation" placeholder="Why this is the correct answer..." value="${escapeHtml(q.explanation)}" />
         </div>
       </div>
     `;
@@ -148,19 +226,16 @@
   }
 
   function removeQuestion(num) {
-    const el = document.getElementById(`question-${num}`);
+    const el = document.getElementById('question-' + num);
     if (el) el.remove();
-    // Re-number remaining
     const cards = document.querySelectorAll('.question-card');
-    if (!cards.length) {
-      document.getElementById('no-questions-msg').style.display = 'block';
-    }
+    if (!cards.length) document.getElementById('no-questions-msg').style.display = 'block';
     cards.forEach((card, i) => {
-      card.querySelector('.question-number').textContent = `Q${i + 1}`;
+      card.querySelector('.question-number').textContent = 'Q' + (i + 1);
     });
   }
 
-  document.getElementById('assessment-form').addEventListener('submit', function(e) {
+  document.getElementById('assessment-form').addEventListener('submit', function (e) {
     const cards = document.querySelectorAll('.question-card');
     if (!cards.length) {
       e.preventDefault();
@@ -168,15 +243,25 @@
       return;
     }
     const questions = [];
-    cards.forEach(card => {
+    cards.forEach((card) => {
       const type = card.querySelector('.q-type').value;
       const q = {
         question_text: card.querySelector('.q-text').value.trim(),
         question_type: type,
         points: Number(card.querySelector('.q-points').value) || 1,
-        correct_answer: type === 'fill_blank' ? card.querySelector('.q-answer').value.trim() : card.querySelector('.q-answer').value,
-        explanation: (card.querySelector('.q-explanation') || {}).value || ''
+        explanation: (card.querySelector('.q-explanation') || {}).value || '',
+        source_handout_id: Number(card.querySelector('.q-source-handout').value) || null
       };
+
+      if (type === 'essay') {
+        // Stored in both: answer_rubric is what the AI grader reads, and
+        // correct_answer is NOT NULL in the schema.
+        const rubric = card.querySelector('.q-rubric').value.trim();
+        q.answer_rubric = rubric;
+        q.correct_answer = rubric;
+      } else {
+        q.correct_answer = card.querySelector('.q-answer').value.trim();
+      }
 
       if (type === 'multiple_choice') {
         q.options = [
@@ -190,76 +275,7 @@
     });
     document.getElementById('questions-json').value = JSON.stringify(questions);
   });
-</script>
 
-<style>
-  .question-card {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 18px;
-    margin-bottom: 16px;
-    background: var(--surface-soft);
-    position: relative;
-  }
-  .question-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-  .question-number {
-    font-weight: 700;
-    font-size: 15px;
-    background: var(--gradient-main);
-    color: #fff;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-  }
-  .question-type-label {
-    font-size: 13px;
-    color: var(--text-soft);
-    font-weight: 500;
-  }
-  .btn-remove-q {
-    margin-left: auto;
-    border: none;
-    background: var(--danger);
-    color: #fff;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .question-body {
-    display: grid;
-    gap: 12px;
-  }
-  .choice-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .choice-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .choice-label {
-    font-weight: 700;
-    color: var(--primary-700);
-    min-width: 18px;
-  }
-  .choice-item input {
-    flex: 1;
-  }
-</style>
+  // Fill the builder with whatever the AI drafted.
+  DRAFT_QUESTIONS.forEach((q) => addQuestion(q.question_type, q));
+</script>

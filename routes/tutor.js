@@ -60,9 +60,15 @@ const {
   getSubjectModules,
   getSubjectSubmissions,
   getSubmissionWithAnswers,
-  getWeakAreasForSubmission
+  getWeakAreasForSubmission,
+  // Tutor module assessments (Phase 7)
+  getModuleById,
+  getModuleHandouts,
+  getModuleHandoutTexts
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
+const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
+const { TUTOR_ASSESSMENT_MIN_ITEMS, TUTOR_ASSESSMENT_MAX_ITEMS } = require('../config/assessmentDefaults');
 
 const YEAR_LEVEL_OPTIONS = ['Pre School Level', 'Primary Level', 'Junior High Level', 'Senior High Level'];
 const GRADE_LEVEL_MAP = {
@@ -1195,18 +1201,40 @@ router.post('/assessment-requests/:id/decline', async (req, res, next) => {
 // Phase 5: Modules & Assessment Creation
 // ==========================================================================
 
+/**
+ * Resolve a module the tutor is actually entitled to work on.
+ *
+ * Every module route below took the id straight from the URL, so any tutor could
+ * open — and build an assessment on — any module in the system, including
+ * subjects they do not teach. The check mirrors the one on /tutor/results/:id.
+ *
+ * Returns the module, or null after setting a flash and leaving the caller to
+ * redirect.
+ */
+async function resolveTutorModule(req, moduleId) {
+  const mod = await getModuleById(Number(moduleId));
+  if (!mod) {
+    setFlash(req, 'error', 'Module not found.');
+    return null;
+  }
+  const assigned = await getTutorAssignedSubjects(req.session.user.id);
+  if (!assigned.some((a) => Number(a.subject_id) === Number(mod.subject_id))) {
+    setFlash(req, 'error', 'That module belongs to a subject you are not assigned to.');
+    return null;
+  }
+  return mod;
+}
+
 // Tutor: View all assigned subjects and their modules
 router.get('/modules', async (req, res, next) => {
   try {
     const subjects = await getTutorAssignedSubjects(req.session.user.id);
-    // For each subject, fetch modules
     const subjectsWithModules = [];
     for (const s of subjects) {
-      const modules = await getModulesBySubject(s.subject_id);
-      subjectsWithModules.push({
-        ...s,
-        modules
-      });
+      // getSubjectModules, not the legacy getModulesBySubject: this is the
+      // overhaul's shape — order_number, target year levels, handout and
+      // assessment counts — and it is not capped at three levels per subject.
+      subjectsWithModules.push({ ...s, modules: await getSubjectModules(s.subject_id) });
     }
     const shell = await buildShell(req, {
       pageTitle: 'Modules & Assessments',
@@ -1218,23 +1246,19 @@ router.get('/modules', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Tutor: View a specific module and its assessments
+// Tutor: View a specific module, its handouts and its assessments
 router.get('/modules/:id', async (req, res, next) => {
   try {
-    const { query: dbQuery } = require('../config/db');
-    const moduleRows = await dbQuery('SELECT m.*, s.name as subject_name FROM modules m JOIN subjects s ON s.id = m.subject_id WHERE m.id = ? AND m.is_archived = 0', [req.params.id]);
-    if (!moduleRows.length) {
-      setFlash(req, 'error', 'Module not found.');
-      return res.redirect('/tutor/modules');
-    }
-    const mod = moduleRows[0];
-    const assessments = await getTutorAssessmentsByModule(mod.id);
+    const mod = await resolveTutorModule(req, req.params.id);
+    if (!mod) return res.redirect('/tutor/modules');
+
     const shell = await buildShell(req, {
-      pageTitle: `${mod.title} — ${mod.level}`,
+      pageTitle: `Module ${mod.order_number} — ${mod.title}`,
       section: 'modules',
       contentView: '../content/tutor-module-detail',
       mod,
-      assessments
+      handouts: await getModuleHandouts(mod.id),
+      assessments: await getTutorAssessmentsByModule(mod.id)
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -1243,19 +1267,85 @@ router.get('/modules/:id', async (req, res, next) => {
 // Tutor: Render assessment creation form
 router.get('/modules/:id/create-assessment', async (req, res, next) => {
   try {
-    const { query: dbQuery } = require('../config/db');
-    const moduleRows = await dbQuery('SELECT m.*, s.name as subject_name FROM modules m JOIN subjects s ON s.id = m.subject_id WHERE m.id = ? AND m.is_archived = 0', [req.params.id]);
-    if (!moduleRows.length) {
-      setFlash(req, 'error', 'Module not found.');
-      return res.redirect('/tutor/modules');
+    const mod = await resolveTutorModule(req, req.params.id);
+    if (!mod) return res.redirect('/tutor/modules');
+
+    const shell = await buildShell(req, await createAssessmentViewData(req, mod));
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+/**
+ * The create-assessment form's data, shared by the empty form and the AI-drafted
+ * one. `draftQuestions` prefills the builder; the tutor still edits and saves it
+ * themselves, so the AI drafts but never publishes.
+ */
+async function createAssessmentViewData(req, mod, extra = {}) {
+  const handouts = await getModuleHandouts(mod.id);
+  return {
+    pageTitle: 'Create Assessment',
+    section: 'modules',
+    contentView: '../content/tutor-create-assessment',
+    mod,
+    handouts,
+    // Drafting needs text, and a scanned handout nobody has run "Read with AI" on
+    // has none. Say so on the button rather than failing after the click.
+    draftableHandouts: handouts.filter((h) => h.extracted_at && h.extracted_text),
+    minItems: TUTOR_ASSESSMENT_MIN_ITEMS,
+    maxItems: TUTOR_ASSESSMENT_MAX_ITEMS,
+    draftQuestions: null,
+    form: {},
+    ...extra
+  };
+}
+
+/**
+ * Draft this module's assessment with AI (spec Section 4a, optional path).
+ *
+ * Reuses Phase 5's generator scoped to one module's handouts — no second
+ * generator, no second prompt. The result is rendered back into the builder
+ * rather than saved: the tutor reviews, edits and presses Create themselves.
+ */
+router.post('/modules/:id/draft-assessment', async (req, res, next) => {
+  try {
+    const mod = await resolveTutorModule(req, req.params.id);
+    if (!mod) return res.redirect('/tutor/modules');
+
+    const itemCount = Math.min(
+      TUTOR_ASSESSMENT_MAX_ITEMS,
+      Math.max(TUTOR_ASSESSMENT_MIN_ITEMS, Number(req.body.item_count) || 10)
+    );
+    const questionType = SPEC_QUESTION_TYPES.includes(req.body.question_type) ? req.body.question_type : 'mixed';
+
+    const handoutTexts = await getModuleHandoutTexts(mod.id);
+    if (!handoutTexts.length) {
+      setFlash(req, 'error', 'This module has no handout with readable text yet, so there is nothing to draft from.');
+      return res.redirect(`/tutor/modules/${mod.id}/create-assessment`);
     }
-    const mod = moduleRows[0];
-    const shell = await buildShell(req, {
-      pageTitle: 'Create Assessment',
-      section: 'modules',
-      contentView: '../content/tutor-create-assessment',
-      mod
-    });
+
+    let generated;
+    try {
+      generated = await generateAssessmentFromHandouts({
+        handouts: handoutTexts,
+        subject: mod.subject_name,
+        itemCount,
+        questionType
+      });
+    } catch (error) {
+      setFlash(req, 'error', `Could not draft the assessment: ${error.message}`);
+      return res.redirect(`/tutor/modules/${mod.id}/create-assessment`);
+    }
+
+    setFlash(req, 'success', `Drafted ${generated.questions.length} question(s). Review and edit them, then press Create Assessment.`);
+    const shell = await buildShell(req, await createAssessmentViewData(req, mod, {
+      draftQuestions: generated.questions,
+      form: {
+        title: String(req.body.title || '').trim() || `${mod.title} — Assessment`,
+        instructions: String(req.body.instructions || '').trim(),
+        question_type: questionType,
+        item_count: itemCount
+      }
+    }));
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
 });
@@ -1263,28 +1353,30 @@ router.get('/modules/:id/create-assessment', async (req, res, next) => {
 // Tutor: Submit new assessment (JSON payload)
 router.post('/modules/:id/create-assessment', async (req, res, next) => {
   try {
-    const { query: dbQuery } = require('../config/db');
-    const moduleRows = await dbQuery('SELECT m.*, s.name as subject_name FROM modules m JOIN subjects s ON s.id = m.subject_id WHERE m.id = ? AND m.is_archived = 0', [req.params.id]);
-    if (!moduleRows.length) {
-      setFlash(req, 'error', 'Module not found.');
-      return res.redirect('/tutor/modules');
-    }
-    const mod = moduleRows[0];
-    const { title, instructions, purpose, questions } = req.body;
+    const mod = await resolveTutorModule(req, req.params.id);
+    if (!mod) return res.redirect('/tutor/modules');
 
-    if (!title || !purpose || !questions || !questions.length) {
-      setFlash(req, 'error', 'Title, Purpose, and at least one Question are required.');
-      return res.redirect(`/tutor/modules/${req.params.id}/create-assessment`);
+    const { title, instructions, questions } = req.body;
+    const backToForm = `/tutor/modules/${mod.id}/create-assessment`;
+
+    if (!title || !questions || !questions.length) {
+      setFlash(req, 'error', 'A title and at least one question are required.');
+      return res.redirect(backToForm);
     }
 
-    // Parse questions if they come as JSON string
     let parsedQuestions = questions;
     if (typeof questions === 'string') {
-      try { parsedQuestions = JSON.parse(questions); } catch (e) {
+      try { parsedQuestions = JSON.parse(questions); } catch (_e) {
         setFlash(req, 'error', 'Invalid question data format.');
-        return res.redirect(`/tutor/modules/${req.params.id}/create-assessment`);
+        return res.redirect(backToForm);
       }
     }
+    if (!Array.isArray(parsedQuestions) || !parsedQuestions.length) {
+      setFlash(req, 'error', 'A title and at least one question are required.');
+      return res.redirect(backToForm);
+    }
+
+    const questionType = SPEC_QUESTION_TYPES.includes(req.body.question_type) ? req.body.question_type : 'mixed';
 
     await createTutorAssessment({
       subject_id: mod.subject_id,
@@ -1292,12 +1384,19 @@ router.post('/modules/:id/create-assessment', async (req, res, next) => {
       tutor_id: req.session.user.id,
       title: String(title).trim(),
       instructions: String(instructions || '').trim(),
-      purpose: String(purpose),
+      // `purpose` is the legacy column and its CHECK allows pre/activity/post.
+      // A tutor's own assessment is always an activity now; pre and post are
+      // generated at subject level, so offering them here would have produced a
+      // second, competing "Pre-Assessment" for the same subject.
+      purpose: 'activity',
+      assessment_kind: 'tutor_assessment',
+      question_type: questionType,
+      item_count: parsedQuestions.length,
       questions: parsedQuestions
     });
 
-    setFlash(req, 'success', `Assessment "${title}" created successfully.`);
-    res.redirect(`/tutor/modules/${req.params.id}`);
+    setFlash(req, 'success', `Assessment "${title}" created and published to your students.`);
+    res.redirect(`/tutor/modules/${mod.id}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not create assessment.');
     res.redirect(`/tutor/modules/${req.params.id}`);
@@ -1318,48 +1417,15 @@ router.get('/student-results', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Tutor: View detailed result for a submission
-router.get('/student-results/:id', async (req, res, next) => {
-  try {
-    const { query: dbQuery } = require('../config/db');
-    // Get the submission
-    const submissions = await dbQuery(
-      `SELECT tas.*, ta.title as assessment_title, ta.purpose, ta.instructions,
-              m.level, m.title as module_title, s.name as subject_name,
-              u.first_name, u.last_name
-       FROM tutor_assessment_submissions tas
-       JOIN tutor_assessments ta ON ta.id = tas.assessment_id
-       JOIN modules m ON m.id = ta.module_id
-       JOIN subjects s ON s.id = ta.subject_id
-       JOIN users u ON u.id = tas.student_id
-       WHERE tas.id = ? AND ta.tutor_id = ?`,
-      [req.params.id, req.session.user.id]
-    );
-    if (!submissions.length) {
-      setFlash(req, 'error', 'Submission not found.');
-      return res.redirect('/tutor/student-results');
-    }
-    const submission = submissions[0];
-
-    // Get individual answers
-    const answers = await dbQuery(
-      `SELECT tsa.*, taq.question_text, taq.question_type, taq.points, taq.explanation
-       FROM tutor_student_answers tsa
-       JOIN tutor_assessment_questions taq ON taq.id = tsa.question_id
-       WHERE tsa.submission_id = ?
-       ORDER BY taq.id ASC`,
-      [req.params.id]
-    );
-
-    const shell = await buildShell(req, {
-      pageTitle: `Result: ${submission.first_name} ${submission.last_name}`,
-      section: 'student_results',
-      contentView: '../content/tutor-result-detail',
-      submission,
-      answers
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) { next(error); }
+// Tutor: the older per-attempt review.
+//
+// It is kept as a URL, not as a page. Its query INNER JOINs modules and filters on
+// ta.tutor_id, so it could never show a generated Pre-Assessment, and it rendered a
+// second, weaker copy of the same information as /tutor/results/:id — no weak areas,
+// no source attribution. Redirecting keeps every old link working while leaving one
+// review page to maintain.
+router.get('/student-results/:id', (req, res) => {
+  res.redirect(`/tutor/results/${req.params.id}`);
 });
 
 

@@ -1,59 +1,108 @@
-<%# Tutor Module Detail View %>
+<%# File: views/content/tutor-module-detail.ejs
+    Purpose: One module as the tutor sees it — Admin's handouts (readable, not
+    editable) and the assessments the tutor has built on them. %>
 <section class="page-stack">
-
-  <%# Module Info Card %>
-  <section class="panel-card">
-    <div class="panel-card-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-      <div>
-        <h2><%= mod.title %></h2>
-        <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
-          <span class="level-badge <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
-          <span style="color: var(--text-soft); font-size: 13px;"><%= mod.subject_name %></span>
-        </div>
-      </div>
-      <div style="display: flex; gap: 10px;">
-        <% if (mod.file_path) { %>
-          <a class="btn btn-secondary btn-sm" href="<%= mod.file_path %>" target="_blank">📄 Open Handout</a>
+  <div class="toolbar-card split">
+    <div>
+      <h2>Module <%= mod.order_number %> — <%= mod.title %></h2>
+      <p class="res-subtitle">
+        <%= mod.subject_name %>
+        <% if (mod.target_year_levels && mod.target_year_levels.length) { %>
+          &middot; <%= mod.target_year_levels.join(', ') %>
+        <% } else { %>
+          &middot; all year levels
         <% } %>
-        <a class="btn btn-primary btn-sm" href="/tutor/modules/<%= mod.id %>/create-assessment">+ Create Assessment</a>
-      </div>
+      </p>
     </div>
-    <% if (mod.description) { %>
-      <p style="color: var(--text-soft); margin: 12px 0 0; font-size: 14px; line-height: 1.6;"><%= mod.description %></p>
-    <% } %>
-  </section>
+    <a class="btn btn-primary" href="/tutor/modules/<%= mod.id %>/create-assessment">Create Assessment</a>
+  </div>
 
-  <%# Existing Assessments %>
+  <% if (mod.description) { %>
+    <section class="panel-card">
+      <p class="module-card-desc"><%= mod.description %></p>
+    </section>
+  <% } %>
+
+  <%# ---- Handouts (Admin's, read-only) ------------------------------------ %>
   <section class="panel-card">
     <div class="panel-card-head">
-      <h2>Assessments for this Module</h2>
+      <h3>Handouts</h3>
+      <span class="badge badge-info"><%= handouts.length %> file<%= handouts.length === 1 ? '' : 's' %></span>
     </div>
-    <% if (!(assessments || []).length) { %>
-      <p class="empty-state">No assessments created yet. Click "Create Assessment" to build one.</p>
+    <p class="table-note">Uploaded by Admin. A handout with readable text can also be used to draft an assessment with AI.</p>
+
+    <% if (!handouts.length) { %>
+      <p class="empty-state">No handouts on this module yet.</p>
+    <% } %>
+
+    <div class="handout-grid">
+      <% handouts.forEach((h) => { %>
+        <article class="handout-card">
+          <div class="handout-card-head">
+            <span class="handout-ext"><%= ((h.file_original_name || '').split('.').pop() || 'file').toUpperCase() %></span>
+            <% if (h.extracted_at) { %>
+              <span class="badge badge-success">Text ready<%= h.extraction_method === 'ocr' ? ' (AI-read scan)' : '' %></span>
+            <% } else { %>
+              <span class="badge badge-warning">No text for questions</span>
+            <% } %>
+          </div>
+          <h4><%= h.title || h.file_original_name %></h4>
+          <p class="handout-meta">
+            <%= h.file_size_bytes ? (Math.round(Number(h.file_size_bytes) / 1024) + ' KB') : 'size unknown' %>
+            &middot; <%= formatDate(h.created_at) %>
+          </p>
+          <% if (!h.extracted_at && h.extraction_error) { %>
+            <p class="handout-error"><%= h.extraction_error %></p>
+          <% } %>
+          <div class="handout-card-foot">
+            <a class="btn btn-secondary btn-sm" href="<%= h.file_path %>" target="_blank" rel="noopener">Open</a>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <%# ---- The tutor's assessments ------------------------------------------ %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Assessments for this Module</h3>
+      <span class="badge badge-info"><%= assessments.length %></span>
+    </div>
+
+    <% if (!assessments.length) { %>
+      <p class="empty-state">No assessments yet. "Create Assessment" builds one by hand, or drafts it from the handouts above.</p>
     <% } else { %>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Title</th>
-              <th>Purpose</th>
-              <th>Questions</th>
+              <th>Kind</th>
+              <th>Type</th>
+              <th>Items</th>
+              <th>Submissions</th>
               <th>Status</th>
               <th>Created</th>
             </tr>
           </thead>
           <tbody>
-            <% assessments.forEach(a => { %>
+            <% assessments.forEach((a) => { %>
               <tr>
                 <td><strong><%= a.title %></strong></td>
                 <td>
-                  <span class="pill <%= a.purpose === 'pre' ? 'partial' : a.purpose === 'post' ? 'paid' : 'unpaid' %>">
-                    <%= a.purpose === 'pre' ? 'Pre-Assessment' : a.purpose === 'post' ? 'Post-Assessment' : 'Activity' %>
+                  <span class="pill <%= a.assessment_kind === 'pre_assessment' ? 'partial' : a.assessment_kind === 'post_assessment' ? 'paid' : '' %>">
+                    <%= a.assessment_kind === 'pre_assessment' ? 'Pre-Assessment'
+                      : a.assessment_kind === 'post_assessment' ? 'Post-Assessment' : 'Tutor Assessment' %>
                   </span>
                 </td>
-                <td>—</td>
-                <td><%= a.is_published ? '✅ Published' : '🔒 Draft' %></td>
-                <td><%= new Date(a.created_at).toLocaleDateString() %></td>
+                <td><%= a.question_type === 'mixed' || !a.question_type ? 'Mixed'
+                      : a.question_type === 'multiple_choice' ? 'Multiple Choice'
+                      : a.question_type === 'true_false' ? 'True or False'
+                      : a.question_type === 'fill_blank' ? 'Fill in the Blank' : 'Essay' %></td>
+                <td><%= a.question_count %></td>
+                <td><%= a.submission_count %></td>
+                <td><%= a.is_published ? 'Published' : 'Draft' %></td>
+                <td><%= formatDate(a.created_at) %></td>
               </tr>
             <% }) %>
           </tbody>
@@ -62,5 +111,7 @@
     <% } %>
   </section>
 
-  <a href="/tutor/modules" class="btn btn-secondary" style="margin-top: 10px;">← Back to Modules</a>
+  <div class="row-actions">
+    <a href="/tutor/modules" class="btn btn-secondary">Back to Modules</a>
+  </div>
 </section>

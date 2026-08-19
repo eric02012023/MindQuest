@@ -65,7 +65,6 @@ const {
   getModulesBySubject,
   getTutorAssessmentsByModule,
   getTutorAssessmentById,
-  submitTutorAssessment,
   getStudentSubmissions,
   getStudentProgress,
   // Module -> Handout -> Assessment overhaul (Phases 5-6)
@@ -1291,14 +1290,21 @@ router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
       }
     }
 
-    const result = await submitTutorAssessment({
+    // gradeAndSubmitAssessment, not submitTutorAssessment (Phase 7): the old one
+    // never destructured its `connection.query` result, so it graded against the
+    // rows array itself and produced NaN. It also cannot grade an essay, and the
+    // tutor form can now create essay questions. This is the same engine the
+    // Pre-Assessment uses, so per-question correctness and AI feedback are stored
+    // and the breakdown page works for tutor assessments too.
+    const result = await gradeAndSubmitAssessment({
       assessment_id: assessmentId,
       student_id: studentId,
-      answers
+      answers,
+      started_at: req.body.started_at || null
     });
 
-    setFlash(req, 'success', `Assessment submitted! Score: ${result.score}/${result.total} (${Number(result.percentage).toFixed(1)}%)`);
-    res.redirect(`/student/assessment-result/${result.submissionId}`);
+    setFlash(req, 'success', `Assessment submitted! Score: ${result.score}/${result.totalPoints} (${Number(result.percentage).toFixed(1)}%)`);
+    res.redirect(`/student/results/${result.submissionId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not submit assessment.');
     res.redirect('/student/subjects');
@@ -1306,48 +1312,12 @@ router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
 });
 
 // Student: View assessment result
-router.get('/assessment-result/:submissionId', async (req, res, next) => {
-  try {
-    const { query: dbQuery } = require('../config/db');
-    const submissions = await dbQuery(
-      `SELECT tas.*, ta.title as assessment_title, ta.purpose, ta.instructions,
-              m.level, m.title as module_title, m.id as module_id, s.name as subject_name
-       FROM tutor_assessment_submissions tas
-       JOIN tutor_assessments ta ON ta.id = tas.assessment_id
-       JOIN modules m ON m.id = ta.module_id
-       JOIN subjects s ON s.id = ta.subject_id
-       WHERE tas.id = ? AND tas.student_id = ?`,
-      [req.params.submissionId, req.session.user.id]
-    );
-    if (!submissions.length) {
-      setFlash(req, 'error', 'Result not found.');
-      return res.redirect('/student/subjects');
-    }
-    const submission = submissions[0];
-
-    const answers = await dbQuery(
-      `SELECT tsa.*, taq.question_text, taq.question_type, taq.points, taq.explanation
-       FROM tutor_student_answers tsa
-       JOIN tutor_assessment_questions taq ON taq.id = tsa.question_id
-       WHERE tsa.submission_id = ?
-       ORDER BY taq.id ASC`,
-      [req.params.submissionId]
-    );
-
-    const isPre = req.query.isPre === '1';
-    const assignedLevel = req.query.level || null;
-
-    const shell = await buildShell(req, {
-      pageTitle: `Result: ${submission.assessment_title}`,
-      section: 'subjects',
-      contentView: '../content/student-assessment-result',
-      submission,
-      answers,
-      isPre,
-      assignedLevel
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) { next(error); }
+// The older result page. Its query INNER JOINs modules, so it cannot show a
+// subject-level Pre-Assessment, and it re-derived correctness instead of reading
+// the stored per-question grading. /student/results/:id does both properly, so
+// this stays only as a working URL for existing links.
+router.get('/assessment-result/:submissionId', (req, res) => {
+  res.redirect(`/student/results/${req.params.submissionId}`);
 });
 
 // Student: Progress page
