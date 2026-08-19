@@ -381,14 +381,68 @@ These are grounded in the handout, not generic. A useful signal: the call delibe
 
 Extraction unit suite re-run after the OCR changes: **20/20 still passing.**
 
-### Phase 5 — AI Pre-Assessment generation (Sections 5, 6)
-1. Add `generatePreAssessmentFromHandouts()` to `services/aiService.js` — **same `callOpenAI` client, no new provider.**
-2. Prompt: strict JSON only, mixed types (MC / True-False / Fill-in-Blank / Essay), and **each question must carry the `source_handout_id`** it came from. Pass handouts as an id-labelled list so the model can attribute correctly; validate every returned `source_handout_id` against the real ids and drop questions that fail.
-3. Store as `tutor_assessments` with `assessment_kind='pre_assessment'`, `module_id=NULL`, `handout_version = subjects.handout_version`.
-4. **Regenerate-vs-reuse:** on student open, reuse the existing pre-assessment if `handout_version` matches; regenerate only when it is stale. Guard against two students triggering generation at once (single-flight lock or `UNIQUE(subject_id, assessment_kind, handout_version)`).
-5. Log every call to `ai_generation_logs` (table already exists).
+### Phase 5 — AI Pre-Assessment generation — ✅ **DONE 2026-08-19**
 
-**Exit criteria:** checklist item 4; opening the subject twice makes exactly one OpenAI call.
+`aiService.generateAssessmentFromHandouts()` reuses the same `callOpenAI` client — no new provider. Stored via `createGeneratedAssessment()`; served by `getOrCreatePreAssessment()`.
+
+| Requirement | How | Status |
+|---|---|---|
+| Strict JSON, four spec types | `response_format: json_object`; mix planned by `planQuestionMix()` — 40/20/20/20 MC/TF/fill-blank/essay, every type guaranteed at least one slot once `itemCount >= 4` | ✅ |
+| Per-question `source_handout_id` | Handouts are presented with their real DB ids; questions citing an unknown id are **discarded, not guessed at** | ✅ |
+| Stored as subject-level | `assessment_kind='pre_assessment'`, `module_id=NULL`, `tutor_id=NULL`, `handout_version` stamped | ✅ |
+| Regenerate-vs-reuse | Reused while `handout_version` matches; one regeneration when a handout changes | ✅ |
+| Concurrency safe | In-process single-flight map **plus** the DB's `uq_ta_pre_per_version` filtered unique index; a lost race re-reads the winner's row instead of paying for a second generation | ✅ |
+| Logged | `ai_generation_logs` per generation | ✅ |
+
+**Schema additions this phase needed:** `tutor_assessments.tutor_id` → **nullable** (a generated assessment has no author, and it spans students with different tutors — `NOT NULL` would have forced inventing an owner), plus the `uq_ta_pre_per_version` unique index.
+
+#### Two integration bugs caught before they could bite
+
+1. `logAiGeneration()` tests `data.success !== false`, so passing `success: 0` recorded a **failure as a success**. Now passes `false`.
+2. `ai_generation_logs.assessment_id` has an FK to the **legacy `assessments` table**, not `tutor_assessments`. Passing the new id would have violated it — and my original `.catch(() => {})` would have swallowed that silently. The id now goes in `output_summary`, and the catch logs instead of discarding.
+
+#### Three quality defects found by reading the actual generated output
+
+The first run passed almost every structural check, but the questions themselves were flawed:
+
+- **Duplicated letters** — `A) A. Confidentiality...`. The model prefixed its own labels inside the choice text. Now stripped, and the prompt forbids it.
+- **Identical choices** — options A and C came back as the same string, making the item unanswerable. Such questions are now **rejected**, and the prompt requires distinct choices.
+- **All 8 questions from handout 1**, none from handout 2 — which would have made the weak-area view blind to the other module. Asking the model to "spread across handouts" was not enough; the prompt now states a **mandatory per-handout quota by id**.
+
+#### Verification — 30/30
+
+```
+PASS  generated in 11862ms; kind=pre_assessment, module_id NULL, tutor_id NULL
+PASS  all four types present: {multiple_choice:2, true_false:2, fill_blank:2, essay:2}
+PASS  every MC answer letter matches a real choice
+PASS  every essay has a grading rubric (needed for AI grading)
+PASS  every cited handout id is real (hallucinated ids were rejected)
+PASS  questions drawn from BOTH handouts, not just one
+PASS  second open REUSED the stored copy in 32ms (no API call) — 12055ms -> 32ms
+PASS  exactly 1 generation logged for 2 opens
+PASS  3 simultaneous opens returned ONE assessment
+PASS  exactly 1 live pre-assessment (old version archived)
+PASS  2 generations total for 5 opens across 2 handout versions
+```
+
+Real output after the fixes — a clean 4/4 split across two modules, all four types in each:
+
+```
+1. [multiple_choice] Which of the following is NOT one of the five major elements
+                     of Information Security?
+                     A) Confidentiality  B) Integrity  C) Reliability  D) Authenticity  -> C
+2. [true_false]      The main goal of insider attacks is to bypass security policies. -> true
+3. [fill_blank]      The assurance that information is accessible only to authorized
+                     people is known as ____.  -> Confidentiality
+4. [essay]           Discuss the significance of non-repudiation in information security.
+                     rubric: Definition of non-repudiation, Importance of accountability,
+                             Legal implications
+   ...1-4 from Module 1 / lesson-1.pdf, 5-8 from Module 2 / lesson-2.pdf
+```
+
+**Not yet wired to the student UI** — that is Phase 6. What exists now is the generation engine, its caching, and its storage.
+
+**Exit criteria:** checklist item 4 met; opening the subject repeatedly makes exactly one OpenAI call per handout version.
 
 ### Phase 6 — Student: lock, take, grade, classify, weak areas (Section 5)
 1. **Server-side lock:** a reusable `requirePreAssessment(studentId, subjectId)` guard on `GET /student/modules/:id`, on the handout download route, and on tutor-assessment routes. Not UI hiding — checklist item 5 explicitly requires this.

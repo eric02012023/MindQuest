@@ -275,6 +275,49 @@ async function main() {
      WHERE assessment_kind = 'tutor_assessment' AND purpose IN ('pre','post')`
   );
 
+  // A generated Pre/Post assessment has no author — it is produced by the system
+  // from handouts, and it spans students who may have different tutors. tutor_id
+  // was NOT NULL, which would have forced us to invent an owner.
+  await step(
+    'drop fk_ta_tutor',
+    `SELECT CASE WHEN EXISTS (
+       SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_ta_tutor' AND parent_object_id = OBJECT_ID('dbo.tutor_assessments')
+     ) AND EXISTS (
+       SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tutor_assessments') AND name = 'tutor_id' AND is_nullable = 0
+     ) THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_assessments DROP CONSTRAINT fk_ta_tutor`
+  );
+  await step(
+    'tutor_assessments.tutor_id -> nullable',
+    `SELECT CASE WHEN EXISTS (
+       SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID('dbo.tutor_assessments') AND name = 'tutor_id' AND is_nullable = 0
+     ) THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_assessments ALTER COLUMN tutor_id INT NULL`
+  );
+  await step(
+    're-add fk_ta_tutor',
+    `SELECT CASE WHEN NOT EXISTS (
+       SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_ta_tutor' AND parent_object_id = OBJECT_ID('dbo.tutor_assessments')
+     ) THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_assessments
+       ADD CONSTRAINT fk_ta_tutor FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE NO ACTION`
+  );
+
+  // One live Pre-Assessment per subject per handout version. This is the DB-level
+  // guarantee behind regenerate-vs-reuse: if two students open the subject at the
+  // same moment, the second insert fails and that request re-reads the first one's
+  // result instead of paying for a duplicate generation.
+  await step(
+    'unique live pre-assessment per subject+handout_version',
+    `SELECT CASE WHEN NOT EXISTS (
+       SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.tutor_assessments') AND name = 'uq_ta_pre_per_version'
+     ) THEN 1 ELSE 0 END AS needed`,
+    `CREATE UNIQUE INDEX uq_ta_pre_per_version
+       ON dbo.tutor_assessments(subject_id, handout_version)
+       WHERE assessment_kind = 'pre_assessment' AND is_archived = 0`
+  );
+
   // ----------------------------------------------- tutor_assessment_questions
   console.log('\ntutor_assessment_questions');
   // The old CHECK rejected 'essay' outright, so the spec's essay questions could
