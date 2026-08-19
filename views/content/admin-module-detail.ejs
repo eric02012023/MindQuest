@@ -1,0 +1,137 @@
+<%# File: views/content/admin-module-detail.ejs
+    Purpose: Admin view of a single module — its year-level targeting and its
+    handout files. Handouts are both the student's study material and the source
+    text the AI generates Pre/Post assessments from, so adding or removing one
+    bumps the subject's handout_version and marks the cached assessment stale. %>
+<section class="page-stack">
+  <div class="toolbar-card split">
+    <div>
+      <h2>Module <%= mod.order_number %> — <%= mod.title %></h2>
+      <p class="module-breadcrumb">
+        <a href="<%= basePath %>/subjects/<%= mod.subject_id %>"><%= mod.subject_name %></a>
+      </p>
+    </div>
+    <div class="row-actions">
+      <a class="btn btn-secondary" href="<%= basePath %>/subjects/<%= mod.subject_id %>">Back to Subject</a>
+    </div>
+  </div>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Handouts</h3>
+      <span class="badge <%= handouts.length ? 'badge-success' : 'badge-warning' %>">
+        <%= handouts.length %> file<%= handouts.length === 1 ? '' : 's' %>
+      </span>
+    </div>
+
+    <% if (currentUser.role === 'admin') { %>
+      <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/handouts" enctype="multipart/form-data" class="stack-form handout-upload-form">
+        <label>Handout files
+          <input type="file" name="handouts" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt" required />
+        </label>
+        <p class="empty-state">You can select several files at once. PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX or TXT, up to 25 MB each.</p>
+        <button type="submit" class="btn btn-primary">Upload Handouts</button>
+      </form>
+    <% } else { %>
+      <p class="empty-state">Assistant admin can view handouts only.</p>
+    <% } %>
+
+    <% if (!handouts.length) { %>
+      <p class="empty-state">No handouts yet. The Pre-Assessment for this subject cannot be generated until at least one handout exists.</p>
+    <% } %>
+
+    <div class="handout-grid">
+      <% handouts.forEach((handout) => { %>
+        <article class="handout-card">
+          <div class="handout-card-head">
+            <span class="handout-ext"><%= ((handout.file_original_name || '').split('.').pop() || 'file').toUpperCase() %></span>
+            <% if (handout.extracted_at) { %>
+              <span class="badge badge-success">Text ready</span>
+            <% } else if (handout.extraction_error) { %>
+              <span class="badge badge-danger">Extract failed</span>
+            <% } else { %>
+              <span class="badge badge-warning">Not extracted</span>
+            <% } %>
+          </div>
+
+          <h4><%= handout.file_original_name || handout.title || 'Handout' %></h4>
+          <p class="handout-meta">
+            <%= handout.file_size_bytes ? (Math.round(Number(handout.file_size_bytes) / 1024) + ' KB') : 'size unknown' %>
+            · <%= formatDate(handout.created_at) %>
+          </p>
+          <% if (handout.first_name) { %>
+            <p class="handout-meta">Uploaded by <%= handout.first_name %> <%= handout.last_name || '' %></p>
+          <% } %>
+          <% if (handout.extraction_error) { %>
+            <p class="handout-error"><%= handout.extraction_error %></p>
+          <% } %>
+
+          <div class="handout-card-foot">
+            <a class="btn btn-secondary btn-sm" href="<%= handout.file_path %>" target="_blank" rel="noopener">Open</a>
+            <% if (currentUser.role === 'admin') { %>
+              <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/handouts/<%= handout.id %>/delete" data-confirm-message="Remove this handout? The Pre-Assessment will regenerate from the remaining handouts.">
+                <button class="btn btn-secondary btn-sm" type="submit">Remove</button>
+              </form>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Module Settings</h3></div>
+    <% if (currentUser.role === 'admin') { %>
+      <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/update" class="stack-form">
+        <label>Module Title<input type="text" name="title" value="<%= mod.title %>" required /></label>
+        <label>Description<textarea name="description" rows="3"><%= mod.description || '' %></textarea></label>
+
+        <fieldset class="target-fieldset">
+          <legend>Visible to which year level(s)?</legend>
+          <p class="empty-state">Leave everything unchecked to show this module to all year levels.</p>
+          <% moduleTargetOptions.forEach((opt) => { %>
+            <div class="target-group">
+              <label class="target-option target-option-group">
+                <input type="checkbox" name="target_year_levels" value="<%= opt.group %>" <%= mod.target_year_levels.includes(opt.group) ? 'checked' : '' %> />
+                <span><%= opt.group %></span>
+              </label>
+              <div class="target-group-grades">
+                <% opt.grades.forEach((grade) => { %>
+                  <label class="target-option">
+                    <input type="checkbox" name="target_year_levels" value="<%= grade %>" <%= mod.target_year_levels.includes(grade) ? 'checked' : '' %> />
+                    <span><%= grade %></span>
+                  </label>
+                <% }) %>
+              </div>
+            </div>
+          <% }) %>
+        </fieldset>
+
+        <div class="row-actions">
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    <% } else { %>
+      <div class="module-card-targets">
+        <strong>Visible to</strong>
+        <div class="target-chips">
+          <% if (!mod.target_year_levels.length) { %>
+            <span class="target-chip target-chip-all">All year levels</span>
+          <% } else { %>
+            <% mod.target_year_levels.forEach((lvl) => { %><span class="target-chip"><%= lvl %></span><% }) %>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+  </section>
+
+  <% if (currentUser.role === 'admin') { %>
+    <section class="panel-card">
+      <div class="panel-card-head"><h3>Remove Module</h3></div>
+      <p class="table-note">Removing this module hides it from students and stops its handouts feeding assessment generation. Existing student results are kept.</p>
+      <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/archive" data-confirm-message="Remove this module and all its handouts from students?">
+        <button class="btn btn-secondary" type="submit">Remove Module <%= mod.order_number %></button>
+      </form>
+    </section>
+  <% } %>
+</section>

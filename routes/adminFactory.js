@@ -11,7 +11,7 @@ const {
   authorize,
   setFlash
 } = require('../middleware/auth');
-const { createUploader } = require('../lib/uploads');
+const { createUploader, describeUploadRejection } = require('../lib/uploads');
 const {
   getBranches,
   addBranch,
@@ -86,6 +86,17 @@ const {
   getAllStudentsForAnalytics,
   // Legacy pre/post assessment listing (read-only after Phase 1)
   getSubjectAssessments,
+  // Module -> Handout system (overhaul Phase 3)
+  getSubjectModules,
+  getModuleById,
+  createSubjectModule,
+  updateSubjectModule,
+  getModuleHandouts,
+  addModuleHandouts,
+  archiveModuleHandout,
+  bumpSubjectHandoutVersion,
+  getModuleTargetOptions,
+  deleteModule,
   getAllTutorAssessmentsAdmin,
   getStudentResultsAdmin
 } = require('../lib/data');
@@ -1145,11 +1156,168 @@ function createAdminRouter(role) {
         assignmentStudents: students,
         assignableStudentsByTutorId,
         adminResources,
-        subjectAssessments: await getSubjectAssessments(req.params.id)
+        subjectAssessments: await getSubjectAssessments(req.params.id),
+        // Module system (overhaul Phase 3): All Subjects -> subject -> Modules
+        modules: await getSubjectModules(req.params.id),
+        moduleTargetOptions: getModuleTargetOptions()
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
       next(error);
+    }
+  });
+
+  // ==========================================================================
+  // Modules & Handouts (overhaul Phase 3)
+  // Admin owns modules and their handout files. Handouts are both the student's
+  // study material and the source text the AI generates Pre/Post assessments
+  // from, so any change to them bumps subjects.handout_version.
+  // ==========================================================================
+  const handoutUploader = createUploader('handouts');
+
+  router.post('/subjects/:id/modules', async (req, res, next) => {
+    const back = `${basePath}/subjects/${req.params.id}`;
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can add modules.');
+        return res.redirect(back);
+      }
+      const created = await createSubjectModule({
+        subject_id: Number(req.params.id),
+        title: req.body.title,
+        description: req.body.description,
+        target_year_levels: normalizeArray(req.body.target_year_levels),
+        uploaded_by: req.session.user.id
+      });
+      setFlash(req, 'success', `"${created.title}" added. Upload its handouts next.`);
+      res.redirect(`${basePath}/modules/${created.id}`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not add the module.');
+      res.redirect(back);
+    }
+  });
+
+  router.get('/modules/:id', async (req, res, next) => {
+    try {
+      const mod = await getModuleById(req.params.id);
+      if (!mod) {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(`${basePath}/subjects`);
+      }
+      const handouts = await getModuleHandouts(mod.id);
+      const shell = await buildShellData(req, {
+        pageTitle: mod.title,
+        section: 'subjects',
+        contentView: '../content/admin-module-detail',
+        mod,
+        handouts,
+        moduleTargetOptions: getModuleTargetOptions()
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/modules/:id/update', async (req, res, next) => {
+    const back = `${basePath}/modules/${req.params.id}`;
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can edit modules.');
+        return res.redirect(back);
+      }
+      await updateSubjectModule(Number(req.params.id), {
+        title: req.body.title,
+        description: req.body.description,
+        target_year_levels: normalizeArray(req.body.target_year_levels)
+      });
+      setFlash(req, 'success', 'Module updated.');
+      res.redirect(back);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not update the module.');
+      res.redirect(back);
+    }
+  });
+
+  router.post('/modules/:id/archive', async (req, res, next) => {
+    try {
+      const mod = await getModuleById(req.params.id);
+      if (!mod) {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(`${basePath}/subjects`);
+      }
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can remove modules.');
+        return res.redirect(`${basePath}/modules/${req.params.id}`);
+      }
+      await deleteModule(Number(req.params.id));
+      // Its handouts no longer feed generation, so the cached assessment is stale.
+      await bumpSubjectHandoutVersion(mod.subject_id);
+      setFlash(req, 'success', `"${mod.title}" removed.`);
+      res.redirect(`${basePath}/subjects/${mod.subject_id}`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not remove the module.');
+      res.redirect(`${basePath}/subjects`);
+    }
+  });
+
+  router.post('/modules/:id/handouts', handoutUploader.array('handouts', 10), async (req, res, next) => {
+    const back = `${basePath}/modules/${req.params.id}`;
+    try {
+      const mod = await getModuleById(req.params.id);
+      if (!mod) {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(`${basePath}/subjects`);
+      }
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can upload handouts.');
+        return res.redirect(back);
+      }
+
+      const files = req.files || [];
+      if (!files.length) {
+        // createUploader rejects disallowed types before they touch disk and
+        // records why, so tell the admin which file was refused.
+        setFlash(req, 'error', describeUploadRejection(req) || 'Please choose at least one handout file.');
+        return res.redirect(back);
+      }
+
+      const result = await addModuleHandouts(
+        mod.id,
+        mod.subject_id,
+        files.map((file) => ({
+          file_path: `/uploads/handouts/${file.filename}`,
+          file_original_name: file.originalname,
+          file_type: file.mimetype,
+          file_size_bytes: file.size
+        })),
+        req.session.user.id
+      );
+
+      const rejected = describeUploadRejection(req);
+      setFlash(
+        req,
+        rejected ? 'info' : 'success',
+        `${result.inserted} handout${result.inserted === 1 ? '' : 's'} uploaded.${rejected ? ' ' + rejected : ''}`
+      );
+      res.redirect(back);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not upload the handouts.');
+      res.redirect(back);
+    }
+  });
+
+  router.post('/modules/:id/handouts/:handoutId/delete', async (req, res, next) => {
+    const back = `${basePath}/modules/${req.params.id}`;
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can remove handouts.');
+        return res.redirect(back);
+      }
+      await archiveModuleHandout(Number(req.params.handoutId));
+      setFlash(req, 'success', 'Handout removed. The Pre-Assessment will regenerate from the remaining handouts.');
+      res.redirect(back);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not remove the handout.');
+      res.redirect(back);
     }
   });
 

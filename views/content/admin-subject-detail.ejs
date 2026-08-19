@@ -4,33 +4,107 @@
     <h2><%= subject ? subject.name : 'Subject' %></h2>
   </div>
 
+  <%# ------------------------------------------------------------------------
+      Modules (overhaul Phase 3). Numbered Module 1..N, each targeted at year
+      levels and holding its own handout files. This is now the entry point into
+      the module system; the legacy "resources" panel below is read-only.
+      ------------------------------------------------------------------------ %>
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Upload Module</h3></div>
-    <% if (currentUser.role === 'admin') { %>
-      <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/resources" enctype="multipart/form-data" class="stack-form">
-        <label>Type of Module
-          <select name="type_of_module" required>
-            <option value="">— Select Education Level —</option>
-            <option value="Pre School Level">Pre School</option>
-            <option value="Primary Level">Primary</option>
-            <option value="Junior High Level">Junior High</option>
-            <option value="Senior High Level">Senior High</option>
-          </select>
-        </label>
-        <label>Module Title<input type="text" name="title" required /></label>
-        <label>Description<textarea name="description" rows="3"></textarea></label>
-        <label>Attachment<input type="file" name="attachment" /></label>
-        <button type="submit" class="btn btn-primary">Upload Module</button>
-      </form>
-    <% } else { %>
-      <p class="empty-state">Assistant admin can view modules only.</p>
+    <div class="panel-card-head">
+      <h3>Modules</h3>
+      <% if (currentUser.role === 'admin') { %>
+        <button type="button" class="btn btn-primary btn-sm" data-modal-target="#add-module">Add Module</button>
+      <% } %>
+    </div>
+
+    <% if (!modules.length) { %>
+      <p class="empty-state">No modules yet.<% if (currentUser.role === 'admin') { %> Use “Add Module” to create Module 1.<% } %></p>
     <% } %>
+
+    <div class="module-grid">
+      <% modules.forEach((mod) => { %>
+        <article class="module-card">
+          <div class="module-card-head">
+            <span class="module-number">Module <%= mod.order_number %></span>
+            <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>">
+              <%= mod.handout_count %> handout<%= Number(mod.handout_count) === 1 ? '' : 's' %>
+            </span>
+          </div>
+          <h4><%= mod.title %></h4>
+          <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
+
+          <div class="module-card-targets">
+            <strong>Visible to</strong>
+            <div class="target-chips">
+              <% if (!mod.target_year_levels.length) { %>
+                <span class="target-chip target-chip-all">All year levels</span>
+              <% } else { %>
+                <% mod.target_year_levels.forEach((lvl) => { %>
+                  <span class="target-chip"><%= lvl %></span>
+                <% }) %>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="module-card-foot">
+            <% if (Number(mod.assessment_count)) { %>
+              <span class="module-card-meta"><%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %></span>
+            <% } %>
+            <a class="btn btn-secondary btn-sm" href="<%= basePath %>/modules/<%= mod.id %>">
+              <%= currentUser.role === 'admin' ? 'Manage Handouts' : 'View' %>
+            </a>
+          </div>
+        </article>
+      <% }) %>
+    </div>
   </section>
 
+  <% if (currentUser.role === 'admin') { %>
+    <div class="global-modal" id="add-module">
+      <div class="global-modal-card">
+        <button type="button" class="modal-close" data-close-modal>&times;</button>
+        <h3>Add Module</h3>
+        <p class="empty-state">It is numbered automatically as the next module in this subject.</p>
+        <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/modules" class="stack-form">
+          <label>Module Title
+            <input type="text" name="title" placeholder="e.g. Fractions and Decimals" />
+          </label>
+          <label>Description
+            <textarea name="description" rows="3" placeholder="What this module covers"></textarea>
+          </label>
+
+          <fieldset class="target-fieldset">
+            <legend>Visible to which year level(s)?</legend>
+            <p class="empty-state">Leave everything unchecked to show this module to all year levels.</p>
+            <% moduleTargetOptions.forEach((opt) => { %>
+              <div class="target-group">
+                <label class="target-option target-option-group">
+                  <input type="checkbox" name="target_year_levels" value="<%= opt.group %>" />
+                  <span><%= opt.group %></span>
+                </label>
+                <div class="target-group-grades">
+                  <% opt.grades.forEach((grade) => { %>
+                    <label class="target-option">
+                      <input type="checkbox" name="target_year_levels" value="<%= grade %>" />
+                      <span><%= grade %></span>
+                    </label>
+                  <% }) %>
+                </div>
+              </div>
+            <% }) %>
+          </fieldset>
+
+          <button type="submit" class="btn btn-primary">Add Module</button>
+        </form>
+      </div>
+    </div>
+  <% } %>
+
   <section class="panel-card">
-    <div class="panel-card-head"><h3>List of Modules</h3></div>
+    <div class="panel-card-head"><h3>Legacy Modules</h3></div>
+    <p class="table-note">Read-only. These were uploaded under the previous module system and are kept so existing student records still resolve. New material belongs in the Modules section above.</p>
     <div class="list-stack">
-      <% if (!adminResources.length) { %><p class="empty-state">No posted module yet.</p><% } %>
+      <% if (!adminResources.length) { %><p class="empty-state">No legacy modules.</p><% } %>
       <% adminResources.forEach((resource) => { %>
         <article class="list-card">
           <div>

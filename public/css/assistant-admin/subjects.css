@@ -793,3 +793,200 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
 }
+
+/* === MQ modules + handouts (overhaul Phase 3) ===
+   Grid-first: modules and handouts tile into columns via auto-fit, matching the
+   .subject-grid pattern already in this file. */
+
+/* Badges — only defined in analytics.css before, so they rendered unstyled here. */
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.badge-success { background: rgba(50, 166, 90, .14); color: #1a7a3a; }
+.badge-info    { background: rgba(22, 168, 200, .14); color: #0a6f8a; }
+.badge-warning { background: rgba(210, 138, 31, .14); color: #8a5a0a; }
+.badge-danger  { background: rgba(213, 76, 76, .14); color: #a43030; }
+
+.table-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.module-breadcrumb {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.module-breadcrumb a { color: var(--primary-700); text-decoration: none; }
+.module-breadcrumb a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------- modules */
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.module-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.module-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+
+.module-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.module-number {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--primary-700);
+}
+
+.module-card h4 { margin: 0; font-size: 16px; color: var(--text); }
+.module-card-desc { margin: 0; font-size: 13px; color: var(--text-soft); }
+
+.module-card-targets { display: grid; gap: 6px; }
+.module-card-targets > strong {
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.target-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.target-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-muted);
+  color: var(--primary-900);
+  border: 1px solid var(--border);
+}
+.target-chip-all { background: rgba(22, 168, 200, .12); color: #0a6f8a; }
+
+.module-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+.module-card-meta { font-size: 12px; color: var(--text-soft); }
+
+/* --------------------------------------------------------------- handouts */
+.handout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.handout-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.handout-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.handout-ext {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  background: var(--gradient-main);
+  color: #fff;
+}
+
+.handout-card h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.handout-meta { margin: 0; font-size: 12px; color: var(--text-soft); }
+.handout-error { margin: 0; font-size: 12px; color: var(--danger); }
+
+.handout-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+.handout-card-foot form { margin: 0; }
+
+.handout-upload-form { margin-bottom: 6px; }
+
+/* ------------------------------------------------- year-level multi-select */
+.target-fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin: 0;
+}
+.target-fieldset legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.target-group {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.target-group:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.target-group-grades {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 0 22px;
+}
+
+.target-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.target-option input { margin: 0; flex: 0 0 auto; }
+.target-option-group { font-weight: 700; }

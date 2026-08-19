@@ -225,14 +225,59 @@ PASS  deleting a module cascaded its handouts away (no orphans)
 
 DB left clean afterwards (all 0 rows, `handout_version` back to 1); server boots with no errors.
 
-### Phase 3 — Admin: Modules + Handouts (Section 3)
-1. `GET /admin/subjects/:id` — replace the resources panel with a **Modules list** (ordered by `order_number`).
-2. `POST /admin/subjects/:id/modules` — "Add Module": auto-assign `order_number = MAX+1`, multi-select `target_year_levels` (source the option list from `normalizeYearLevels` in `lib/data.js:172` so it matches student `year_level` values exactly).
-3. `GET /admin/modules/:id` — module page; `POST /admin/modules/:id/handouts` with `multer.array()` for multiple files.
-4. `POST /admin/modules/:id/handouts/:hid/delete`; every handout add/delete bumps `subjects.handout_version`.
-5. Admin Assistant gets the same read access; keep the existing "only main admin can upload" guard pattern (`routes/adminFactory.js:1168`).
+### Phase 3 — Admin: Modules + Handouts — ✅ **DONE 2026-08-19**
 
-**Exit criteria:** checklist items 2 and 3.
+| # | Change | Status |
+|---|---|---|
+| 1 | `GET /admin/subjects/:id` now leads with a **Modules grid** (`Module 1..N` by `order_number`), each card showing handout count, assessment count and its target year levels | ✅ |
+| 2 | `POST /admin/subjects/:id/modules` — "Add Module" with auto-numbering (`MAX+1` **inside a transaction**, so two admins adding at once cannot both land on "Module 3") and a grouped year-level multi-select | ✅ |
+| 3 | `GET /admin/modules/:id` — new `admin-module-detail.ejs`: handout grid, multi-file upload, module settings, remove-module | ✅ |
+| 4 | `POST /admin/modules/:id/handouts` — `multer.array('handouts', 10)`, multiple files per submit | ✅ |
+| 5 | `POST /admin/modules/:id/handouts/:handoutId/delete` + `POST /modules/:id/update` + `POST /modules/:id/archive` | ✅ |
+| 6 | Every handout add/delete and module removal bumps `subjects.handout_version` **in the same transaction** as the write — a handout can never change without the cached assessment being marked stale | ✅ |
+| 7 | Legacy `subject_resources` panel demoted to a labelled read-only "Legacy Modules" section (its upload form removed; full removal in Phase 9) | ✅ |
+| 8 | Assistant admin keeps read access; every mutating route retains the `role !== 'admin'` guard | ✅ |
+
+#### The year-level trap — plan corrected
+
+The original Phase 3/6 text said to reuse `normalizeYearLevelKey()` for targeting "so matching is consistent with the rest of the app." **That would have been a bug.** That helper collapses every grade into one of four groups:
+
+```
+"Kinder 1" -> "primary level"      "Grade 5"  -> "primary level"
+Kinder 1 == Grade 5 ?  true
+```
+
+So a module targeted at "Kinder 1" would have shown to Grade 5 students — precisely the case the spec calls out ("restrict a module to show only for Kinder 1"). Real data confirms the granularity needed: the one student in the DB is `year_level='Pre School Level'`, `grade_level='Kinder 1'`.
+
+`moduleTargetsStudent()` therefore matches on the **exact label** against both `year_level` and `grade_level`, never the collapsed key. Selecting a group also matches its member grades, so targeting "Pre School Level" still reaches a student recorded only as "Kinder 1". Unrecognised labels are dropped by `sanitizeModuleTargets()` so a typo cannot silently hide a module from everyone. Empty list = visible to all.
+
+Verified across 10 cases including `[Kinder 1]` vs Grade-5 → **false**, `[Pre School Level]` vs Kinder 1 → **true**, and case/space insensitivity.
+
+#### Grid view
+
+`.module-grid` and `.handout-grid` are `repeat(auto-fit, minmax(260px/240px, 1fr))`, matching the `.subject-grid` pattern already in the file. Also had to define `.badge*` in `subjects.css`: those styles only existed in `analytics.css`, and because this project copies base styles per page instead of sharing a global sheet, every badge on the subject page was rendering unstyled.
+
+#### End-to-end proof
+
+Driven over real HTTP with a real admin session (admins skip OTP — `routes/auth.js:90`). 30/30 checks passed:
+
+```
+PASS  Modules panel + .module-grid + Add Module modal render
+PASS  auto-numbered 1, 2, 3
+PASS  module 1 targets exactly ["Kinder 1"]
+PASS  module 3 has no restriction (visible to all)
+PASS  2 handouts stored from one submit; files exist on disk; sizes recorded
+PASS  handout_version bumped 1 -> 2 on upload, 2 -> 3 on delete
+PASS  .exe rejected, no orphan written to disk, redirects with a flash not a 500
+PASS  targets replaced with ["Kinder 2"] on update
+PASS  anonymous GET of a handout -> 401, logged-in -> 200
+```
+
+DB and disk left clean afterwards; no server errors.
+
+⚠️ **Weak spot in that run:** the "assistant admin restrictions" check only proved the route is reachable — it ran as *admin*, not as an assistant. The `role !== 'admin'` guards are in the code but are **not yet proven by test**. Worth a real assistant-account test before final sign-off.
+
+**Exit criteria:** checklist items 2 and 3 — met.
 
 ### Phase 4 — Handout text extraction (Section 6)
 New `services/extractionService.js`:
@@ -254,7 +299,7 @@ New `services/extractionService.js`:
 
 ### Phase 6 — Student: lock, take, grade, classify, weak areas (Section 5)
 1. **Server-side lock:** a reusable `requirePreAssessment(studentId, subjectId)` guard on `GET /student/modules/:id`, on the handout download route, and on tutor-assessment routes. Not UI hiding — checklist item 5 explicitly requires this.
-2. **Year-level filter:** module visible only if `student.year_level ∈ module.target_year_levels_json`. Reuse `getStudentYearLevelKeys` (`lib/data.js:250`) and `normalizeYearLevelKey` (line 224) so matching is consistent with the rest of the app.
+2. **Year-level filter:** reuse `moduleTargetsStudent()` from Phase 3 — already built and tested. **Do NOT use `normalizeYearLevelKey` / `getStudentYearLevelKeys` here**: they collapse `Kinder 1` and `Grade 5` to the same key and would leak modules across year levels. See the Phase 3 note above.
 3. **Grading:** port the `submitAssessment` engine (`lib/data.js:2964`) onto `tutor_assessment_submissions` / `tutor_student_answers`, and **fix bugs #4/#5/#6 in the port** — persist per-question `is_correct`, `points_earned`, and `ai_feedback`; do the AI call before opening the transaction.
 4. **Classification:** 0–50 Beginner / 51–80 Intermediate / 81–100 Advance. `config/levelThresholds.js` + `determineLevel` already exist — verify the boundaries match these exact bands before reusing.
 5. **Result page:** %, classification, right/wrong per item. `views/content/student-assessment-result.ejs` already renders exactly this shape once #4 is fixed.
