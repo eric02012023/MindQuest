@@ -3,7 +3,8 @@
  * Purpose: Phase 2 schema migration for the Module -> Handout -> Assessment
  *          overhaul. See MODULE_OVERHAUL_PLAN.md.
  *
- * Run:  node scripts/migrate-module-overhaul.js
+ * Run:  node scripts/migrate-module-overhaul.js                  (uses .env)
+ *       node scripts/migrate-module-overhaul.js --env .env.live  (uses that file)
  *
  * Safety:
  *  - Every step is guarded, so the whole script is safe to re-run. A second run
@@ -35,7 +36,13 @@
  *     table would reject.
  */
 
-require('dotenv').config();
+// Which environment file to read. Deploying means running this against the live
+// database, and editing .env to do that — then forgetting to change it back — is
+// exactly how a migration lands on the wrong server.
+const envArgIndex = process.argv.indexOf('--env');
+const envFile = envArgIndex > -1 ? process.argv[envArgIndex + 1] : '.env';
+require('dotenv').config({ path: envFile });
+
 const { getPool } = require('../config/db');
 
 let pool;
