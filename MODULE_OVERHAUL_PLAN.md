@@ -167,18 +167,63 @@ Verified: all 7 files served `HTTP 200` with the rules present; braces balanced 
 
 **Still single-column on purpose:** `.page-stack`, `.stack-form`, `.sidebar-nav`, `.list-stack` on profile/billing/notification pages, and the tutor-picker list inside the Select Tutor modal.
 
-### Phase 2 — Data model migration (Section 2)
-Write `sql/incremental_module_overhaul.sql` following the existing idempotent style in `sql/incremental_ai_system.sql` (`IF COL_LENGTH(...) IS NULL` / `IF OBJECT_ID(...) IS NULL` guards) so it is safe to re-run against the live somee.com DB.
+### Phase 2 — Data model migration — ✅ **DONE 2026-08-19**
 
-1. `modules`: `+ order_number INT`, `+ target_year_levels_json NVARCHAR(MAX)`, make `level` nullable, drop the level CHECK.
-2. `CREATE TABLE module_handouts` (`module_id`, `file_path`, `file_original_name`, `file_type`, `extracted_text NVARCHAR(MAX)`, `extracted_at`, `uploaded_by`, `is_archived`).
-3. `subjects: + handout_version INT NOT NULL DEFAULT 1`.
-4. `tutor_assessments`: `+ assessment_kind`, `+ question_type`, `+ item_count`, `+ source_pre_assessment_id`, `+ handout_version`; `module_id` → nullable.
-5. `tutor_assessment_questions`: drop + recreate CHECK to include `'essay'` and `'mixed'`; `+ source_module_id`, `+ source_handout_id`, `+ answer_rubric`, `+ choice_*` or keep using `tutor_question_options`.
-6. Backfill `modules.order_number` from existing rows per subject.
-7. Add a matching `scripts/migrate-module-overhaul.js` runner (mirror `scripts/migrate-assessment-schema.js`).
+Delivered as **`scripts/migrate-module-overhaul.js`** (one executable source of truth, following the working `scripts/migrate-assessment-schema.js` pattern) rather than a `.sql` file plus a runner — two copies of the same DDL would drift.
 
-**Exit criteria:** migration runs twice with no error; `scripts/check-assessments-schema.js`-style verification prints the new columns.
+**Critical discovery before writing it:** all Gen 3 tables were **empty** — `modules`, `tutor_assessments`, `tutor_assessment_questions`, `tutor_question_options`, `tutor_assessment_submissions`, `tutor_student_answers`, `student_subject_levels` all had 0 rows locally (only `subjects` had 10). So the restructure carried no local data risk. **The live DB may differ — re-check row counts there before running.**
+
+**Also critical:** CHECK/UNIQUE constraint names here are SQL-Server-generated (`CK__modules__level__2EF0D041`, `CK__tutor_ass__quest__46C859D2`) and **differ between databases**. Every constraint drop resolves its name from `sys.*` at runtime; nothing is hardcoded. This is what makes the script safe to run against live.
+
+| Area | Change | Status |
+|---|---|---|
+| `subjects` | `+ handout_version INT NOT NULL DEFAULT 1` — the regenerate-vs-reuse cache key | ✅ |
+| `modules` | `+ order_number`, `+ target_year_levels_json` | ✅ |
+| `modules` | Dropped `uniq_module_subject_level` — **this UNIQUE(subject_id, level) was the hard cap of 3 modules per subject** | ✅ |
+| `modules` | Dropped the `level` CHECK, made `level` nullable (now vestigial, kept so legacy rows read) | ✅ |
+| `module_handouts` | **NEW table** — many files per module, with `extracted_text` / `extracted_at` / `extraction_error` so a file is parsed once, not per request. `ON DELETE CASCADE` from `modules` | ✅ |
+| `tutor_assessments` | `module_id` → **nullable** (dropped + re-added `fk_ta_module` around the ALTER, since the FK indexes the column) | ✅ |
+| `tutor_assessments` | `+ assessment_kind` (CHECK: `pre_assessment`/`tutor_assessment`/`post_assessment`), `+ question_type`, `+ item_count`, `+ source_pre_assessment_id`, `+ handout_version`; backfills `assessment_kind` from the legacy `purpose` | ✅ |
+| `tutor_assessment_questions` | CHECK recreated to include **`'essay'`** — the old constraint rejected essay questions outright, so the spec's essay requirement was physically unstorable | ✅ |
+| `tutor_assessment_questions` | `+ source_module_id`, `+ source_handout_id` (indexed), `+ answer_rubric` | ✅ |
+| Classification | `'Advanced'` → `'Advance'` everywhere; realigned the `student_subject_levels.level` CHECK | ✅ |
+
+**Idempotency:** first run `applied 25, skipped 4, failed 0`; re-run `applied 0, skipped 29, failed 0`. (The first re-run was *not* clean — `dropColumnCheck` was dropping the constraint the script had just installed and re-adding it. Fixed with a `keepName` guard.)
+
+**Design decision — no FK on `source_module_id` / `source_handout_id`.** They are plain indexed INTs. `ON DELETE SET NULL` is what the behaviour wants (delete a handout, keep the question, lose the precise attribution), but SQL Server rejects that path because `subjects → modules → module_handouts` already cascades. Readers `LEFT JOIN`, so a deleted source renders as "unknown source" rather than erroring. This also matches how the codebase already handled it (`source_module_title` was a bare string).
+
+#### Classification bug fixed alongside the migration
+
+Three schemes coexisted and **none matched the spec**:
+
+| Source | Bands | Returned |
+|---|---|---|
+| `determineLevel()` (`config/levelThresholds.js`) | 0–59 / 60–79 / 80–100 | …/`Advanced` |
+| `scoreToLevel()` (`lib/data.js`) | 0–40 / 41–70 / 71–100 | …/`Advance` |
+| **Spec Section 5** | **0–50 / 51–80 / 81–100** | …/`Advance` |
+
+A student scoring 55% was **Beginner on one code path and Intermediate on the other** (`routes/student.js:1088` used `determineLevel`, `lib/data.js` used `scoreToLevel`). And the spellings were load-bearing: `assessment_results.level` / `assessment_attempts.level` only accept `'Advance'`, so `determineLevel`'s `'Advanced'` would have failed those inserts, while `student_subject_levels` only accepted `'Advanced'`.
+
+`config/levelThresholds.js` is now the single source of truth on the spec's bands, and `scoreToLevel()` delegates to it. Verified across 11 boundary values (0, 50, 50.6, 51, 80, 80.4, 81, 100…) — all three columns agree.
+
+#### Functional proof
+
+A smoke test exercised what the **old** schema made impossible, then cleaned up after itself:
+
+```
+PASS  inserted 5 modules in one subject (old schema allowed max 3)
+PASS  target_year_levels_json round-trips ("Kinder 1")
+PASS  3 handouts attached to one module
+PASS  pre_assessment stored with module_id = NULL and question_type = mixed
+PASS  all 4 types stored, including 'essay' (previously blocked by CHECK)
+PASS  traced: "Module 1" -> handout "fractions.pdf"        <- weak-area join
+PASS  subject v2 vs cached assessment v1 -> detected as stale
+PASS  invalid question_type 'crossword' correctly rejected
+PASS  invalid assessment_kind correctly rejected
+PASS  deleting a module cascaded its handouts away (no orphans)
+```
+
+DB left clean afterwards (all 0 rows, `handout_version` back to 1); server boots with no errors.
 
 ### Phase 3 — Admin: Modules + Handouts (Section 3)
 1. `GET /admin/subjects/:id` — replace the resources panel with a **Modules list** (ordered by `order_number`).
