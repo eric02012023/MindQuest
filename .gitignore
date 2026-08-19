@@ -7,3 +7,7 @@ node_modules/
 public/uploads/**
 # Except .gitkeep files so the empty folders stay in repo
 !public/uploads/**/.gitkeep
+
+# Local diagnostic scripts (they read secrets from .env, never hardcode them)
+test-smtp.js
+test-resend.js

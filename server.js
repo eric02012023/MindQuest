@@ -23,6 +23,7 @@ const assistantRoutes = require('./routes/assistant');
 const studentRoutes = require('./routes/student');
 const tutorRoutes = require('./routes/tutor');
 const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName } = require('./lib/utils');
+const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
 
 const app = express();
 const server = http.createServer(app);
@@ -61,8 +62,27 @@ app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 // avatars and chat attachments are served without a session lookup or a DB round
 // trip per file. Study-material folders are NOT served here — they are mounted
 // behind an access check below app.use(setUserLocals).
-app.use('/uploads/profiles', express.static(path.join(__dirname, 'public', 'uploads', 'profiles')));
-app.use('/uploads/messages', express.static(path.join(__dirname, 'public', 'uploads', 'messages')));
+app.use('/uploads/profiles', express.static(uploadFolder('profiles')));
+
+// Chat attachments are the one public folder that accepts arbitrary file types,
+// and they are served from this app's own origin — so anything the browser will
+// execute becomes stored XSS against whoever opens it. The upload filter blocks
+// those extensions (lib/uploads.js), and this is the second layer for anything
+// already on disk from before that filter existed:
+//
+//   nosniff             stops the browser guessing a dangerous type from content
+//   Content-Disposition forces a download for anything that is not a plain image,
+//                       so it can never render in this origin
+app.use('/uploads/messages', express.static(uploadFolder('messages'), {
+  setHeaders(res, filePath) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const ext = path.extname(filePath).toLowerCase();
+    const inlineSafe = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'];
+    if (!inlineSafe.includes(ext)) {
+      res.setHeader('Content-Disposition', 'attachment');
+    }
+  }
+}));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use(express.urlencoded({ extended: true }));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
@@ -154,7 +174,7 @@ for (const folder of PROTECTED_UPLOAD_DIRS) {
   app.use(
     `/uploads/${folder}`,
     ...guards,
-    express.static(path.join(__dirname, 'public', 'uploads', folder))
+    express.static(uploadFolder(folder))
   );
 }
 
@@ -290,6 +310,13 @@ async function start() {
       console.log(`- Local:   http://localhost:${port}`);
       console.log(`- Network: http://${localIP}:${port}`);
       console.log(`Connected database: ${dbName}`);
+      // Say where uploads land. On a host with an ephemeral filesystem (Render),
+      // seeing the in-repo default here means every uploaded handout will be lost
+      // on the next deploy — set UPLOAD_ROOT to a mounted disk.
+      console.log(
+        `Uploads directory: ${UPLOADS_ROOT}`
+        + (usingExternalUploadRoot ? ' (persistent, from UPLOAD_ROOT)' : ' (inside the app folder)')
+      );
       console.log('Default admin email: admin@mindquest.local');
       console.log('Default admin password: Admin@12345');
       console.log('SMTP Configuration Status:', {

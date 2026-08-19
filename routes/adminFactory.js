@@ -15,6 +15,7 @@ const path = require('path');
 const { createUploader, describeUploadRejection } = require('../lib/uploads');
 const { extractHandoutText } = require('../services/extractionService');
 const { schedulePreAssessmentWarmup, getWarmupState } = require('../lib/preAssessmentWarmup');
+const { resolveUploadPath } = require('../lib/paths');
 const {
   getBranches,
   addBranch,
@@ -1373,7 +1374,7 @@ function createAdminRouter(role) {
       // than being written off. That path costs money and takes a few seconds per
       // page, which is why it is not run automatically on upload.
       const extraction = await extractHandoutText({
-        absolutePath: path.join(__dirname, '..', 'public', handout.file_path),
+        absolutePath: resolveUploadPath(handout.file_path),
         originalName: handout.file_original_name || handout.file_path,
         allowOcr: true
       });
@@ -1428,7 +1429,7 @@ function createAdminRouter(role) {
       let contentText = '';
       if (req.file) {
         const fs = require('fs');
-        const absolutePath = require('path').join(__dirname, '..', 'public', 'uploads', 'resources', req.file.filename);
+        const absolutePath = resolveUploadPath('/uploads/resources/' + req.file.filename);
         
         try {
           if (req.file.mimetype === 'application/pdf') {
@@ -1924,7 +1925,7 @@ function createAdminRouter(role) {
       let filesDeleted = 0;
       for (const mod of aiModules) {
         if (mod.file_path) {
-          const filePath = path.join(__dirname, '..', 'public', mod.file_path.replace(/\\/g, '/'));
+          const filePath = resolveUploadPath(mod.file_path);
           try {
             if (fs.existsSync(filePath)) {
               fs.unlinkSync(filePath);

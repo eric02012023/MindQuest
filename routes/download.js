@@ -1,4 +1,5 @@
 const express = require('express');
+const { resolveUploadPath } = require('../lib/paths');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
@@ -50,7 +51,7 @@ router.get('/module/:id', async (req, res) => {
     // If physical file exists, serve it
     if (resource.file_path) {
       const cleaned = resource.file_path.replace(/\\/g, '/');
-      const absolutePath = path.join(__dirname, '..', 'public', cleaned);
+      const absolutePath = resolveUploadPath(cleaned);
       if (fs.existsSync(absolutePath)) {
         const ext = path.extname(absolutePath).toLowerCase();
         if (ext === '.pdf') {
@@ -162,7 +163,7 @@ router.get('/', (req, res, next) => {
       return res.redirect('back');
     }
 
-    const absolutePath = path.join(__dirname, '..', 'public', cleaned);
+    const absolutePath = resolveUploadPath(cleaned);
 
     if (!fs.existsSync(absolutePath)) {
       // File is missing — try to find the resource in DB and redirect to /download/module/:id
