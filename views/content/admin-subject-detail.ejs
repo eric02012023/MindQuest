@@ -106,6 +106,10 @@
       one. "View Breakdown" opens the per-item + weak-area page.
       ------------------------------------------------------------------------ %>
   <section class="panel-card">
+    <%- include('../partials/pre-assessment-status', { preStatus, warmup }) %>
+  </section>
+
+  <section class="panel-card">
     <div class="panel-card-head">
       <h3>Pre-Assessment Results</h3>
       <span class="badge badge-info"><%= preResults.length %> submission<%= preResults.length === 1 ? '' : 's' %></span>

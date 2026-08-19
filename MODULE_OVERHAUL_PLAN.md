@@ -460,7 +460,7 @@ The last one is the real lesson: *a quota a model may ignore is not a quota*. Wi
 
 **Result, same three real handouts:** 30/30 items, **10/10/10 per handout**, all four types, no duplicates, **18s** — down from 36s, and from 77s once a top-up was involved.
 
-⚠️ **Open UX question:** those 18 seconds are paid by the *first student* who opens the subject, since generation is triggered by their click and cached afterwards. Pre-generating when an admin adds or removes a handout would move the wait off the student. Not built — say the word.
+⚠️ **Open UX question:** those 18 seconds are paid by the *first student* who opens the subject, since generation is triggered by their click and cached afterwards. Pre-generating when an admin adds or removes a handout would move the wait off the student. — ✅ **Built. See Phase 10.**
 
 ### Phase 6 — Student: lock, take, grade, classify, weak areas (Section 5) — ✅ **DONE 2026-08-19**
 
@@ -700,6 +700,43 @@ Ang tanong: **per-student** ba o **per-class**?
 - **Per-class** — lalabas lang kapag **lahat** ng student sa subject ay tapos na
 
 **Naka-assume ang Phase 8 sa per-student.** — ✅ **Ito ang ipinatupad (2026-08-19).** Bawat estudyante ang binibilang: bumubukas ang Post-Assessment para sa sinumang tapos na, hindi hinihintay ang buong klase. Nakikita pa rin ng tutor kung ilan ang handa bago niya ito buksan.
+
+---
+
+### Phase 10 — the Pre-Assessment builds itself on upload — ✅ **DONE 2026-08-19**
+
+Requested after Phase 9: *"pag send ng module at pag may mga handouts na, mag-generate na agad para hindi na maghintay ang mga student."*
+
+Generation used to be triggered by the student's click. It was cached afterwards, so exactly one student per handout version paid the ~18s wait — but that student was a child sitting in front of a spinner. **`lib/preAssessmentWarmup.js`** moves the same work to the moment the admin uploads, when nobody is waiting on it.
+
+| Trigger | Where |
+|---|---|
+| Handouts uploaded | `POST /admin/modules/:id/handouts` |
+| Scan made readable by OCR | `POST /admin/modules/:id/handouts/:handoutId/extract` |
+| Handout removed | `POST /admin/modules/:id/handouts/:handoutId/delete` |
+| Module removed | `POST /admin/modules/:id/archive` |
+
+**Debounced, 12 seconds.** Uploading five handouts one at a time bumps `handout_version` five times; without a debounce that is five generations and five times the cost. The timer restarts on each change and only the last one runs.
+
+**Fire and forget, safely.** `getOrCreatePreAssessment` was already single-flight in process and guarded by a unique index per handout version, so a student arriving mid-build joins the same work rather than starting a second copy. Nothing here throws into a request, and a failed warm-up costs nothing — the student path still generates on demand exactly as before. The timer is `unref`'d so a pending build never holds the process open.
+
+**The admin can see it happen.** A status line above the upload form reads *Build queued → Building now → Ready — 30 items*, or *Waiting for a readable handout* when the only files are scans nobody has run "Read with AI" on. `stale` is tracked separately from `exists`: an assessment can exist while belonging to an older handout version, and showing "ready" in that window would be a lie the admin would only discover from a student.
+
+#### Verification — 16/16
+
+Real PDFs uploaded over HTTP through the actual multipart route:
+
+```
+PASS  the debounce kept only the last of three rapid requests
+PASS  a nonexistent subject reports a problem, it does not throw
+PASS  the upload returned BEFORE the assessment was built (the admin is not blocked)
+PASS  the Pre-Assessment built itself in the background (44s incl. the 12s debounce)
+PASS  with 30 items; the admin page says "Ready — 30 items"
+PASS  student's first open: 88ms — not the ~18s a cold build costs
+PASS  all 30 items rendered
+```
+
+Phases 6 (35/35), 7 (48/48), 8 (41/41) and the 36-page sweep all re-ran clean afterwards.
 
 ---
 

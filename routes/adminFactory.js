@@ -14,6 +14,7 @@ const {
 const path = require('path');
 const { createUploader, describeUploadRejection } = require('../lib/uploads');
 const { extractHandoutText } = require('../services/extractionService');
+const { schedulePreAssessmentWarmup, getWarmupState } = require('../lib/preAssessmentWarmup');
 const {
   getBranches,
   addBranch,
@@ -97,6 +98,7 @@ const {
   addModuleHandouts,
   archiveModuleHandout,
   getSubjectSubmissions,
+  getPreAssessmentStatus,
   getSubmissionWithAnswers,
   getWeakAreasForSubmission,
   // Post-Assessment (Phase 8)
@@ -1171,6 +1173,8 @@ function createAdminRouter(role) {
         modules: await getSubjectModules(req.params.id),
         moduleTargetOptions: getModuleTargetOptions(),
         preResults: await getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' }),
+        preStatus: await getPreAssessmentStatus(req.params.id),
+        warmup: getWarmupState(req.params.id),
         // Post-Assessment (overhaul Phase 8): Admin reads the before-and-after,
         // but the tutor is the one who opens it.
         postAssessment: await getPostAssessment(req.params.id),
@@ -1226,7 +1230,11 @@ function createAdminRouter(role) {
         contentView: '../content/admin-module-detail',
         mod,
         handouts,
-        moduleTargetOptions: getModuleTargetOptions()
+        moduleTargetOptions: getModuleTargetOptions(),
+        // Pre-Assessment build status (Phase 10): the admin uploads handouts here,
+        // so this is where they should see the assessment being built from them.
+        preStatus: await getPreAssessmentStatus(mod.subject_id),
+        warmup: getWarmupState(mod.subject_id)
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }
@@ -1266,6 +1274,7 @@ function createAdminRouter(role) {
       await deleteModule(Number(req.params.id));
       // Its handouts no longer feed generation, so the cached assessment is stale.
       await bumpSubjectHandoutVersion(mod.subject_id);
+      schedulePreAssessmentWarmup(mod.subject_id, 'module removed');
       setFlash(req, 'success', `"${mod.title}" removed.`);
       res.redirect(`${basePath}/subjects/${mod.subject_id}`);
     } catch (error) {
@@ -1321,6 +1330,11 @@ function createAdminRouter(role) {
         if (!extraction.usable) unusable++;
       }
 
+      // Build the Pre-Assessment now, in the background, so no student has to wait
+      // on it later. Debounced, so uploading several handouts in a row costs one
+      // generation rather than one per file.
+      schedulePreAssessmentWarmup(mod.subject_id, 'handouts uploaded');
+
       const rejected = describeUploadRejection(req);
       const parts = [`${result.inserted} handout${result.inserted === 1 ? '' : 's'} uploaded.`];
       if (unusable) {
@@ -1366,6 +1380,7 @@ function createAdminRouter(role) {
       await saveHandoutExtraction(handout.id, extraction);
       if (extraction.usable) {
         await bumpSubjectHandoutVersion(handout.subject_id);
+        schedulePreAssessmentWarmup(handout.subject_id, 'handout re-read');
         const how = extraction.method === 'ocr' ? ' by reading the scanned pages with AI' : '';
         setFlash(
           req,
@@ -1389,7 +1404,8 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Only the main admin can remove handouts.');
         return res.redirect(back);
       }
-      await archiveModuleHandout(Number(req.params.handoutId));
+      const removed = await archiveModuleHandout(Number(req.params.handoutId));
+      schedulePreAssessmentWarmup(removed.subject_id, 'handout removed');
       setFlash(req, 'success', 'Handout removed. The Pre-Assessment will regenerate from the remaining handouts.');
       res.redirect(back);
     } catch (error) {

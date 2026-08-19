@@ -1586,3 +1586,21 @@ body {
   font-weight: 600;
   color: var(--text-soft, #5f7084);
 }
+
+/* ------------------------------------- Pre-Assessment build status (Phase 10) */
+.pre-status { display: grid; gap: 6px; }
+.pre-status-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pre-status-head > strong { font-size: 15px; }
+.pre-status-detail { margin: 0; font-size: 13px; color: var(--text-soft, #5f7084); }
+.pre-status-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(16, 32, 51, .15);
+  border-top-color: var(--primary-700, #0b6f8a);
+  animation: pre-status-spin .8s linear infinite;
+}
+@keyframes pre-status-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pre-status-spinner { animation: none; }
+}

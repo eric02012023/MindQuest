@@ -1,0 +1,50 @@
+<%# File: views/partials/pre-assessment-status.ejs
+    Purpose: Tell the admin, in one line, whether this subject's Pre-Assessment is
+    built and current — so uploading handouts has a visible outcome rather than
+    being an act of faith.
+
+    Expects: preStatus (from getPreAssessmentStatus) and warmup (from
+    getWarmupState). The two are combined here rather than in the route because
+    the precedence is a presentation decision: an in-flight build outranks a stale
+    stored copy, since the stale one is about to be replaced. %>
+<%
+  const building = warmup && (warmup.status === 'queued' || warmup.status === 'generating');
+  let tone = 'badge-info';
+  let label = 'Not built yet';
+  let detail = '';
+
+  if (building) {
+    tone = 'badge-info';
+    label = warmup.status === 'queued' ? 'Build queued' : 'Building now';
+    detail = 'The Pre-Assessment is being written from this subject\'s handouts. '
+      + 'You can leave this page — it keeps going.';
+  } else if (!preStatus.readableHandouts) {
+    tone = 'badge-warning';
+    label = 'Waiting for a readable handout';
+    detail = 'No handout in this subject has text yet. Upload a text-based file, or use '
+      + '"Read with AI" on a scanned one, and the Pre-Assessment builds itself.';
+  } else if (preStatus.exists && !preStatus.stale) {
+    tone = 'badge-success';
+    label = `Ready — ${preStatus.itemCount} items`;
+    detail = 'Built from the current handouts. Students get it immediately, with no wait.';
+  } else if (preStatus.exists && preStatus.stale) {
+    tone = 'badge-warning';
+    label = 'Out of date';
+    detail = 'The handouts changed after this was built. It rebuilds on its own shortly; '
+      + 'until then a student would still get the older set.';
+  } else if (warmup && warmup.status === 'error') {
+    tone = 'badge-danger';
+    label = 'Build failed';
+    detail = warmup.error || 'Unknown error. It will be retried the next time a handout changes.';
+  } else {
+    detail = 'It builds automatically once this subject has a handout with readable text.';
+  }
+%>
+<div class="pre-status">
+  <div class="pre-status-head">
+    <strong>Pre-Assessment</strong>
+    <span class="badge <%= tone %>"><%= label %></span>
+    <% if (building) { %><span class="pre-status-spinner" aria-hidden="true"></span><% } %>
+  </div>
+  <p class="pre-status-detail"><%= detail %></p>
+</div>
