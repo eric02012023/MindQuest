@@ -16,6 +16,83 @@
     <% } %>
   </div>
 
+  <%# ------------------------------------------------------------------------
+      Modules (overhaul Phase 6). Everything here is gated by the subject's
+      Pre-Assessment. The gate is enforced server-side in routes/student.js and on
+      /uploads/handouts — this panel only reflects that state.
+      ------------------------------------------------------------------------ %>
+  <% if (!preAssessmentDone) { %>
+    <section class="panel-card lock-card">
+      <div class="lock-head">
+        <span class="lock-icon" aria-hidden="true">&#128274;</span>
+        <div>
+          <h3>Pre-Assessment required</h3>
+          <p>Your modules and handouts for this subject unlock once you finish it.</p>
+        </div>
+      </div>
+      <% if (handoutsReady) { %>
+        <p class="lock-note">
+          It is built from this subject's handouts and mixes multiple choice, true or false,
+          fill in the blank, and short essay items. It is not graded for marks — it shows your
+          tutor what to focus on.
+        </p>
+        <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/pre-assessment">Start Pre-Assessment</a>
+      <% } else { %>
+        <p class="lock-note">
+          Your tutorial centre has not uploaded readable handouts for this subject yet, so the
+          Pre-Assessment cannot be prepared. Please check back later.
+        </p>
+      <% } %>
+    </section>
+  <% } else { %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Modules</h3>
+        <span class="badge badge-success">Unlocked</span>
+      </div>
+      <p class="table-note">
+        Pre-Assessment done &mdash; <%= Number(preAssessmentDone.percentage).toFixed(1) %>%,
+        <%= preAssessmentDone.level %>.
+        <a href="/student/results/<%= preAssessmentDone.id %>">View your result and topic breakdown</a>
+      </p>
+
+      <% if (!newModules.length) { %>
+        <p class="empty-state">No modules are assigned to your year level in this subject yet.</p>
+      <% } %>
+
+      <div class="module-grid">
+        <% newModules.forEach((mod) => { %>
+          <article class="module-card">
+            <div class="module-card-head">
+              <span class="module-number">Module <%= mod.order_number %></span>
+              <span class="badge <%= (mod.handouts || []).length ? 'badge-success' : 'badge-warning' %>">
+                <%= (mod.handouts || []).length %> handout<%= (mod.handouts || []).length === 1 ? '' : 's' %>
+              </span>
+            </div>
+            <h4><%= mod.title %></h4>
+            <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
+
+            <% if ((mod.handouts || []).length) { %>
+              <ul class="module-handout-list">
+                <% mod.handouts.forEach((h) => { %>
+                  <li>
+                    <a href="<%= h.file_path %>" target="_blank" rel="noopener">
+                      <%= h.file_original_name || h.title || 'Handout' %>
+                    </a>
+                  </li>
+                <% }) %>
+              </ul>
+            <% } %>
+
+            <div class="module-card-foot">
+              <a class="btn btn-secondary btn-sm" href="/student/modules/<%= mod.id %>">Open Module</a>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
+
   <% if (typeof activeCycle !== 'undefined' && activeCycle) { %>
   <section class="panel-card">
     <div class="panel-card-head"><h3>Current Learning Cycle — Round <%= activeCycle.round_number %></h3></div>

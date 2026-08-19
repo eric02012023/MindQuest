@@ -1,0 +1,182 @@
+<%# File: views/content/student-assessment-breakdown.ejs
+    Purpose: Result page — percentage, Beginner/Intermediate/Advance classification,
+    per-item right/wrong breakdown, and the weak-area map back to the module and
+    handout each missed question came from.
+
+    Shared by Student, Tutor and Admin via `viewerRole`; the tutor/admin view adds
+    the student's name and drops the encouragement copy. %>
+<%
+  const pct = Number(submission.percentage || 0);
+  const level = submission.level || 'Beginner';
+  const levelClass = level.toLowerCase();
+  const correctCount = (submission.answers || []).filter((a) => a.is_correct).length;
+  const wrongCount = (submission.answers || []).length - correctCount;
+  const isStudent = viewerRole === 'student';
+  const typeLabel = (t) => t === 'multiple_choice' ? 'Multiple Choice'
+    : t === 'true_false' ? 'True or False'
+    : t === 'fill_blank' ? 'Fill in the Blank' : 'Essay';
+%>
+<section class="page-stack">
+  <div class="toolbar-card split">
+    <div>
+      <h2><%= submission.title %></h2>
+      <p class="res-subtitle">
+        <%= submission.subject_name %>
+        <% if (!isStudent) { %>
+          &middot; <%= submission.first_name %> <%= submission.last_name || '' %> (<%= submission.student_code %>)
+        <% } %>
+        &middot; <%= formatDateTime(submission.submitted_at) %>
+      </p>
+    </div>
+  </div>
+
+  <%# ---- Score + classification -------------------------------------------- %>
+  <section class="panel-card">
+    <div class="res-score-grid">
+      <div class="res-score-cell">
+        <span class="res-score-num"><%= pct.toFixed(1) %>%</span>
+        <span class="res-score-cap">Score</span>
+      </div>
+      <div class="res-score-cell">
+        <span class="res-level res-level-<%= levelClass %>"><%= level %></span>
+        <span class="res-score-cap">Classification</span>
+      </div>
+      <div class="res-score-cell">
+        <span class="res-score-num res-correct"><%= correctCount %></span>
+        <span class="res-score-cap">Correct</span>
+      </div>
+      <div class="res-score-cell">
+        <span class="res-score-num res-wrong"><%= wrongCount %></span>
+        <span class="res-score-cap">Incorrect</span>
+      </div>
+      <div class="res-score-cell">
+        <span class="res-score-num"><%= Number(submission.score) %>/<%= Number(submission.total_points) %></span>
+        <span class="res-score-cap">Points</span>
+      </div>
+    </div>
+
+    <div class="res-bands">
+      <span class="res-band <%= levelClass === 'beginner' ? 'is-current' : '' %>">Beginner 0&ndash;50%</span>
+      <span class="res-band <%= levelClass === 'intermediate' ? 'is-current' : '' %>">Intermediate 51&ndash;80%</span>
+      <span class="res-band <%= levelClass === 'advance' ? 'is-current' : '' %>">Advance 81&ndash;100%</span>
+    </div>
+
+    <% if (isStudent) { %>
+      <p class="res-note">Your modules and handouts for this subject are now unlocked.</p>
+    <% } %>
+  </section>
+
+  <%# ---- Weak areas -------------------------------------------------------- %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Topic Breakdown</h3>
+      <span class="badge badge-info"><%= weakAreas.length %> source<%= weakAreas.length === 1 ? '' : 's' %></span>
+    </div>
+    <p class="table-note">
+      <% if (isStudent) { %>
+        Where your answers came from. The highlighted rows are the topics to review first.
+      <% } else { %>
+        Which module and handout each missed item came from — use this to decide what to teach first.
+      <% } %>
+    </p>
+
+    <% if (!weakAreas.length) { %>
+      <p class="empty-state">No topic data for this attempt.</p>
+    <% } %>
+
+    <div class="weak-grid">
+      <% weakAreas.forEach((area) => { %>
+        <article class="weak-card <%= area.is_weak ? 'is-weak' : '' %>">
+          <div class="weak-card-head">
+            <span class="weak-module">
+              <% if (area.order_number) { %>Module <%= area.order_number %><% } else { %>Unattributed<% } %>
+            </span>
+            <% if (area.is_weak) { %><span class="badge badge-danger">Needs review</span><% } %>
+          </div>
+          <h4><%= area.module_title %></h4>
+          <% if (area.handout_name) { %>
+            <p class="weak-handout">Handout: <%= area.handout_name %></p>
+          <% } %>
+          <div class="weak-bar"><span style="width: <%= area.percentage %>%;"></span></div>
+          <p class="weak-meta"><%= area.correct %> of <%= area.total %> correct (<%= area.percentage %>%)</p>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <%# ---- Per-item breakdown ----------------------------------------------- %>
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Item by Item</h3></div>
+
+    <% (submission.answers || []).forEach((a, i) => { %>
+      <article class="res-item <%= a.is_correct ? 'is-correct' : 'is-wrong' %>">
+        <div class="res-item-head">
+          <span class="res-item-num"><%= i + 1 %></span>
+          <span class="badge badge-info"><%= typeLabel(a.question_type) %></span>
+          <span class="res-item-verdict <%= a.is_correct ? 'ok' : 'bad' %>">
+            <%= a.is_correct ? 'Correct' : 'Incorrect' %>
+            (<%= Number(a.points_earned) %>/<%= Number(a.points) %>)
+          </span>
+        </div>
+
+        <p class="res-item-q"><%= a.question_text %></p>
+
+        <div class="res-item-answers">
+          <div class="res-answer">
+            <span class="res-answer-cap"><%= isStudent ? 'Your answer' : 'Student answer' %></span>
+            <span class="res-answer-val">
+              <% if (!a.student_answer) { %>
+                <em>No answer</em>
+              <% } else if (a.question_type === 'multiple_choice') { %>
+                <% const picked = (a.options || []).find((o) => o.option_label === a.student_answer); %>
+                <%= a.student_answer %><% if (picked) { %> &mdash; <%= picked.option_text %><% } %>
+              <% } else { %>
+                <%= a.student_answer %>
+              <% } %>
+            </span>
+          </div>
+
+          <% if (!a.is_correct) { %>
+            <div class="res-answer">
+              <span class="res-answer-cap"><%= a.question_type === 'essay' ? 'Expected key points' : 'Correct answer' %></span>
+              <span class="res-answer-val">
+                <% if (a.question_type === 'multiple_choice') { %>
+                  <% const right = (a.options || []).find((o) => o.option_label === a.correct_answer); %>
+                  <%= a.correct_answer %><% if (right) { %> &mdash; <%= right.option_text %><% } %>
+                <% } else if (a.question_type === 'essay') { %>
+                  <%= a.answer_rubric || a.correct_answer %>
+                <% } else { %>
+                  <%= a.correct_answer %>
+                <% } %>
+              </span>
+            </div>
+          <% } %>
+        </div>
+
+        <% if (a.ai_feedback) { %>
+          <p class="res-feedback"><strong>Feedback:</strong> <%= a.ai_feedback %></p>
+        <% } %>
+        <% if (a.explanation && !a.is_correct) { %>
+          <p class="res-explain"><strong>Why:</strong> <%= a.explanation %></p>
+        <% } %>
+
+        <% if (a.source_order_number || a.source_handout_name) { %>
+          <p class="res-source">
+            From
+            <% if (a.source_order_number) { %>Module <%= a.source_order_number %><% } %>
+            <% if (a.source_module_title) { %>&middot; <%= a.source_module_title %><% } %>
+            <% if (a.source_handout_name) { %>&middot; <%= a.source_handout_name %><% } %>
+          </p>
+        <% } %>
+      </article>
+    <% }) %>
+  </section>
+
+  <div class="row-actions">
+    <% if (isStudent) { %>
+      <a class="btn btn-primary" href="/student/subjects/<%= submission.subject_id %>">Back to Subject</a>
+    <% } else { %>
+      <a class="btn btn-secondary" href="<%= basePath %>/subjects/<%= submission.subject_id %>">Back to Subject</a>
+    <% } %>
+  </div>
+</section>

@@ -1,0 +1,76 @@
+<%# File: views/content/student-pre-assessment.ejs
+    Purpose: The Pre-Assessment a student must finish before any module or handout
+    in the subject unlocks. Questions are AI-generated from the subject's handouts,
+    so the four types below are rendered generically rather than per-subject. %>
+<section class="page-stack">
+  <div class="toolbar-card split">
+    <div>
+      <h2>Pre-Assessment</h2>
+      <p class="pa-subtitle"><%= assignment.subject_name %></p>
+    </div>
+    <span class="badge badge-info"><%= assessment.questions.length %> item<%= assessment.questions.length === 1 ? '' : 's' %></span>
+  </div>
+
+  <section class="panel-card pa-intro">
+    <p><%= assessment.instructions || 'Answer every item as best you can.' %></p>
+    <p class="pa-note">
+      This is not graded for marks. It shows your tutor what you already know, so the lessons
+      can focus on what you need. Your modules unlock as soon as you submit.
+    </p>
+  </section>
+
+  <form method="post" action="/student/subjects/<%= subjectId %>/pre-assessment" class="pa-form" data-confirm-message="Submit your Pre-Assessment? You cannot change your answers afterwards.">
+    <input type="hidden" name="assessment_id" value="<%= assessment.id %>" />
+    <input type="hidden" name="started_at" value="<%= startedAt %>" />
+
+    <% assessment.questions.forEach((q, i) => { %>
+      <article class="pa-question">
+        <div class="pa-question-head">
+          <span class="pa-number"><%= i + 1 %></span>
+          <span class="badge badge-info pa-type">
+            <%= q.question_type === 'multiple_choice' ? 'Multiple Choice'
+              : q.question_type === 'true_false' ? 'True or False'
+              : q.question_type === 'fill_blank' ? 'Fill in the Blank' : 'Essay' %>
+          </span>
+        </div>
+
+        <p class="pa-question-text"><%= q.question_text %></p>
+
+        <% if (q.question_type === 'multiple_choice') { %>
+          <div class="pa-choices">
+            <% (q.options || []).forEach((opt) => { %>
+              <label class="pa-choice">
+                <input type="radio" name="answer_<%= q.id %>" value="<%= opt.option_label %>" />
+                <span class="pa-choice-label"><%= opt.option_label %></span>
+                <span class="pa-choice-text"><%= opt.option_text %></span>
+              </label>
+            <% }) %>
+          </div>
+
+        <% } else if (q.question_type === 'true_false') { %>
+          <div class="pa-choices pa-choices-inline">
+            <label class="pa-choice">
+              <input type="radio" name="answer_<%= q.id %>" value="true" />
+              <span class="pa-choice-text">True</span>
+            </label>
+            <label class="pa-choice">
+              <input type="radio" name="answer_<%= q.id %>" value="false" />
+              <span class="pa-choice-text">False</span>
+            </label>
+          </div>
+
+        <% } else if (q.question_type === 'fill_blank') { %>
+          <input class="pa-input" type="text" name="answer_<%= q.id %>" placeholder="Type your answer" autocomplete="off" />
+
+        <% } else { %>
+          <textarea class="pa-textarea" name="answer_<%= q.id %>" rows="5" placeholder="Write your answer in your own words"></textarea>
+          <p class="pa-note">Explain in your own words — you do not need to match the wording exactly.</p>
+        <% } %>
+      </article>
+    <% }) %>
+
+    <div class="pa-submit-row">
+      <button type="submit" class="btn btn-primary">Submit Pre-Assessment</button>
+    </div>
+  </form>
+</section>

@@ -67,7 +67,18 @@ const {
   getTutorAssessmentById,
   submitTutorAssessment,
   getStudentSubmissions,
-  getStudentProgress
+  getStudentProgress,
+  // Module -> Handout -> Assessment overhaul (Phases 5-6)
+  getOrCreatePreAssessment,
+  getAssessmentWithQuestions,
+  gradeAndSubmitAssessment,
+  hasCompletedPreAssessment,
+  getStudentSubjectModules,
+  getSubmissionWithAnswers,
+  getWeakAreasForSubmission,
+  getModuleHandouts,
+  getSubjectHandoutTexts,
+  moduleTargetsStudent
 } = require('../lib/data');
 const { determineLevel } = require('../config/levelThresholds');
 const { normalizeArray } = require('../lib/utils');
@@ -270,6 +281,13 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     );
     const hasTutorPreAssessment = tutorPreAssessments.length > 0;
 
+    // ---- Module system (overhaul Phase 6) --------------------------------
+    // The Pre-Assessment gates everything below it. newModules is already
+    // filtered to this student's year level.
+    const preAssessmentDone = await hasCompletedPreAssessment(req.session.user.id, Number(req.params.subjectId));
+    const newModules = await getStudentSubjectModules(req.session.user.id, Number(req.params.subjectId));
+    const handoutsReady = (await getSubjectHandoutTexts(Number(req.params.subjectId))).length;
+
     const shell = await buildShell(req, {
       pageTitle: assignment.subject_name,
       section: 'subjects',
@@ -277,6 +295,9 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       assignment,
       resources,
       modules,
+      newModules,
+      preAssessmentDone,
+      handoutsReady,
       activeCycle,
       tutor,
       attendanceLogs,
@@ -991,120 +1012,136 @@ router.get('/analytics', async (req, res, next) => {
 // Phase 6: Module Level System — Pre-Assessment, Module View, Assessment
 // ==========================================================================
 
-// Student: Render pre-assessment for a subject
-router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
-  try {
-    const subjectId = Number(req.params.subjectId);
-    const studentId = req.session.user.id;
+// --------------------------------------------------------------------------
+// Pre-Assessment (overhaul Phase 6)
+//
+// The Pre-Assessment is generated from the subject's handouts, not written by a
+// tutor. It gates every module and handout in the subject until it is completed.
+// --------------------------------------------------------------------------
 
-    // Verify enrollment
-    const assignments = await getStudentAssignments(studentId);
-    const assignment = assignments.find(a => Number(a.subject_id) === subjectId);
+/**
+ * Confirm the student is enrolled in this subject.
+ * Returns the assignment, or null after setting a flash + redirect target.
+ */
+async function requireEnrolment(req, subjectId) {
+  const assignments = await getStudentAssignments(req.session.user.id);
+  return assignments.find((a) => Number(a.subject_id) === Number(subjectId)) || null;
+}
+
+router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
+  const subjectId = Number(req.params.subjectId);
+  try {
+    const assignment = await requireEnrolment(req, subjectId);
     if (!assignment) {
       setFlash(req, 'error', 'Subject not found in your account.');
       return res.redirect('/student/subjects');
     }
 
-    // Check if already has a level
-    const existingLevel = await getStudentSubjectLevel(studentId, subjectId);
-    if (existingLevel) {
-      setFlash(req, 'info', `You already have a level assigned: ${existingLevel.level}.`);
-      return res.redirect(`/student/subjects/${subjectId}`);
+    // Already done: send them to their result rather than letting them retake it.
+    const done = await hasCompletedPreAssessment(req.session.user.id, subjectId);
+    if (done) {
+      setFlash(req, 'info', 'You have already completed the Pre-Assessment for this subject.');
+      return res.redirect(`/student/results/${done.id}`);
     }
 
-    // Find the pre-assessment (tutor_assessment with purpose='pre' for any module in this subject)
-    const { query: dbQuery } = require('../config/db');
-    const preAssessments = await dbQuery(
-      `SELECT ta.id FROM tutor_assessments ta
-       JOIN modules m ON m.id = ta.module_id
-       WHERE ta.subject_id = ? AND ta.purpose = 'pre' AND ta.is_published = 1 AND ta.is_archived = 0
-       ORDER BY ta.created_at ASC`,
-      [subjectId]
-    );
-
-    if (!preAssessments.length) {
-      setFlash(req, 'error', 'No pre-assessment is available for this subject yet. Please wait for your tutor to create one.');
-      return res.redirect(`/student/subjects/${subjectId}`);
-    }
-
-    const assessment = await getTutorAssessmentById(preAssessments[0].id);
-    if (!assessment) {
-      setFlash(req, 'error', 'Pre-assessment not found.');
+    let assessment;
+    try {
+      const result = await getOrCreatePreAssessment(subjectId, { itemCount: 10 });
+      assessment = result.assessment;
+    } catch (error) {
+      // No handouts yet, or generation failed. Say so plainly instead of showing
+      // an empty exam.
+      setFlash(req, 'error', error.message || 'The Pre-Assessment is not ready yet.');
       return res.redirect(`/student/subjects/${subjectId}`);
     }
 
     const shell = await buildShell(req, {
-      pageTitle: `Pre-Assessment: ${assignment.subject_name}`,
+      pageTitle: `Pre-Assessment — ${assignment.subject_name}`,
       section: 'subjects',
-      contentView: '../content/student-take-tutor-assessment',
+      contentView: '../content/student-pre-assessment',
       assessment,
+      assignment,
       subjectId,
-      subjectName: assignment.subject_name,
-      isPre: true
+      startedAt: new Date().toISOString()
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
 });
 
-// Student: Submit pre-assessment
 router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
+  const subjectId = Number(req.params.subjectId);
   try {
-    const subjectId = Number(req.params.subjectId);
-    const studentId = req.session.user.id;
-
-    // Verify enrollment
-    const assignments = await getStudentAssignments(studentId);
-    const assignment = assignments.find(a => Number(a.subject_id) === subjectId);
+    const assignment = await requireEnrolment(req, subjectId);
     if (!assignment) {
-      setFlash(req, 'error', 'Subject not found.');
+      setFlash(req, 'error', 'Subject not found in your account.');
       return res.redirect('/student/subjects');
     }
 
-    // Check if already has a level
-    const existingLevel = await getStudentSubjectLevel(studentId, subjectId);
-    if (existingLevel) {
-      setFlash(req, 'info', 'You have already completed the pre-assessment.');
+    const assessmentId = Number(req.body.assessment_id);
+    const assessment = await getAssessmentWithQuestions(assessmentId);
+    if (!assessment || Number(assessment.subject_id) !== subjectId || assessment.assessment_kind !== 'pre_assessment') {
+      setFlash(req, 'error', 'That Pre-Assessment does not belong to this subject.');
       return res.redirect(`/student/subjects/${subjectId}`);
     }
 
-    const assessmentId = Number(req.body.assessment_id);
-    // Build answers array from form data: answer_<questionId> = value
+    // answer_<questionId> from the form.
     const answers = [];
     for (const key of Object.keys(req.body)) {
-      if (key.startsWith('answer_')) {
-        const questionId = Number(key.replace('answer_', ''));
-        answers.push({ question_id: questionId, student_answer: req.body[key] });
-      }
+      if (!key.startsWith('answer_')) continue;
+      answers.push({ question_id: Number(key.slice(7)), student_answer: req.body[key] });
     }
 
-    // Submit and grade
-    const result = await submitTutorAssessment({
+    const result = await gradeAndSubmitAssessment({
       assessment_id: assessmentId,
-      student_id: studentId,
-      answers
+      student_id: req.session.user.id,
+      answers,
+      started_at: req.body.started_at || null
     });
 
-    // Determine level from percentage
-    const level = determineLevel(result.percentage);
-
-    // Save the level assignment
+    // Record the classification against the subject so tutors see it at a glance.
     await setStudentSubjectLevel({
-      student_id: studentId,
+      student_id: req.session.user.id,
       subject_id: subjectId,
-      level,
+      level: result.level,
       pre_assessment_id: assessmentId,
-      score: result.score,
-      total_points: result.total,
+      score: Math.round(result.score),
+      total_points: result.totalPoints,
       percentage: result.percentage
-    });
+    }).catch((error) => console.error('[pre-assessment] could not save subject level:', error.message));
 
-    // Redirect to assessment result page
-    setFlash(req, 'success', `Pre-Assessment completed! Your level: ${level} (${Number(result.percentage).toFixed(1)}%)`);
-    res.redirect(`/student/assessment-result/${result.submissionId}?isPre=1&subjectId=${subjectId}&level=${level}`);
+    setFlash(req, 'success', `Pre-Assessment submitted. Your level: ${result.level} (${result.percentage}%). Your modules are now unlocked.`);
+    res.redirect(`/student/results/${result.submissionId}`);
   } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not submit pre-assessment.');
-    res.redirect(`/student/subjects/${req.params.subjectId}`);
+    setFlash(req, 'error', error.message || 'Could not submit the Pre-Assessment.');
+    res.redirect(`/student/subjects/${subjectId}`);
   }
+});
+
+// Result page: percentage, classification, per-item breakdown and weak areas.
+router.get('/results/:submissionId', async (req, res, next) => {
+  try {
+    const submission = await getSubmissionWithAnswers(Number(req.params.submissionId));
+    if (!submission) {
+      setFlash(req, 'error', 'Result not found.');
+      return res.redirect('/student/subjects');
+    }
+    // A student may only open their own result.
+    if (Number(submission.student_id) !== Number(req.session.user.id)) {
+      setFlash(req, 'error', 'You can only view your own results.');
+      return res.redirect('/student/subjects');
+    }
+
+    const weakAreas = await getWeakAreasForSubmission(submission.id);
+    const shell = await buildShell(req, {
+      pageTitle: submission.title,
+      section: 'subjects',
+      contentView: '../content/student-assessment-breakdown',
+      submission,
+      weakAreas,
+      viewerRole: 'student'
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
 });
 
 // Student: View module detail page
@@ -1123,12 +1160,33 @@ router.get('/modules/:moduleId', async (req, res, next) => {
     }
     const mod = moduleRows[0];
 
-    // Check the student has the right level for this module
-    const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
-    if (!studentLevel || studentLevel.level !== mod.level) {
-      setFlash(req, 'error', 'You do not have access to this module.');
+    // ---- Lock (spec Section 5, acceptance item 5) -------------------------
+    // Enforced here on the server, not by hiding a link: a student who types the
+    // URL must be stopped too.
+    //
+    // Enrolment first, then the Pre-Assessment gate, then year-level targeting.
+    const assignments = await getStudentAssignments(studentId);
+    if (!assignments.some((a) => Number(a.subject_id) === Number(mod.subject_id))) {
+      setFlash(req, 'error', 'You are not enrolled in that subject.');
+      return res.redirect('/student/subjects');
+    }
+
+    const preDone = await hasCompletedPreAssessment(studentId, mod.subject_id);
+    if (!preDone) {
+      setFlash(req, 'error', 'Please complete the Pre-Assessment for this subject before opening its modules.');
       return res.redirect(`/student/subjects/${mod.subject_id}`);
     }
+
+    // Year-level targeting. moduleTargetsStudent matches the exact label against
+    // year_level AND grade_level — deliberately not the collapsed key, which
+    // would treat "Kinder 1" and "Grade 5" as the same audience.
+    if (!moduleTargetsStudent(mod, req.session.user)) {
+      setFlash(req, 'error', 'This module is not assigned to your year level.');
+      return res.redirect(`/student/subjects/${mod.subject_id}`);
+    }
+
+    const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
+    const handouts = await getModuleHandouts(mod.id);
 
     // Get assessments and submissions for this module
     const assessments = await getTutorAssessmentsByModule(mod.id);
@@ -1160,7 +1218,8 @@ router.get('/modules/:moduleId', async (req, res, next) => {
       progressPercent,
       totalTasks,
       completedTasks,
-      studentLevel
+      studentLevel,
+      handouts
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }

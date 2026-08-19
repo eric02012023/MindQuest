@@ -96,6 +96,37 @@ async function dropColumnCheck(table, column, keepName = null) {
   }
 }
 
+/**
+ * Drop the DEFAULT constraint on a column. SQL Server blocks ALTER COLUMN while
+ * one is attached, and the name is auto-generated so it differs per database.
+ */
+async function dropColumnDefault(table, column, keepName = null) {
+  const label = `drop DEFAULT on ${table}.${column}`;
+  try {
+    const r = await pool.request().query(`
+      SELECT dc.name
+      FROM sys.default_constraints dc
+      JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+      WHERE dc.parent_object_id = OBJECT_ID('dbo.${table}') AND c.name = '${column}'`);
+    // Skip the default this migration installs itself, or a re-run would drop and
+    // re-add it every time instead of reporting a clean no-op.
+    const stale = r.recordset.filter((row) => row.name !== keepName);
+    if (!stale.length) {
+      console.log(`  skip     ${label} (nothing stale)`);
+      results.skipped++;
+      return;
+    }
+    for (const row of stale) {
+      await pool.request().query(`ALTER TABLE dbo.${table} DROP CONSTRAINT [${row.name}]`);
+      console.log(`  applied  ${label} (${row.name})`);
+      results.applied++;
+    }
+  } catch (error) {
+    console.error(`  FAILED   ${label}\n           ${error.message}`);
+    results.failed++;
+  }
+}
+
 async function main() {
   pool = await getPool();
   const info = await pool.request().query('SELECT DB_NAME() AS db, @@SERVERNAME AS srv');
@@ -357,6 +388,73 @@ async function main() {
        AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.tutor_assessment_questions') AND name = 'ix_taq_source_handout')
        THEN 1 ELSE 0 END AS needed`,
     `CREATE INDEX ix_taq_source_handout ON dbo.tutor_assessment_questions(source_handout_id)`
+  );
+
+  // ------------------------------------- attempts (AssessmentAttempt in spec)
+  console.log('\ntutor_assessment_submissions / tutor_student_answers');
+  await step(
+    'tutor_assessment_submissions.level',
+    `SELECT CASE WHEN COL_LENGTH('dbo.tutor_assessment_submissions','level') IS NULL THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_assessment_submissions ADD level NVARCHAR(20) NULL`
+  );
+  await step(
+    'CHECK on tutor_assessment_submissions.level',
+    `SELECT CASE WHEN COL_LENGTH('dbo.tutor_assessment_submissions','level') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_tas_level' AND parent_object_id = OBJECT_ID('dbo.tutor_assessment_submissions'))
+       THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_assessment_submissions ADD CONSTRAINT CK_tas_level
+       CHECK (level IS NULL OR level IN ('Beginner','Intermediate','Advance'))`
+  );
+  await step(
+    'tutor_assessment_submissions.started_at',
+    `SELECT CASE WHEN COL_LENGTH('dbo.tutor_assessment_submissions','started_at') IS NULL THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_assessment_submissions ADD started_at DATETIME2 NULL`
+  );
+  await step(
+    'tutor_assessment_submissions.time_spent_seconds',
+    `SELECT CASE WHEN COL_LENGTH('dbo.tutor_assessment_submissions','time_spent_seconds') IS NULL THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_assessment_submissions ADD time_spent_seconds INT NULL`
+  );
+  // Only one submission per student per assessment, enforced by the DB rather
+  // than by a read-then-insert check that two concurrent submits could both pass.
+  await step(
+    'unique submission per student+assessment',
+    `SELECT CASE WHEN NOT EXISTS (
+       SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.tutor_assessment_submissions') AND name = 'uq_tas_student_assessment'
+     ) THEN 1 ELSE 0 END AS needed`,
+    `CREATE UNIQUE INDEX uq_tas_student_assessment
+       ON dbo.tutor_assessment_submissions(assessment_id, student_id)`
+  );
+  // AI essay grading returns a score AND short feedback. Without somewhere to put
+  // the feedback it would be computed and thrown away.
+  await step(
+    'tutor_student_answers.ai_feedback',
+    `SELECT CASE WHEN COL_LENGTH('dbo.tutor_student_answers','ai_feedback') IS NULL THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_student_answers ADD ai_feedback NVARCHAR(MAX) NULL`
+  );
+  // points_earned was INT, but AI essay grading produces fractional credit.
+  // SQL Server refuses ALTER COLUMN while a DEFAULT constraint references the
+  // column, so the default has to come off first. Its name is auto-generated
+  // (DF__tutor_stu__point__57F2E5D4) and therefore differs per database, so it is
+  // resolved from sys.default_constraints at runtime.
+  await dropColumnDefault('tutor_student_answers', 'points_earned', 'df_tsa_points_earned');
+  await step(
+    'tutor_student_answers.points_earned -> DECIMAL',
+    `SELECT CASE WHEN EXISTS (
+       SELECT 1 FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id
+       WHERE c.object_id = OBJECT_ID('dbo.tutor_student_answers') AND c.name = 'points_earned' AND t.name = 'int'
+     ) THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_student_answers ALTER COLUMN points_earned DECIMAL(6,2) NOT NULL`
+  );
+  await step(
+    'restore default 0 on points_earned',
+    `SELECT CASE WHEN NOT EXISTS (
+       SELECT 1 FROM sys.default_constraints dc
+       JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+       WHERE dc.parent_object_id = OBJECT_ID('dbo.tutor_student_answers') AND c.name = 'points_earned'
+     ) THEN 1 ELSE 0 END AS needed`,
+    `ALTER TABLE dbo.tutor_student_answers
+       ADD CONSTRAINT df_tsa_points_earned DEFAULT 0 FOR points_earned`
   );
 
   // ------------------------------------------------ classification alignment

@@ -86,25 +86,70 @@ app.use(setUserLocals);
 // public: serving them from a bare express.static let anyone with a URL read a
 // handout, which defeated the pre-assessment lock entirely.
 //
-// Phase 0 closes the "anyone on the internet" hole (login now required).
-// TODO(Phase 6): also enforce the per-student pre-assessment lock + year-level
-// check here, so a logged-in student cannot fetch a handout they have not
-// unlocked. Until then this only proves the requester is authenticated.
+// Login is required for all of them. On top of that, handouts/ enforces the
+// per-student Pre-Assessment lock and year-level targeting, so a student cannot
+// reach a handout by typing its URL (spec Section 6: server-side, not UI hiding).
 //
 // profiles/ and messages/ are served publicly by the earlier mount: avatars are
 // embedded across the app and chat attachments come from the messaging UI.
 // --------------------------------------------------------------------------
 const PROTECTED_UPLOAD_DIRS = ['modules', 'resources', 'ai-modules', 'handouts'];
 
+function requireLogin(req, res, next) {
+  if (!req.session?.user) {
+    return res.status(401).type('text/plain').send('Unauthorized. Please log in to open study material.');
+  }
+  return next();
+}
+
+/**
+ * Students may only open a handout when they are enrolled in its subject, have
+ * completed that subject's Pre-Assessment, and the module targets their year
+ * level. Staff (admin, assistant, tutor) are not gated.
+ */
+async function guardHandoutAccess(req, res, next) {
+  const user = req.session.user;
+  if (user.role !== 'student') return next();
+
+  try {
+    const {
+      getModuleHandoutByPath, getStudentAssignments,
+      hasCompletedPreAssessment, moduleTargetsStudent
+    } = require('./lib/data');
+
+    const handout = await getModuleHandoutByPath(`/uploads/handouts${req.path}`);
+    if (!handout) {
+      // Not a handout we know about — nothing to authorise against.
+      return res.status(404).type('text/plain').send('Handout not found.');
+    }
+
+    const assignments = await getStudentAssignments(user.id);
+    if (!assignments.some((a) => Number(a.subject_id) === Number(handout.subject_id))) {
+      return res.status(403).type('text/plain').send('You are not enrolled in this subject.');
+    }
+
+    const preDone = await hasCompletedPreAssessment(user.id, handout.subject_id);
+    if (!preDone) {
+      return res.status(403).type('text/plain')
+        .send('Complete the Pre-Assessment for this subject before opening its handouts.');
+    }
+
+    if (!moduleTargetsStudent(handout, user)) {
+      return res.status(403).type('text/plain').send('This module is not assigned to your year level.');
+    }
+
+    return next();
+  } catch (error) {
+    console.error('[guardHandoutAccess]', error.message);
+    return res.status(500).type('text/plain').send('Could not verify access to this handout.');
+  }
+}
+
 for (const folder of PROTECTED_UPLOAD_DIRS) {
+  const guards = folder === 'handouts' ? [requireLogin, guardHandoutAccess] : [requireLogin];
   app.use(
     `/uploads/${folder}`,
-    (req, res, next) => {
-      if (!req.session?.user) {
-        return res.status(401).type('text/plain').send('Unauthorized. Please log in to open study material.');
-      }
-      return next();
-    },
+    ...guards,
     express.static(path.join(__dirname, 'public', 'uploads', folder))
   );
 }
