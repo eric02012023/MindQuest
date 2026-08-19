@@ -335,55 +335,6 @@ Make questions perfectly appropriate for the student's education level.`;
   return { questions, tokensUsed: 0, provider: 'mock', model: 'built-in' };
 }
 
-/**
- * Generate an AI review module based on assessment results.
- *
- * @param {Object} options
- * @param {string} options.originalModuleContent - Content of the original module
- * @param {string} options.originalModuleTitle - Title of the original module
- * @param {string} options.resultLevel - Student's result level (Beginner/Intermediate/Advance)
- * @param {string} options.subject - Subject name
- * @param {string} options.levelGroup - Education level group
- * @param {number} options.round - Learning cycle round number
- * @returns {Promise<{title: string, content: string, tokensUsed: number, provider: string, model: string}>}
- */
-async function generateModuleFromAssessmentResult(options = {}) {
-  const { originalModuleContent, originalModuleTitle, resultLevel, subject, levelGroup, round } = options;
-
-  if (isOpenAIConfigured()) {
-    try {
-      const systemPrompt = `You are an expert educational content creator. Generate a focused review module for a ${levelGroup || 'general'} level student studying ${subject || 'general subject'} who scored at the "${resultLevel || 'Beginner'}" level on their last assessment.
-
-Return a JSON object with:
-- "title": A descriptive module title
-- "content": The full module text in markdown format (at least 500 words). Include sections with headers, key concepts, examples, and study tips. Focus on helping the student improve from their current level.`;
-
-      const userPrompt = `The student completed round ${round || 1} of their learning cycle.
-Original module title: ${originalModuleTitle || 'N/A'}
-Student level: ${resultLevel || 'Beginner'}
-Subject: ${subject || 'General'}
-
-${originalModuleContent ? 'Original module excerpt:\n' + String(originalModuleContent).substring(0, 2000) : 'Generate fresh review content for this subject.'}`;
-
-      const { result, tokensUsed } = await callOpenAI(systemPrompt, userPrompt);
-
-      return {
-        title: result.title || `AI Review: ${subject} — ${resultLevel} (Round ${round})`,
-        content: result.content || 'No content generated.',
-        tokensUsed,
-        provider: 'openai',
-        model: AI_MODEL
-      };
-    } catch (error) {
-      console.error('[aiService] OpenAI module generation failed, falling back to mock:', error.message);
-    }
-  }
-
-  // Mock fallback
-  const mock = generateMockModuleContent(subject, resultLevel, originalModuleTitle, round);
-  return { ...mock, tokensUsed: 0, provider: 'mock', model: 'built-in' };
-}
-
 // ============================================================================
 // Pre/Post assessment generation from handouts (overhaul Phase 5)
 // ============================================================================
@@ -850,7 +801,6 @@ function getAiStatus() {
 
 module.exports = {
   generateAssessmentFromModule,
-  generateModuleFromAssessmentResult,
   gradeEssayAnswer,
   gradeEssayAnswers,
   transcribeImage,

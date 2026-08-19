@@ -44,9 +44,7 @@ const {
   // Phase 7: AI system imports
   getStudentAnalytics,
   getStudentAssignments,
-  // Phase 3: Assessment requests and analytics
-  getAssessmentRequestsForTutor,
-  respondToAssessmentRequest,
+  // Phase 3: analytics
   getTutorStudentsForAnalytics,
   getAttendanceBySubject,
   // Phase 5: Modules & Assessments
@@ -95,21 +93,11 @@ router.use(authorize(['tutor']));
 // Role: Handles a reusable server-side operation used by this module.
 
 async function buildShell(req, extra = {}) {
-  const [inboxNotifications, assessmentRequests] = await Promise.all([
-    getTutorScheduleNotifications(req.session.user.id),
-    getAssessmentRequestsForTutor(req.session.user.id)
-  ]);
-  const pendingAssessmentRequests = assessmentRequests.filter((r) => r.status === 'pending');
-  // Merge assessment requests into notifications for the bell
-  const allNotifications = [
-    ...inboxNotifications,
-    ...pendingAssessmentRequests.map((r) => ({
-      ...r,
-      notification_type: 'assessment_request',
-      full_name: `${r.student_first_name} ${r.student_last_name}`,
-      created_at: r.requested_at
-    }))
-  ];
+  // Phase 9: the bell used to merge pending assessment_requests in beside the
+  // schedule notifications. With the request/approve loop retired there is
+  // nothing to act on, and a badge counting rows no page can respond to is worse
+  // than no badge.
+  const allNotifications = await getTutorScheduleNotifications(req.session.user.id);
   return {
     pageTitle: extra.pageTitle || 'Tutor Dashboard',
     roleName: 'Tutor',
@@ -465,142 +453,14 @@ router.post('/subjects/:subjectId/create-post-assessment', async (req, res, next
   }
 });
 
-// Phase 8: Consolidated assessment from ALL admin modules
-router.post('/subjects/:subjectId/post-consolidated-assessment', async (req, res, next) => {
-  const subjectId = parseInt(req.params.subjectId, 10);
-  const tutorUserId = parseInt(req.session.user.id, 10);
-  try {
-    const { query: dbQuery } = require('../config/db');
-    const { generateAssessmentFromModule } = require('../services/aiService');
-    const { getSubjectById, logAiGeneration, getActiveLearningCycle, getAdminSubjectResources, advanceLearningCycle } = require('../lib/data');
-
-    if (isNaN(subjectId) || isNaN(tutorUserId)) {
-      setFlash(req, 'error', 'Invalid request parameters.');
-      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
-    }
-
-    const itemCount = Number(req.body.item_count) || 10;
-    if (itemCount < 5 || itemCount > 50) {
-      setFlash(req, 'error', 'Please enter a valid number of items (5–50).');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    const subject = await getSubjectById(subjectId);
-    if (!subject) {
-      setFlash(req, 'error', 'Subject not found.');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    const tutorStudents = await getTutorStudentsBySubject(tutorUserId, subjectId);
-    if (!tutorStudents.length) {
-      setFlash(req, 'error', 'No students assigned to you in this subject.');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    // Prepare fallback content from Admin Modules
-    const adminModules = await getAdminSubjectResources(subjectId);
-    const fallbackCombinedContent = adminModules.map((mod) => {
-      const content = mod.content_text || mod.description || '';
-      return `## Module: ${mod.title}\n${content}`;
-    }).join('\n\n---\n\n');
-    const fallbackLevelGroup = adminModules.length ? (adminModules[0].type_of_module || 'General') : 'General';
-    const fallbackModuleTitles = adminModules.map((m) => m.title).join(', ');
-
-    let generatedCount = 0;
-    let skippedCount = 0;
-
-    for (const student of tutorStudents) {
-      const studentId = parseInt(student.student_id, 10);
-
-      // Check if student has a pending AI assessment
-      const pendingRows = await dbQuery(
-        `SELECT a.id FROM assessments a
-         LEFT JOIN assessment_results ar ON ar.assessment_id = a.id AND ar.student_id = a.assigned_student_id
-         WHERE a.assigned_student_id = ? AND a.subject_id = ? AND a.is_published = 1
-           AND a.assessment_origin = 'ai_generated' AND ar.id IS NULL`,
-        [studentId, subjectId]
-      );
-      
-      if (pendingRows.length > 0) {
-        skippedCount++;
-        continue; // Skip this student
-      }
-
-      // Determine content to base the assessment on
-      let moduleContent = fallbackCombinedContent;
-      let levelGroup = fallbackLevelGroup;
-      let sourceModuleTitle = fallbackModuleTitles;
-      let cycleId = null;
-
-      const activeCycle = await getActiveLearningCycle(studentId, subjectId);
-      if (activeCycle && activeCycle.resource_content) {
-        moduleContent = activeCycle.resource_content;
-        levelGroup = activeCycle.result_level || 'General';
-        sourceModuleTitle = activeCycle.resource_title || 'AI Generated Module';
-        cycleId = activeCycle.id;
-      }
-
-      if (!moduleContent || moduleContent.trim() === '') {
-        skippedCount++;
-        continue;
-      }
-
-      // Generate personalized assessment
-      const aiResult = await generateAssessmentFromModule({
-        moduleContent,
-        subject: subject.name,
-        levelGroup,
-        questionCount: itemCount
-      });
-
-      const title = `AI Assessment: ${subject.name} - ${levelGroup}`;
-
-      const insertResult = await dbQuery(
-        `INSERT INTO assessments (title, assessment_type, assigned_student_id, created_by, is_published, subject_id, assessment_origin, source_module_title, cycle_id)
-         VALUES (?, 'post', ?, ?, 1, ?, 'ai_generated', ?, ?)`,
-        [title, studentId, tutorUserId, subjectId, sourceModuleTitle, cycleId]
-      );
-      const assessmentId = insertResult.insertId;
-
-      for (const q of aiResult.questions) {
-        await dbQuery(
-          `INSERT INTO assessment_questions (assessment_id, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, question_type, points)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [assessmentId, q.question_text, q.choice_a || '', q.choice_b || '', q.choice_c || '', q.choice_d || '', q.correct_answer, q.question_type || 'Multiple Choice', q.points || 1]
-        );
-      }
-
-      // Advance learning cycle to pending assessment
-      if (cycleId) {
-        await advanceLearningCycle(cycleId, {
-          status: 'assessment_pending',
-          assessment_id: assessmentId
-        });
-      }
-
-      try {
-        await logAiGeneration({ student_id: studentId, subject_id: subjectId, generation_type: 'tutor_consolidated_assessment', provider: aiResult.provider, model: aiResult.model, tokens_used: aiResult.tokensUsed });
-      } catch(e) { /* non-critical */ }
-
-      generatedCount++;
-    }
-
-    if (generatedCount > 0) {
-      setFlash(req, 'success', `AI Assessment generated for ${generatedCount} student(s). ${skippedCount > 0 ? `Skipped ${skippedCount} student(s) who already have pending assessments.` : ''}`);
-    } else {
-      if (skippedCount > 0) {
-        setFlash(req, 'info', `No new assessments generated. All ${skippedCount} student(s) already have pending assessments to answer.`);
-      } else {
-        setFlash(req, 'error', 'Failed to generate assessments. Please check if modules are available.');
-      }
-    }
-    
-    res.redirect(`/tutor/subjects/${subjectId}`);
-  } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not publish assessment.');
-    res.redirect(`/tutor/subjects/${subjectId}`);
-  }
-});
+// Phase 9: POST /subjects/:id/post-consolidated-assessment was removed.
+//
+// It generated one AI assessment over every legacy admin resource in a subject and
+// pushed it to all students, advancing a student_learning_cycles row. It competed
+// directly with the real Post-Assessment from Phase 8, which reuses the
+// Pre-Assessment items so the before-and-after actually compares. Two buttons
+// called "Post Assessment" doing different things is how the wrong one gets
+// clicked during a demo.
 
 
 
@@ -1016,8 +876,6 @@ router.get('/analytics', async (req, res, next) => {
   try {
     const search = String(req.query.search || '').trim();
     const data = await getTutorStudentsForAnalytics(req.session.user.id, search);
-    const assessmentRequests = await getAssessmentRequestsForTutor(req.session.user.id);
-    const pendingRequests = assessmentRequests.filter((r) => r.status === 'pending');
 
     const shell = await buildShell(req, {
       pageTitle: 'Analytics & Reports',
@@ -1025,7 +883,8 @@ router.get('/analytics', async (req, res, next) => {
       contentView: '../content/tutor-analytics',
       students: data.students,
       summary: data.summary,
-      pendingRequests,
+      // Phase 9: pendingRequests is gone with the request/approve loop.
+      pendingRequests: [],
       search
     });
     res.render('shells/dashboard', shell);
@@ -1034,214 +893,13 @@ router.get('/analytics', async (req, res, next) => {
   }
 });
 
-// Accept assessment request — generates AI assessment based on admin module
-router.post('/assessment-requests/:id/accept', async (req, res, next) => {
-  try {
-    const itemCount = Number(req.body.item_count);
-    if (!itemCount || itemCount < 5 || itemCount > 50) {
-      setFlash(req, 'error', 'Please enter a valid number of assessment items (5–50).');
-      return res.redirect('/tutor/analytics');
-    }
-
-    const request = await respondToAssessmentRequest(req.params.id, req.session.user.id, 'accept', req.body.message || '', itemCount);
-
-    // Now generate the AI assessment for the student
-    try {
-      const { query: dbQuery } = require('../config/db');
-      const { generateAssessmentFromModule } = require('../services/aiService');
-      const {
-        getSubjectById, getUserById, addSubjectResource, logAiGeneration,
-        getActiveLearningCycle, createLearningCycle, advanceLearningCycle,
-        getAdminSubjectResources
-      } = require('../lib/data');
-
-      const subject = await getSubjectById(request.subject_id);
-      const student = await getUserById(request.student_id);
-      if (!subject || !student) throw new Error('Subject or student not found.');
-
-      // Fetch the module content — trace through source_resource_id chain
-      let moduleContent = '';
-      let moduleTitle = '';
-      let sourceResourceId = request.resource_id;
-
-      if (sourceResourceId) {
-        const moduleRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [sourceResourceId]);
-        if (moduleRows.length) {
-          moduleContent = moduleRows[0].content_text || '';
-          moduleTitle = moduleRows[0].title || '';
-          // If no content_text, trace through source_resource_id (for tutor_share modules)
-          if (!moduleContent && moduleRows[0].source_resource_id) {
-            const sourceRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [moduleRows[0].source_resource_id]);
-            if (sourceRows.length) {
-              moduleContent = sourceRows[0].content_text || sourceRows[0].description || '';
-              moduleTitle = sourceRows[0].title || moduleTitle;
-            }
-          }
-          // Use description as fallback
-          if (!moduleContent) {
-            moduleContent = moduleRows[0].description || '';
-          }
-        }
-      }
-
-      // Fallback: get any admin module with content for this subject
-      if (!moduleContent) {
-        const adminModules = await getAdminSubjectResources(request.subject_id);
-        for (const am of adminModules) {
-          const content = am.content_text || am.description || '';
-          if (content && content.length >= 10) {
-            moduleContent = content;
-            moduleTitle = am.title || moduleTitle;
-            sourceResourceId = am.id;
-            break;
-          }
-        }
-      }
-
-      // Last resort: use title + description as context
-      if (!moduleContent || moduleContent.length < 10) {
-        if (sourceResourceId) {
-          const lastRows = await dbQuery('SELECT TOP 1 title, description FROM subject_resources WHERE id = ?', [sourceResourceId]);
-          if (lastRows.length) {
-            moduleContent = `${lastRows[0].title || ''}\n${lastRows[0].description || ''}`.trim();
-          }
-        }
-      }
-
-      if (!moduleContent || moduleContent.length < 5) {
-        setFlash(req, 'error', 'No module content found for this subject. Please ask admin to add content to the module. The request was accepted but no assessment was generated.');
-        return res.redirect('/tutor/analytics');
-      }
-
-      const levelGroup = student.education_level_group || student.year_level || '';
-
-      // Generate assessment via AI using admin module content and tutor-specified item count
-      const aiResult = await generateAssessmentFromModule({
-        moduleContent,
-        subject: subject.name,
-        levelGroup,
-        questionCount: itemCount
-      });
-
-      // Log AI generation
-      await logAiGeneration({
-        generation_type: 'assessment_from_module',
-        student_id: request.student_id,
-        subject_id: request.subject_id,
-        resource_id: sourceResourceId || null,
-        input_summary: `Module: ${moduleTitle} | Items: ${itemCount} (tutor-specified)`,
-        output_summary: `Generated ${aiResult.questions.length} questions`,
-        ai_provider: aiResult.provider,
-        ai_model: aiResult.model,
-        tokens_used: aiResult.tokensUsed,
-        success: true
-      });
-
-      // Get or create learning cycle
-      let activeCycle = await getActiveLearningCycle(request.student_id, request.subject_id);
-      if (!activeCycle && sourceResourceId) {
-        const cycleId = await createLearningCycle(request.student_id, request.subject_id, Number(sourceResourceId), 1);
-        activeCycle = { id: cycleId, round_number: 1 };
-      }
-
-      const round = activeCycle ? activeCycle.round_number : 1;
-
-      // Create assessment in database
-      const assessmentTitle = `AI Assessment: ${subject.name} — Round ${round}`;
-      const assessmentResult = await dbQuery(
-        `INSERT INTO assessments (title, subject_id, assigned_student_id, assessment_type, source_resource_id, assessment_origin, cycle_id, max_violations, time_limit_minutes, is_published)
-         VALUES (?, ?, ?, 'post', ?, 'ai_generated', ?, 3, NULL, 1)`,
-        [assessmentTitle, request.subject_id, request.student_id, sourceResourceId, activeCycle ? activeCycle.id : null]
-      );
-      const assessmentId = assessmentResult.insertId;
-
-      // Insert questions
-      for (const q of aiResult.questions) {
-        await dbQuery(
-          `INSERT INTO assessment_questions (assessment_id, question_text, question_type, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, answer_rubric)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [assessmentId, q.question_text, q.question_type, q.choice_a || '', q.choice_b || '', q.choice_c || '', q.choice_d || '', q.correct_answer, q.explanation || '', q.answer_rubric || '']
-        );
-      }
-
-      // Update learning cycle
-      if (activeCycle) {
-        await advanceLearningCycle(activeCycle.id, {
-          status: 'assessment_pending',
-          assessment_id: assessmentId
-        });
-      }
-
-      // Emit real-time notification to the student
-      const io = req.app.get('io');
-      const onlineUsers = req.app.get('onlineUsers');
-      if (io && request.student_id) {
-        const targetSocketId = onlineUsers.get(String(request.student_id));
-        if (targetSocketId) {
-          io.to(targetSocketId).emit('assessment-request-update', {
-            status: 'accepted',
-            subjectId: request.subject_id,
-            resourceId: request.resource_id,
-            tutorName: `${req.session.user.first_name} ${req.session.user.last_name}`,
-            message: req.body.message || `Your assessment request has been approved! A ${aiResult.questions.length}-item assessment has been generated. You can now take it.`
-          });
-        }
-      }
-
-      setFlash(req, 'success', `Assessment request accepted! AI generated ${aiResult.questions.length} questions based on the admin module "${moduleTitle}".`);
-    } catch (aiError) {
-      console.error('[Tutor Accept] AI assessment generation failed:', aiError.message);
-      // Still notify the student that the request was accepted
-      const io = req.app.get('io');
-      const onlineUsers = req.app.get('onlineUsers');
-      if (io && request.student_id) {
-        const targetSocketId = onlineUsers.get(String(request.student_id));
-        if (targetSocketId) {
-          io.to(targetSocketId).emit('assessment-request-update', {
-            status: 'accepted',
-            subjectId: request.subject_id,
-            resourceId: request.resource_id,
-            tutorName: `${req.session.user.first_name} ${req.session.user.last_name}`,
-            message: 'Your assessment request has been approved. You can now take the assessment!'
-          });
-        }
-      }
-      setFlash(req, 'error', `Assessment request accepted but AI generation failed: ${aiError.message}. The student can still generate the assessment manually.`);
-    }
-    res.redirect('/tutor/analytics');
-  } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not accept request.');
-    res.redirect('/tutor/analytics');
-  }
-});
-
-// Decline assessment request
-router.post('/assessment-requests/:id/decline', async (req, res, next) => {
-  try {
-    const request = await respondToAssessmentRequest(req.params.id, req.session.user.id, 'decline', req.body.message || '');
-    // Emit real-time notification to the student
-    const io = req.app.get('io');
-    const onlineUsers = req.app.get('onlineUsers');
-    if (io && request.student_id) {
-      const targetSocketId = onlineUsers.get(String(request.student_id));
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('assessment-request-update', {
-          status: 'declined',
-          subjectId: request.subject_id,
-          resourceId: request.resource_id,
-          tutorName: `${req.session.user.first_name} ${req.session.user.last_name}`,
-          message: req.body.message || 'Your assessment request has been declined by your tutor.'
-        });
-      }
-    }
-    setFlash(req, 'success', 'Assessment request declined.');
-    res.redirect('/tutor/analytics');
-  } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not decline request.');
-    res.redirect('/tutor/analytics');
-  }
-});
-
+// Phase 9: POST /assessment-requests/:id/accept and .../decline were removed.
+//
+// They were the tutor half of the Gen 1 loop — a student asked permission for an
+// assessment, the tutor approved with an item count, and AI built a one-off exam
+// against a legacy resource. The overhauled flow needs no approval step: the
+// Pre-Assessment is generated from the subject handouts and served automatically,
+// and the tutor writes their own module assessments up front.
 // ==========================================================================
 // Phase 5: Modules & Assessment Creation
 // ==========================================================================

@@ -167,253 +167,37 @@
       <% } %>
     </section>
   <% } %>
-
-  <% if (typeof activeCycle !== 'undefined' && activeCycle) { %>
+  <%# Phase 9: three panels were removed from here — the Gen 1 "Current Learning
+      Cycle", the Gen 3 "Module Level System" gate, and the Gen 2 "Subject
+      Assessments" pre/post block. All three answered the same question as the
+      panels above ("what does this student do next in this subject?") from three
+      different tables, and the page had to guess which one won. %>
+  <%# ------------------------------------------------------------------------
+      Legacy modules (Phase 9). These were uploaded under the previous module
+      system and are kept read-only so existing student records still resolve.
+      The lock branches that used to live here are gone: access is decided by the
+      Pre-Assessment gate above and enforced server-side, not by this template.
+      ------------------------------------------------------------------------ %>
+  <% if ((modules || []).length) { %>
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Current Learning Cycle — Round <%= activeCycle.round_number %></h3></div>
-    <div class="billing-summary-grid">
-      <article class="stat-card"><h3>Status</h3><strong><%= activeCycle.status.replace(/_/g, ' ') %></strong></article>
-      <article class="stat-card"><h3>Module</h3><strong><%= activeCycle.resource_title || '-' %></strong></article>
-      <% if (activeCycle.result_level) { %>
-        <article class="stat-card gradient"><h3>Last Level</h3><strong><%= activeCycle.result_level %></strong></article>
-      <% } %>
-    </div>
-  </section>
-  <% } %>
-
-  <%# Phase 6: Module Level System Gate %>
-  <% if (typeof studentLevel !== 'undefined') { %>
-  <section class="panel-card" style="border: 1px solid rgba(99,102,241,0.2); background: linear-gradient(135deg, rgba(99,102,241,0.04), rgba(139,92,246,0.03));">
-    <div class="panel-card-head">
-      <h3>📚 Module Level System</h3>
-    </div>
-
-    <% if (!studentLevel) { %>
-      <%# No level assigned — Pre-Assessment gate %>
-      <% if (typeof hasTutorPreAssessment !== 'undefined' && hasTutorPreAssessment) { %>
-        <div style="text-align: center; padding: 24px;">
-          <div style="font-size: 48px; margin-bottom: 12px;">📝</div>
-          <h3 style="margin: 0 0 8px; color: var(--text);">Pre-Assessment Required</h3>
-          <p style="color: var(--text-soft); font-size: 14px; max-width: 500px; margin: 0 auto 20px;">
-            Before you can access the learning modules, you need to take a pre-assessment.
-            Your score will determine your learning level for this subject.
-          </p>
-          <div style="display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-bottom: 16px;">
-            <div style="padding: 8px 16px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 13px; font-weight: 600;">0-59% → Beginner</div>
-            <div style="padding: 8px 16px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 600;">60-79% → Intermediate</div>
-            <div style="padding: 8px 16px; border-radius: 999px; background: #fecaca; color: #991b1b; font-size: 13px; font-weight: 600;">80-100% → Advanced</div>
-          </div>
-          <br />
-          <a href="/student/subjects/<%= assignment.subject_id %>/pre-assessment" class="btn btn-primary" style="padding: 14px 32px; font-size: 16px; font-weight: 700;">
-            🚀 Take Pre-Assessment
-          </a>
-        </div>
-      <% } else { %>
-        <div style="text-align: center; padding: 24px;">
-          <div style="font-size: 48px; margin-bottom: 12px;">⏳</div>
-          <h3 style="margin: 0 0 8px;">Waiting for Pre-Assessment</h3>
-          <p style="color: var(--text-soft); font-size: 14px;">Your tutor hasn't created a pre-assessment for this subject yet. Please check back later.</p>
-        </div>
-      <% } %>
-
-    <% } else { %>
-      <%# Level IS assigned — show level badge + module link %>
-      <div style="display: flex; align-items: center; gap: 20px; padding: 16px; flex-wrap: wrap;">
-        <div style="text-align: center; flex-shrink: 0;">
-          <div style="width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            background: conic-gradient(#6366f1 <%= Number(studentLevel.percentage || 0) %>%, #e5e7eb <%= Number(studentLevel.percentage || 0) %>%);">
-            <div style="width: 62px; height: 62px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center;">
-              <span style="font-size: 16px; font-weight: 800; color: #6366f1;"><%= Number(studentLevel.percentage || 0).toFixed(0) %>%</span>
-            </div>
-          </div>
-        </div>
-        <div style="flex: 1;">
-          <p style="margin: 0 0 4px; font-size: 13px; color: var(--text-soft);">Your Assigned Level</p>
-          <h3 style="margin: 0 0 8px;">
-            <span style="padding: 6px 16px; border-radius: 999px; color: #fff; font-size: 14px; font-weight: 700;
-              background: <%= studentLevel.level === 'Advanced' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : studentLevel.level === 'Intermediate' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'linear-gradient(135deg, #22c55e, #16a34a)' %>;">
-              <%= studentLevel.level %>
-            </span>
-          </h3>
-          <p style="margin: 0; font-size: 13px; color: var(--text-soft);">
-            Pre-Assessment Score: <strong><%= studentLevel.score || 0 %>/<%= studentLevel.total_points || 0 %></strong>
-          </p>
-        </div>
-        <div>
-          <% if (typeof assignedModule !== 'undefined' && assignedModule) { %>
-            <a href="/student/modules/<%= assignedModule.id %>" class="btn btn-primary" style="padding: 12px 28px; font-weight: 700;">
-              📖 Open My Module →
-            </a>
-          <% } else { %>
-            <span style="padding: 8px 16px; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: 13px;">
-              ⏳ Module not uploaded yet
-            </span>
-          <% } %>
-        </div>
-      </div>
-    <% } %>
-  </section>
-  <% } %>
-
-  <%# Phase 4: Pre/Post Assessment Section %>
-  <% if (typeof preAssessmentRequired !== 'undefined' && preAssessmentRequired) { %>
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Subject Assessments</h3></div>
+    <div class="panel-card-head"><h3>Legacy Modules</h3></div>
+    <p class="table-note">Older material from before this subject moved to numbered modules.</p>
     <div class="list-stack">
-      <% if (preAssessment) { %>
-        <article class="list-card">
-          <div>
-            <strong><%= preAssessment.title %></strong>
-            <span class="badge badge-info" style="margin-left:8px;">Pre-Assessment</span>
-            <% if (preAssessment.source_module_title) { %><p><small>Module: <%= preAssessment.source_module_title %></small></p><% } %>
-            <p><small><%= preAssessment.question_count || 0 %> items</small></p>
-          </div>
-          <div class="row-actions">
-            <% if (preAssessment.taken_at) { %>
-              <div style="text-align:center;">
-                <span class="badge badge-success">✅ Completed</span><br>
-                <small><strong>Score:</strong> <%= preAssessment.score %>/<%= preAssessment.total_questions %> (<%= preAssessment.percentage %>%)</small><br>
-                <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= preAssessment.id %>" style="margin-top:6px;">View Result</a>
-              </div>
-            <% } else if (preAssessment.is_published) { %>
-              <a class="btn btn-primary btn-sm" href="/student/assessments/<%= preAssessment.id %>">Take Pre-Assessment</a>
-            <% } else { %>
-              <span class="badge badge-warning">Assessment not posted yet</span>
-            <% } %>
-          </div>
-        </article>
-      <% } %>
-      <% if (typeof postAssessment !== 'undefined' && postAssessment) { %>
-        <article class="list-card">
-          <div>
-            <strong><%= postAssessment.title %></strong>
-            <span class="badge badge-success" style="margin-left:8px;">Post-Assessment</span>
-            <% if (postAssessment.source_module_title) { %><p><small>Module: <%= postAssessment.source_module_title %></small></p><% } %>
-            <p><small><%= postAssessment.question_count || 0 %> items</small></p>
-          </div>
-          <div class="row-actions">
-            <% if (postAssessment.taken_at) { %>
-              <div style="text-align:center;">
-                <span class="badge badge-success">✅ Completed</span><br>
-                <small><strong>Score:</strong> <%= postAssessment.score %>/<%= postAssessment.total_questions %> (<%= postAssessment.percentage %>%)</small><br>
-                <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= postAssessment.id %>" style="margin-top:6px;">View Result</a>
-              </div>
-            <% } else if (postAssessment.is_published) { %>
-              <a class="btn btn-primary btn-sm" href="/student/assessments/<%= postAssessment.id %>">Take Post-Assessment</a>
-            <% } else { %>
-              <span class="badge badge-warning">Assessment not posted yet</span>
-            <% } %>
-          </div>
-        </article>
-      <% } %>
-    </div>
-  </section>
-  <% } %>
-
-  <%# Module Assessment Section (after pre-assessment is taken) %>
-  <% if (typeof preAssessmentTaken !== 'undefined' && preAssessmentTaken) { %>
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Module Assessments</h3></div>
-    <div class="list-stack">
-      <%
-        // Find all completed AI assessments
-        const completedAiAssessments = (typeof completedAssessments !== 'undefined' ? completedAssessments : []).filter((a) => a.title && a.title.includes('AI Assessment'));
-        const pendingAssessments = (typeof pendingAiAssessments !== 'undefined' ? pendingAiAssessments : []);
-      %>
-      
-      <% completedAiAssessments.forEach(assessment => { %>
-        <article class="list-card">
-          <div>
-            <strong><%= assessment.title %></strong>
-            <span class="badge badge-success" style="margin-left:8px;">✅ Completed</span>
-            <p><small><strong>Score:</strong> <%= assessment.score %>/<%= assessment.total_questions %> (<%= assessment.percentage %>%)</small></p>
-            <p><small><strong>Level:</strong> <%= assessment.level %></small></p>
-          </div>
-          <div class="row-actions">
-            <a class="btn btn-secondary btn-sm" href="/student/assessments/<%= assessment.id %>">View Result</a>
-          </div>
-        </article>
-      <% }); %>
-
-      <% pendingAssessments.forEach(assessment => { %>
-        <article class="list-card">
-          <div>
-            <strong><%= assessment.title %></strong>
-            <span class="badge badge-info" style="margin-left:8px;">Ready</span>
-            <p><small><%= assessment.question_count || 0 %> items</small></p>
-          </div>
-          <div class="row-actions">
-            <a class="btn btn-primary btn-sm" href="/student/assessments/<%= assessment.id %>">Take Assessment</a>
-          </div>
-        </article>
-      <% }); %>
-
-      <% if (completedAiAssessments.length === 0 && pendingAssessments.length === 0) { %>
-        <article class="list-card">
-          <div>
-            <strong>Module Assessment</strong>
-            <p><small>Your tutor will generate an assessment based on all the modules in this subject.</small></p>
-          </div>
-          <div class="row-actions">
-            <span class="badge badge-warning" style="font-size:12px;">No assessment yet</span>
-          </div>
-        </article>
-      <% } %>
-    </div>
-  </section>
-  <% } %>
-
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Modules</h3></div>
-    <div class="list-stack">
-      <% if (!(modules || []).length) { %>
-        <p class="empty-state">No posted module yet.</p>
-      <% } %>
-      <% (modules || []).forEach((resource) => { %>
-        <%
-          // AI-generated modules are always unlocked
-          const isAiModule = resource.module_origin === 'ai_generated';
-          const isLocked = !isAiModule && (typeof adminModulesLocked !== 'undefined' && adminModulesLocked);
-        %>
+      <% modules.forEach((resource) => { %>
         <article class="list-card">
           <div>
             <strong><%= resource.title %></strong>
             <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
-            <% if (isAiModule) { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
-            <% if (resource.is_read) { %><span class="badge badge-success" style="margin-left:4px;">✓ Read</span><% } %>
-
-            <% if (isLocked) { %>
-              <%# Admin module is locked %>
-              <p style="margin-top:8px;"><%= resource.description || 'No description' %></p>
-              <div style="margin-top:12px;padding:16px;background:var(--bg-2,#f5f5f5);border-radius:10px;text-align:center;border:1px dashed #ccc;">
-                <% if (typeof adminModuleLockReason !== 'undefined' && adminModuleLockReason === 'waiting') { %>
-                  <span style="font-size:28px;">🔒</span>
-                  <p style="margin:8px 0 0;font-weight:600;color:#856404;">Waiting for Admin to post an assessment</p>
-                  <p style="margin:4px 0 0;font-size:13px;color:#888;">The module will be available after you complete the assessment.</p>
-                <% } else { %>
-                  <span style="font-size:28px;">🔒</span>
-                  <p style="margin:8px 0 0;font-weight:600;color:#856404;">Take the assessment first to unlock this module</p>
-                  <p style="margin:4px 0 0;font-size:13px;color:#888;">Complete your subject assessment above, then come back to access this module.</p>
-                <% } %>
-              </div>
-            <% } else { %>
-              <%# Module is unlocked (AI-generated or assessment taken) %>
-              <p><%= resource.description || 'No description' %></p>
-              <% if (resource.content_text) { %>
-                <details style="margin-top:8px;">
-                  <summary>View Module Content</summary>
-                  <div class="module-content-text" style="margin-top:8px;padding:12px;background:var(--bg-2);border-radius:8px;white-space:pre-wrap;"><%= resource.content_text %></div>
-                </details>
-              <% } %>
-              <% if (resource.file_path || resource.content_text) { %>
-                <a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a>
-              <% } %>
+            <p><%= resource.description || 'No description' %></p>
+            <% if (resource.file_path || resource.content_text) { %>
+              <a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a>
             <% } %>
           </div>
         </article>
       <% }) %>
     </div>
   </section>
+  <% } %>
 
   <% if (typeof resources !== 'undefined' && resources.length) { %>
   <section class="panel-card">

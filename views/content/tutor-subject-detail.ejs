@@ -238,20 +238,10 @@
         </article>
       <% }) %>
     </div>
-    <% if (adminResources.length && students.length) { %>
-      <div style="border-top:1px solid var(--border);padding:16px;margin-top:8px;">
-        <form method="post" action="/tutor/subjects/<%= subjectId %>/post-consolidated-assessment" class="stack-form" data-confirm-message="Generate and publish an AI assessment based on ALL admin modules for your students? They will be able to take it immediately.">
-          <h4 style="margin:0 0 8px;">Post Assessment to Students</h4>
-          <p style="margin:0 0 12px;color:var(--text-soft);font-size:13px;">This will generate a single AI assessment based on all the admin modules above.</p>
-          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <label style="display:flex;align-items:center;gap:8px;">Number of items
-              <input type="number" name="item_count" value="10" min="5" max="50" required style="width:80px;" />
-            </label>
-            <button type="submit" class="btn btn-primary btn-sm">Post Assessment to Students</button>
-          </div>
-        </form>
-      </div>
-    <% } %>
+    <%# Phase 9: the "Post Assessment to Students" form was removed from here. It
+        generated one AI assessment over every legacy resource and pushed it to the
+        whole class, competing with the real Post-Assessment above — which reuses
+        the Pre-Assessment items so the before-and-after actually compares. %>
   </section>
 
 </section>

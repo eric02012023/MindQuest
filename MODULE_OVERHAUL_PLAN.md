@@ -605,11 +605,35 @@ Phases 6 (35/35) and 7 (48/48) re-ran clean afterwards.
 
 **Exit criteria:** checklist item 12 — met.
 
-### Phase 9 — Consolidation + final sweep
-1. Retire the Gen 1 / Gen 2 code paths per **decision D2**.
-2. Simplify `routes/student.js:183-305` down to a single source of truth — remove `adminModulesLocked`, `preAssessmentTaken`, `tutorPreAssessments`, `pendingAiAssessments` duplication.
-3. Fix latent bug #8 in `config/db.js`.
-4. Re-run the full acceptance checklist (Section 7) against a fresh DB via `scripts/init-db.js`.
+### Phase 9 — Consolidation + final sweep — ✅ **DONE 2026-08-19**
+
+**Decision D2 answered: remove Gen 1.** Carried out as **code removal only — no table was dropped.** Deleted code comes back with `git revert`; a dropped table does not, and the records in `student_learning_cycles`, `assessment_requests` and `module_reads` are part of the project's history. `-1,310 / +84` lines.
+
+| # | Change | Status |
+|---|---|---|
+| 1 | **Student:** `POST .../modules/:resourceId/read`, `.../request-assessment` and `.../generate-assessment` deleted — the whole mark-read → ask permission → AI-generates loop | ✅ |
+| 2 | **Student:** the AI "review module" generator deleted from the submit handler. It wrote a standalone HTML page per submission that **pulled a markdown parser from a CDN** — the only part of the system that reached an outside host at view time | ✅ |
+| 3 | **Tutor:** `POST /assessment-requests/:id/accept` and `.../decline` deleted, and the pending-request card removed from the notification bell — a badge counting rows no page can act on is worse than no badge | ✅ |
+| 4 | **Tutor:** `POST /subjects/:id/post-consolidated-assessment` deleted. It generated one AI exam over every legacy resource and pushed it to the class, **competing with the real Post-Assessment** from Phase 8. Two buttons called "Post Assessment" is how the wrong one gets clicked during a demo | ✅ |
+| 5 | **`lib/data.js`:** 9 Gen 1 helpers removed; `generateModuleFromAssessmentResult` removed from `aiService` | ✅ |
+| 6 | **The three-generation subject page** collapsed to one source of truth (below) | ✅ |
+| 7 | Latent bug #8 in `config/db.js` fixed | ✅ |
+
+#### The subject page, before and after
+
+`GET /student/subjects/:id` was the exhibit in the original audit: it loaded **three competing answers** to "what does this student do next?" — a Gen 1 learning cycle, a Gen 2 admin pre/post pair with its own `adminModulesLocked` flag, and a Gen 3 level-gated single module — plus the pending AI assessments and tutor pre-assessments that went with them. The view had to guess which won, and that guess is what produced the stale-data symptom.
+
+The route now loads the Pre-Assessment gate, the modules targeted at this student, and the Post-Assessment. The view lost four panels (`Current Learning Cycle`, `Module Level System`, the Gen 2 `Subject Assessments` block, and the lock branches inside the legacy module list) and dropped from 455 to 240 lines.
+
+#### Verification
+
+- **All three suites re-run against the changed code:** Phase 6 **35/35**, Phase 7 **48/48**, Phase 8 **41/41**.
+- **Every view compiles:** 61/61.
+- **Every page of every role renders:** a new sweep logs in as Admin, Admin Assistant, Tutor and Student and opens **36 pages** — all 200 or a deliberate 302, no 500. This is the check that catches a template still referencing a variable its route no longer passes, which nothing else would find.
+- **No form posts to a missing route:** every `action=` in `views/` cross-checked against the routers.
+- Server log clean across every run.
+
+⚠️ **Deliberately left alone:** the Gen 2 admin *Assessments* page (`assessment_templates`) and the legacy student `/assessments` pages still work. D2 named the learning-cycle / request / AI-review-module feature, and those pages are neither — removing them would have been scope the decision did not cover.
 
 ---
 
@@ -638,7 +662,7 @@ Ang `student_learning_cycles`, `assessment_requests` (kung saan ang student ang 
 - **(a) Tanggalin lahat** — pinakamalinis, kaunti na lang ang aalagaan
 - **(b) Pabayaan itong tumakbo kasama ng bago** — pero ito mismo ang duplication na sanhi ng stale-data bugs na nakita natin
 
-**Rekomendasyon ko: (a) tanggalin.**
+**Rekomendasyon ko: (a) tanggalin.** — ✅ **Ito ang sinunod (2026-08-19).** Tanging ang *code* ang tinanggal; **walang table na ni-drop**. Nababalik ang code sa ; ang na-drop na table, hindi na.
 
 ❗ Sabihin mo agad kung kailangan mo ang alinman dito para sa **defense** mo — kapag natanggal na, mahirap nang ibalik.
 

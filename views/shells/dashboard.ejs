@@ -135,8 +135,10 @@
         // Skip if it has a confirm message (handled by confirm modal first)
         if (form.getAttribute('data-confirm-message') && form.dataset.confirmed !== 'true') return;
         var action = form.getAttribute('action') || '';
-        if (action.includes('generate-assessment')) {
-          showLoading('Generating AI Assessment...');
+        if (action.includes('draft-assessment')) {
+          showLoading('Drafting questions from the handouts...');
+        } else if (action.includes('pre-assessment') || action.includes('post-assessment')) {
+          showLoading('Preparing your assessment...');
         } else if (action.includes('submit')) {
           showLoading('Submitting...');
         } else if (action.includes('pay')) {
