@@ -317,6 +317,19 @@ async function start() {
         `Uploads directory: ${UPLOADS_ROOT}`
         + (usingExternalUploadRoot ? ' (persistent, from UPLOAD_ROOT)' : ' (inside the app folder)')
       );
+
+      // Say plainly whether the AI key arrived. .env files are not deployed — on a
+      // host, these come from the dashboard — and a missing key does not crash
+      // anything: question generation just quietly falls back to mock. That is a
+      // bad thing to discover from a student, so it is stated at boot instead.
+      // The key itself is never printed, only whether one is present.
+      const ai = require('./services/aiService').getAiStatus();
+      console.log(
+        ai.configured
+          ? `AI: ${ai.provider} / ${ai.model} — key present, real questions will be generated`
+          : `AI: NOT CONFIGURED (provider="${ai.provider}") — set AI_PROVIDER=openai and `
+            + 'OPENAI_API_KEY in this environment, or generated questions will be placeholders'
+      );
       console.log('Default admin email: admin@mindquest.local');
       console.log('Default admin password: Admin@12345');
       console.log('SMTP Configuration Status:', {
