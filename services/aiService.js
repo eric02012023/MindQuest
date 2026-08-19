@@ -63,8 +63,16 @@ async function callOpenAI(systemPrompt, userPrompt) {
   }
 }
 
+/**
+ * Whether the OpenAI integration is usable. Never throws — a bad/missing
+ * config must degrade to the mock generators, not 500 the calling route.
+ */
 function isOpenAIConfigured() {
-  return AI_PROVIDER === 'openai' && OPENAI_API_KEY.length > 10;
+  try {
+    return AI_PROVIDER === 'openai' && OPENAI_API_KEY.length > 10;
+  } catch (_error) {
+    return false;
+  }
 }
 
 // ============================================================================

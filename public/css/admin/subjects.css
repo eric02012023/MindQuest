@@ -1139,3 +1139,12 @@ body {
     grid-template-columns: 1fr;
   }
 }
+/* === MQ grid-view pass ===
+   Admin subject detail: posted handouts + enrolled students tile. The subject list already used .subject-grid.
+   The shared base rule sets display:grid but no columns, which is why these
+   card collections stacked into one column. auto-fit collapses back to a
+   single column on narrow screens, so no extra media query is needed. */
+.admin-subjects-page .list-stack {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}

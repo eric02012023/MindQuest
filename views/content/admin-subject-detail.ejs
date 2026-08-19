@@ -61,57 +61,10 @@
     </div>
   </section>
 
-  <% if (currentUser.role === 'admin') { %>
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Create Assessment</h3></div>
-    <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/assessments/create" class="stack-form">
-      <div class="form-grid two-col">
-        <label>Assessment Type
-          <select name="assessment_type" required>
-            <option value="pre">Pre-Assessment</option>
-            <option value="post">Post-Assessment</option>
-          </select>
-        </label>
-      </div>
-      <div class="question-stack" data-question-stack>
-        <div class="assessment-question-card" data-question-card>
-          <div class="question-card-head"><strong>Question 1</strong></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:10px;">
-            <label>Question Type
-              <select name="question_type" onchange="toggleQF(this)">
-                <option value="Multiple Choice">Multiple Choice</option>
-                <option value="True or False">True or False</option>
-                <option value="Fill in the Blank">Fill in the Blank</option>
-                <option value="Essay">Essay</option>
-              </select>
-            </label>
-            <label>Source Module (Title)
-              <select name="q_source_module_title">
-                <option value="">— General / No Specific Module —</option>
-                <% adminResources.forEach((r) => { %>
-                  <option value="<%= r.title %>"><%= r.title %></option>
-                <% }) %>
-              </select>
-            </label>
-          </div>
-          <label>Question<textarea name="question_text" rows="2" required></textarea></label>
-          <div class="mc-fields">
-            <label>Choice A<input type="text" name="choice_a" /></label>
-            <label>Choice B<input type="text" name="choice_b" /></label>
-            <label>Choice C<input type="text" name="choice_c" /></label>
-            <label>Choice D<input type="text" name="choice_d" /></label>
-          </div>
-          <label>Correct Answer<input type="text" name="correct_answer" placeholder="e.g. A, True, or the answer text" required /></label>
-          <label class="essay-field" style="display:none;">Expected Answer (for AI grading)<textarea name="essay_rubric_keywords" rows="2" placeholder="Write the expected answer idea..."></textarea></label>
-        </div>
-      </div>
-      <div class="row-actions assessment-action-row">
-        <button type="button" class="btn btn-secondary" onclick="addAQ()">Add Question</button>
-        <button type="submit" class="btn btn-primary">Create Assessment</button>
-      </div>
-    </form>
-  </section>
-  <% } %>
+  <%# Assessment creation was removed from the Admin subject page in Phase 1 of
+      the Module/Assessment overhaul. Pre/Post assessments are now generated from
+      module handouts, and module-level assessments are created by the Tutor.
+      See MODULE_OVERHAUL_PLAN.md. %>
 
   <section class="panel-card">
     <div class="panel-card-head"><h3>Subject Assessments</h3></div>
@@ -134,9 +87,6 @@
                   <% if (!sa.is_published && currentUser.role === 'admin') { %>
                     <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/assessments/<%= sa.id %>/publish" data-confirm-message="Publish this assessment? Students will be able to take it."><button class="btn btn-primary btn-sm" type="submit">Publish</button></form>
                   <% } %>
-                  <% if (sa.assessment_type === 'pre' && currentUser.role === 'admin') { %>
-                    <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/assessments/<%= sa.id %>/copy-as-post" data-confirm-message="Copy this Pre-Assessment and publish it as a Post-Assessment for all enrolled students?"><button class="btn btn-success btn-sm" type="submit">Copy as Post</button></form>
-                  <% } %>
                 </div>
               </td>
             </tr>
@@ -144,13 +94,8 @@
         </tbody>
       </table>
     </div>
+    <p class="table-note">Read-only history of assessments created before the module overhaul. New Pre/Post assessments are generated from module handouts; module assessments are created by the Tutor.</p>
   </section>
-
-  <script>
-  var qc=1;
-  function toggleQF(s){var c=s.closest('.assessment-question-card');if(!c)return;var t=s.value;var m=c.querySelector('.mc-fields');var e=c.querySelector('.essay-field');if(m)m.style.display=t==='Multiple Choice'?'':'none';if(e)e.style.display=t==='Essay'?'':'none';}
-  function addAQ(){qc++;var sk=document.querySelector('[data-question-stack]');if(!sk)return;var d=document.createElement('div');d.className='assessment-question-card';d.setAttribute('data-question-card','');d.innerHTML='<div class="question-card-head"><strong>Question '+qc+'</strong><button type="button" class="btn btn-secondary btn-sm" onclick="this.closest(\'.assessment-question-card\').remove()" style="margin-left:auto;">Remove</button></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:10px;"><label>Question Type<select name="question_type" onchange="toggleQF(this)"><option value="Multiple Choice">Multiple Choice</option><option value="True or False">True or False</option><option value="Fill in the Blank">Fill in the Blank</option><option value="Essay">Essay</option></select></label><label>Source Module (Title)<select name="q_source_module_title"><option value="">— General / No Specific Module —</option><% adminResources.forEach((r) => { %><option value="<%= r.title %>"><%= r.title %></option><% }) %></select></label></div><label>Question<textarea name="question_text" rows="2" required></textarea></label><div class="mc-fields"><label>Choice A<input type="text" name="choice_a" /></label><label>Choice B<input type="text" name="choice_b" /></label><label>Choice C<input type="text" name="choice_c" /></label><label>Choice D<input type="text" name="choice_d" /></label></div><label>Correct Answer<input type="text" name="correct_answer" placeholder="e.g. A, True, or the answer text" required /></label><label class="essay-field" style="display:none;">Expected Answer<textarea name="essay_rubric_keywords" rows="2"></textarea></label>';sk.appendChild(d);}
-  </script>
 
   <section class="panel-card">
     <div class="panel-card-head"><h3>Enrolled Students</h3></div>

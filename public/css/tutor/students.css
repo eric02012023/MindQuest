@@ -1029,3 +1029,12 @@ body {
 .tutor-students-page .student-link-card:hover {
   border-color: rgba(8, 166, 197, .18);
 }
+/* === MQ grid-view pass ===
+   Tutor > My Students: student cards tile.
+   The shared base rule sets display:grid but no columns, which is why these
+   card collections stacked into one column. auto-fit collapses back to a
+   single column on narrow screens, so no extra media query is needed. */
+.tutor-students-page .list-stack {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}

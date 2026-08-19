@@ -84,13 +84,8 @@ const {
   getStudentAnalytics,
   // Phase 3: Analytics imports
   getAllStudentsForAnalytics,
-  // Phase 4: Admin pre/post assessments
-  createSubjectAssessment,
+  // Legacy pre/post assessment listing (read-only after Phase 1)
   getSubjectAssessments,
-  // Phase 5: Module Management
-  upsertModule,
-  deleteModule,
-  getAllModulesAdmin,
   getAllTutorAssessmentsAdmin,
   getStudentResultsAdmin
 } = require('../lib/data');
@@ -1209,53 +1204,9 @@ function createAdminRouter(role) {
   });
 
   // Route: Create pre/post assessment for a subject
-  router.post('/subjects/:id/assessments/create', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can create assessments.');
-        return res.redirect(`${basePath}/subjects/${req.params.id}`);
-      }
-
-      const questions = [];
-      const questionTexts = Array.isArray(req.body.question_text) ? req.body.question_text : [req.body.question_text];
-      const questionTypes = Array.isArray(req.body.question_type) ? req.body.question_type : [req.body.question_type];
-      const sourceModuleTitles = Array.isArray(req.body.q_source_module_title) ? req.body.q_source_module_title : [req.body.q_source_module_title];
-      const choiceA = Array.isArray(req.body.choice_a) ? req.body.choice_a : [req.body.choice_a];
-      const choiceB = Array.isArray(req.body.choice_b) ? req.body.choice_b : [req.body.choice_b];
-      const choiceC = Array.isArray(req.body.choice_c) ? req.body.choice_c : [req.body.choice_c];
-      const choiceD = Array.isArray(req.body.choice_d) ? req.body.choice_d : [req.body.choice_d];
-      const correctAnswers = Array.isArray(req.body.correct_answer) ? req.body.correct_answer : [req.body.correct_answer];
-      const essayKeywords = Array.isArray(req.body.essay_rubric_keywords) ? req.body.essay_rubric_keywords : [req.body.essay_rubric_keywords];
-
-      for (let i = 0; i < questionTexts.length; i++) {
-        if (!questionTexts[i]) continue;
-        questions.push({
-          question_text: questionTexts[i],
-          question_type: questionTypes[i] || 'Multiple Choice',
-          source_module_title: sourceModuleTitles[i] || null,
-          choice_a: choiceA[i] || '',
-          choice_b: choiceB[i] || '',
-          choice_c: choiceC[i] || '',
-          choice_d: choiceD[i] || '',
-          correct_answer: correctAnswers[i] || '',
-          essay_rubric_keywords: essayKeywords[i] || null,
-          points: 1
-        });
-      }
-
-      await createSubjectAssessment(req.params.id, req.session.user.id, {
-        assessment_type: req.body.assessment_type || 'pre',
-        source_module_title: null, // Module is now assigned per-question
-        questions
-      });
-
-      setFlash(req, 'success', `${req.body.assessment_type === 'post' ? 'Post' : 'Pre'}-Assessment created successfully.`);
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not create assessment.');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    }
-  });
+  // Removed in Phase 1: POST /subjects/:id/assessments/create.
+  // Admin no longer authors assessments. Pre/Post assessments are generated from
+  // module handouts (Phase 5) and module assessments belong to the Tutor (Phase 7).
 
   // Route: Publish a post assessment
   router.post('/subjects/:id/assessments/:assessmentId/publish', async (req, res, next) => {
@@ -1273,34 +1224,11 @@ function createAdminRouter(role) {
     }
   });
 
-  // Route: Copy a pre-assessment as a post-assessment
-  router.post('/subjects/:id/assessments/:assessmentId/copy-as-post', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can copy assessments.');
-        return res.redirect(`${basePath}/subjects/${req.params.id}`);
-      }
-
-      const { getAssessmentById, createSubjectAssessment } = require('../../lib/data');
-      const original = await getAssessmentById(req.params.assessmentId);
-      if (!original || original.assessment_type !== 'pre' || Number(original.subject_id) !== Number(req.params.id)) {
-        setFlash(req, 'error', 'Invalid assessment to copy.');
-        return res.redirect(`${basePath}/subjects/${req.params.id}`);
-      }
-
-      await createSubjectAssessment(req.params.id, req.session.user.id, {
-        assessment_type: 'post',
-        source_module_title: original.source_module_title,
-        questions: original.questions
-      });
-
-      setFlash(req, 'success', 'Pre-Assessment copied and published as Post-Assessment successfully!');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not copy assessment.');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    }
-  });
+  // Removed in Phase 1: POST /subjects/:id/assessments/:assessmentId/copy-as-post.
+  // It never worked — it required '../../lib/data', which resolves outside the
+  // project root, so the button always threw MODULE_NOT_FOUND. The pre -> post
+  // cloning it was meant to do is rebuilt properly in Phase 8, keyed on
+  // source_pre_assessment_id instead of duplicating question rows blindly.
 
   // Route: Archive a module
   router.post('/subjects/:id/resources/:resourceId/archive', async (req, res, next) => {
@@ -1756,78 +1684,10 @@ function createAdminRouter(role) {
   });
 
   // ==========================================================================
-  // Phase 5: Module Management
+  // Module Management was removed in the Module/Assessment overhaul (Phase 1).
+  // Modules are now created and managed inside a subject: All Subjects ->
+  // <subject> -> Modules -> Handouts. See MODULE_OVERHAUL_PLAN.md, Phase 3.
   // ==========================================================================
-  const moduleUploader = createUploader('modules');
-
-  router.get('/modules', async (req, res, next) => {
-    try {
-      const [modules, subjects] = await Promise.all([
-        getAllModulesAdmin(),
-        getSubjects(false)
-      ]);
-      // Group modules by subject
-      const subjectMap = {};
-      for (const m of modules) {
-        if (!subjectMap[m.subject_id]) subjectMap[m.subject_id] = { name: m.subject_name, modules: [] };
-        subjectMap[m.subject_id].modules.push(m);
-      }
-      const shell = await buildShellData(req, {
-        pageTitle: 'Module Management',
-        section: 'modules',
-        contentView: '../content/admin-modules',
-        modules,
-        subjects,
-        subjectMap
-      });
-      res.render('shells/dashboard', shell);
-    } catch (error) { next(error); }
-  });
-
-  router.post('/modules', moduleUploader.single('file'), async (req, res, next) => {
-    try {
-      const { subject_id, level, title, description } = req.body;
-      if (!subject_id || !level || !title) {
-        setFlash(req, 'error', 'Subject, Level, and Title are required.');
-        return res.redirect(`${basePath}/modules`);
-      }
-      // Validate file type
-      if (req.file) {
-        const ext = (req.file.originalname || '').split('.').pop().toLowerCase();
-        const allowed = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt'];
-        if (!allowed.includes(ext)) {
-          setFlash(req, 'error', 'Invalid file type. Allowed: PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT.');
-          return res.redirect(`${basePath}/modules`);
-        }
-      }
-      await upsertModule({
-        subject_id: Number(subject_id),
-        level: String(level),
-        title: String(title).trim(),
-        description: String(description || '').trim(),
-        file_path: req.file ? `/uploads/modules/${req.file.filename}` : null,
-        file_original_name: req.file ? req.file.originalname : null,
-        file_type: req.file ? req.file.mimetype : null,
-        uploaded_by: req.session.user.id
-      });
-      setFlash(req, 'success', `Module "${title}" (${level}) uploaded successfully.`);
-      res.redirect(`${basePath}/modules`);
-    } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not upload module.');
-      res.redirect(`${basePath}/modules`);
-    }
-  });
-
-  router.post('/modules/:id/delete', async (req, res, next) => {
-    try {
-      await deleteModule(Number(req.params.id));
-      setFlash(req, 'success', 'Module removed successfully.');
-      res.redirect(`${basePath}/modules`);
-    } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not delete module.');
-      res.redirect(`${basePath}/modules`);
-    }
-  });
 
   // ==========================================================================
   // Phase 7: Assessment Monitoring & Student Results

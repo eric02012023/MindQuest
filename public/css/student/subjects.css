@@ -793,3 +793,19 @@ body {
 .badge-info { background: rgba(22,168,200,.14); color: #0a6f8a; }
 .badge-warning { background: rgba(210,138,31,.14); color: #8a5a0a; }
 .badge-danger { background: rgba(213,76,76,.14); color: #a43030; }
+
+/* === MQ grid-view pass ===
+   Student > My Subject: enrolled subject cards tile; the tutor-picker list inside the modal stays vertical on purpose.
+   The shared base rule sets display:grid but no columns, which is why these
+   card collections stacked into one column. auto-fit collapses back to a
+   single column on narrow screens, so no extra media query is needed. */
+.student-subjects-page .subject-list-cards {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.student-subjects-page .bubble-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}

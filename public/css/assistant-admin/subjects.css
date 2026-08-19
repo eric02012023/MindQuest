@@ -783,3 +783,13 @@ body {
 .assistant-admin-subjects-page .list-card {
   border: 1px solid rgba(9,22,45,.06);
 }
+
+/* === MQ grid-view pass ===
+   Admin Assistant subject detail: same as Admin.
+   The shared base rule sets display:grid but no columns, which is why these
+   card collections stacked into one column. auto-fit collapses back to a
+   single column on narrow screens, so no extra media query is needed. */
+.assistant-admin-subjects-page .list-stack {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}

@@ -1069,3 +1069,13 @@ body {
   background: rgba(50, 166, 90, .13);
   color: #257647;
 }
+/* === MQ grid-view pass ===
+   Tutor > My Subject: assigned subject cards tile; subject-detail student/handout lists tile too.
+   The shared base rule sets display:grid but no columns, which is why these
+   card collections stacked into one column. auto-fit collapses back to a
+   single column on narrow screens, so no extra media query is needed. */
+.tutor-subjects-page .subject-list-cards,
+.tutor-subjects-page .list-stack {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}

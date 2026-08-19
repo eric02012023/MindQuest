@@ -57,7 +57,12 @@ app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+// Public upload folders stay mounted here, ahead of the session middleware, so
+// avatars and chat attachments are served without a session lookup or a DB round
+// trip per file. Study-material folders are NOT served here — they are mounted
+// behind an access check below app.use(setUserLocals).
+app.use('/uploads/profiles', express.static(path.join(__dirname, 'public', 'uploads', 'profiles')));
+app.use('/uploads/messages', express.static(path.join(__dirname, 'public', 'uploads', 'messages')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use(express.urlencoded({ extended: true }));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
@@ -73,6 +78,36 @@ app.use(session({
 }));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use(setUserLocals);
+
+// --------------------------------------------------------------------------
+// Guarded /uploads mount.
+//
+// Folders holding study material (handouts, modules, shared resources) are not
+// public: serving them from a bare express.static let anyone with a URL read a
+// handout, which defeated the pre-assessment lock entirely.
+//
+// Phase 0 closes the "anyone on the internet" hole (login now required).
+// TODO(Phase 6): also enforce the per-student pre-assessment lock + year-level
+// check here, so a logged-in student cannot fetch a handout they have not
+// unlocked. Until then this only proves the requester is authenticated.
+//
+// profiles/ and messages/ are served publicly by the earlier mount: avatars are
+// embedded across the app and chat attachments come from the messaging UI.
+// --------------------------------------------------------------------------
+const PROTECTED_UPLOAD_DIRS = ['modules', 'resources', 'ai-modules', 'handouts'];
+
+for (const folder of PROTECTED_UPLOAD_DIRS) {
+  app.use(
+    `/uploads/${folder}`,
+    (req, res, next) => {
+      if (!req.session?.user) {
+        return res.status(401).type('text/plain').send('Unauthorized. Please log in to open study material.');
+      }
+      return next();
+    },
+    express.static(path.join(__dirname, 'public', 'uploads', folder))
+  );
+}
 
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 
@@ -104,6 +139,18 @@ app.use((req, res) => {
 
 app.use((error, req, res, _next) => {
   console.error(error);
+
+  // An oversized upload is a user mistake, not a server fault: send them back
+  // with a flash instead of the 500 page.
+  if (error && error.code === 'LIMIT_FILE_SIZE') {
+    const message = 'That file is too large. Handouts and documents may be up to 25 MB, profile photos up to 5 MB.';
+    if (req.session) {
+      req.session.flash = { type: 'error', message };
+      return res.redirect(req.get('Referer') || '/');
+    }
+    return res.status(413).render('error', { pageTitle: 'File Too Large', message });
+  }
+
   res.status(500).render('error', {
     pageTitle: 'Server Error',
     message: error.message || 'Something went wrong.'

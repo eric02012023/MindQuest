@@ -789,3 +789,19 @@ body {
 .student-dashboard-page .attendance-box.present { background: linear-gradient(180deg, rgba(50,166,90,.08), rgba(50,166,90,.03)); }
 .student-dashboard-page .attendance-box.absent { background: linear-gradient(180deg, rgba(213,76,76,.08), rgba(213,76,76,.03)); }
 .student-dashboard-page .calendar-card { background: linear-gradient(180deg, #fff 0%, #f4fafc 100%); }
+
+/* === MQ grid-view pass ===
+   Student dashboard: subject cards tile, tutor/slot chips flow inline.
+   The shared base rule sets display:grid but no columns, which is why these
+   card collections stacked into one column. auto-fit collapses back to a
+   single column on narrow screens, so no extra media query is needed. */
+.student-dashboard-page .subject-list-cards {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.student-dashboard-page .bubble-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
