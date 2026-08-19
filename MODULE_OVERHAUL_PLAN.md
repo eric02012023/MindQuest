@@ -444,6 +444,24 @@ Real output after the fixes — a clean 4/4 split across two modules, all four t
 
 **Exit criteria:** checklist item 4 met; opening the subject repeatedly makes exactly one OpenAI call per handout version.
 
+#### Amendment — 30 items, and one call per handout (2026-08-19)
+
+Requirement clarified: **a Pre-Assessment is 30 items, drawn from all handouts of all modules in the subject.** The source query already read every module's handouts; the size was 10. It now lives in **`config/assessmentDefaults.js`** as `PRE_ASSESSMENT_ITEM_COUNT`, so the route that opens the exam and the service that builds it cannot drift apart.
+
+Scaling to 30 broke the single-call design, in three ways that only showed up by reading the output:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `invalid JSON` risk | `max_tokens: 4000` was sized for 10 items; a JSON reply that hits the cap is **truncated**, which surfaces as a parse error, not a length error | `callOpenAI` takes a `maxTokens`; generation scales it with the request |
+| 29 of 30 items, twice | Validation rejects malformed items and de-duplication drops repeats, so asking for exactly N lands under N | Over-request (`+8`), and a top-up pass that also asks for more than the shortfall |
+| **16/11/3 and 15/2/13** across three handouts; **10 essays** out of 30 | The per-handout quota lived in the prompt and the model **ignored it**. Truncating the surplus in arrival order then starved whichever handout the model left for last | **One call per handout**, each asked only for its own quota |
+
+The last one is the real lesson: *a quota a model may ignore is not a quota*. With one call per handout the split is structural — a reply cannot cite a handout it was never shown — and the calls run concurrently, so three handouts cost about the wall time of one. Two further defects were caught the same way and are now rejected by the validator: a `fill_blank` with no blank in it (graded by exact match, so it was unanswerable), and a multiple-choice item with its own options baked into the question text (rendering the choices twice).
+
+**Result, same three real handouts:** 30/30 items, **10/10/10 per handout**, all four types, no duplicates, **18s** — down from 36s, and from 77s once a top-up was involved.
+
+⚠️ **Open UX question:** those 18 seconds are paid by the *first student* who opens the subject, since generation is triggered by their click and cached afterwards. Pre-generating when an admin adds or removes a handout would move the wait off the student. Not built — say the word.
+
 ### Phase 6 — Student: lock, take, grade, classify, weak areas (Section 5) — ✅ **DONE 2026-08-19**
 
 Shipped in two parts: **part 1** the student path (grading engine, lock, result page), **part 2** the Tutor/Admin views of the same results.

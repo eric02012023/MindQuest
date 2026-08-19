@@ -1046,7 +1046,8 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
 
     let assessment;
     try {
-      const result = await getOrCreatePreAssessment(subjectId, { itemCount: 10 });
+      // Size comes from config/assessmentDefaults.js (30), never a literal here.
+      const result = await getOrCreatePreAssessment(subjectId);
       assessment = result.assessment;
     } catch (error) {
       // No handouts yet, or generation failed. Say so plainly instead of showing

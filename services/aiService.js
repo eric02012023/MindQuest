@@ -20,7 +20,12 @@ const AI_MODEL = process.env.AI_MODEL || 'gpt-4o-mini';
 // OpenAI integration (used when AI_PROVIDER === 'openai' and key is set)
 // ============================================================================
 
-async function callOpenAI(systemPrompt, userPrompt) {
+async function callOpenAI(systemPrompt, userPrompt, options = {}) {
+  // max_tokens is a cap on the ANSWER, and a JSON answer that hits the cap comes
+  // back truncated — which fails as "invalid JSON" rather than as a length error.
+  // A 30-item assessment needs far more room than the 4,000 that was fine for 10,
+  // so callers that ask for a lot of output raise it.
+  const { maxTokens = 4000 } = options;
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -35,7 +40,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.7,
-        max_tokens: 4000,
+        max_tokens: maxTokens,
         response_format: { type: 'json_object' }
       })
     });
@@ -385,6 +390,7 @@ ${originalModuleContent ? 'Original module excerpt:\n' + String(originalModuleCo
 
 /** The four types the spec requires, as stored in tutor_assessment_questions. */
 const SPEC_QUESTION_TYPES = ['multiple_choice', 'true_false', 'fill_blank', 'essay'];
+const { PRE_ASSESSMENT_ITEM_COUNT } = require('../config/assessmentDefaults');
 
 /**
  * How many of each type to ask for, given a total item count.
@@ -451,6 +457,11 @@ function validateGeneratedQuestion(raw, allowedHandouts) {
   };
 
   if (type === 'multiple_choice') {
+    // Reject an item whose choices are baked into the question text — it renders
+    // as the options listed twice, once inside the sentence and once as the real
+    // radio buttons. Observed in a live run.
+    if (/\bA[).]\s.{2,}\bB[).]\s/s.test(questionText)) return null;
+
     // The model often prefixes its own label ("A. Confidentiality..."), which
     // would render as "A) A. Confidentiality..." once we add the real label.
     const stripLabel = (text) => String(text || '').trim().replace(/^\(?[A-Ea-e][).:]\s+/, '').trim();
@@ -499,6 +510,12 @@ function validateGeneratedQuestion(raw, allowedHandouts) {
   if (type === 'fill_blank') {
     const answer = String(raw.correct_answer || '').trim();
     if (!answer) return null;
+    // A fill-in-the-blank with no blank is just an open question the student has
+    // to guess the exact wording of, and it is graded by exact match. Observed:
+    // "What are the five major elements of information security?" typed as
+    // fill_blank. Rejected rather than patched — the batch is over-requested, so
+    // a replacement is already on hand.
+    if (!/_{3,}/.test(questionText)) return null;
     base.correct_answer = answer.slice(0, 500);
     return base;
   }
@@ -523,13 +540,13 @@ function validateGeneratedQuestion(raw, allowedHandouts) {
  * @param {Array<{handout_id:number, module_id:number, order_number:number, module_title:string, file_original_name:string, extracted_text:string}>} options.handouts
  * @param {string} options.subject
  * @param {string} [options.yearLevel]
- * @param {number} [options.itemCount=10]
+ * @param {number} [options.itemCount=30] defaults to the required Pre-Assessment size
  * @param {string} [options.questionType='mixed'] one of the four types, or 'mixed'
- * @returns {Promise<{questions: Array, tokensUsed: number, provider: string, model: string, requested: number, kept: number}>}
+ * @returns {Promise<{questions: Array, tokensUsed: number, provider: string, model: string, requested: number, kept: number, topUpUsed: boolean}>}
  */
 async function generateAssessmentFromHandouts(options = {}) {
   const {
-    handouts = [], subject, yearLevel, itemCount = 10, questionType = 'mixed'
+    handouts = [], subject, yearLevel, itemCount = PRE_ASSESSMENT_ITEM_COUNT, questionType = 'mixed'
   } = options;
 
   const usable = handouts.filter((h) => String(h.extracted_text || '').trim().length > 50);
@@ -541,32 +558,201 @@ async function generateAssessmentFromHandouts(options = {}) {
   }
 
   const allowed = new Map(usable.map((h) => [Number(h.handout_id), h]));
+
+  // One item can be worth ~120 output tokens with its choices, rubric and
+  // explanation, so the ceiling scales with the request instead of sitting at the
+  // 4,000 that only ever had to hold 10 items. A JSON reply that hits the cap comes
+  // back truncated, which surfaces as "invalid JSON" rather than as a length error.
+  const tokenBudget = (n) => Math.min(16000, 1200 + n * 240);
+
+  // One call per handout, not one call for all of them.
+  //
+  // The single-call version stated a per-handout quota in the prompt and the model
+  // simply did not honour it: measured runs came back 16/11/3 and 15/2/13 across
+  // three handouts, with the type mix drifting to 10 essays out of 30. A quota a
+  // model may ignore is not a quota. Giving each handout its own call makes the
+  // split structural — each reply can only cite the one handout it was given — and
+  // the calls run concurrently, so N handouts cost roughly the wall time of one.
+  const quotas = spreadEvenly(itemCount, usable.length);
+  const seen = new Set();
+  let tokensUsed = 0;
+
+  const absorb = (rawQuestions, into) => {
+    for (const raw of Array.isArray(rawQuestions) ? rawQuestions : []) {
+      const validated = validateGeneratedQuestion(raw, allowed);
+      if (!validated) continue;
+      // Duplicates are checked across the whole exam, not per handout: two
+      // handouts covering the same ground do produce the same question.
+      const key = normalizeQuestionKey(validated.question_text);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      into.push(validated);
+    }
+  };
+
+  const perHandout = usable.map((handout, i) => ({ handout, wanted: quotas[i], questions: [] }));
+
+  // Ask each handout for a little more than its quota. Validation rejects the
+  // occasional malformed item (identical choices, an answer letter matching no
+  // choice, an essay with no rubric), so asking for exactly N reliably lands under
+  // N — measured 29 of 30 twice. The surplus is trimmed by the balancing step.
+  await runWithConcurrency(perHandout.filter((slot) => slot.wanted > 0), 4, async (slot) => {
+    const batch = slot.wanted + 2;
+    const prompts = buildHandoutPrompts({
+      handout: slot.handout, wanted: batch, questionType, subject, yearLevel
+    });
+    try {
+      const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: tokenBudget(batch) });
+      tokensUsed += call.tokensUsed;
+      absorb(call.result.questions, slot.questions);
+    } catch (error) {
+      // One unreadable handout must not cost the whole assessment.
+      console.error(`[aiService] generation failed for handout ${slot.handout.handout_id}:`, error.message);
+    }
+  });
+
+  // Any handout still short gets one top-up, again in parallel. One pass, not a
+  // loop: a model that cannot fill the gap twice will not fill it on the tenth
+  // try either, and the student is waiting.
+  const short = perHandout.filter((slot) => slot.questions.length < slot.wanted);
+  let topUpUsed = short.length > 0;
+  if (short.length) {
+    await runWithConcurrency(short, 4, async (slot) => {
+      const batch = Math.max(4, (slot.wanted - slot.questions.length) + 3);
+      const prompts = buildHandoutPrompts({
+        handout: slot.handout, wanted: batch, questionType, subject, yearLevel,
+        avoidTexts: slot.questions.map((q) => q.question_text)
+      });
+      try {
+        const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: tokenBudget(batch) });
+        tokensUsed += call.tokensUsed;
+        absorb(call.result.questions, slot.questions);
+      } catch (error) {
+        console.error(`[aiService] top-up failed for handout ${slot.handout.handout_id}:`, error.message);
+      }
+    });
+  }
+
+  // Interleave by handout so the exam alternates sources instead of running three
+  // blocks; a student who gives up halfway has still been measured on every module.
+  const candidates = interleaveByHandout(perHandout);
+  if (!candidates.length) {
+    throw new Error('The AI did not return any usable questions. Please try again.');
+  }
+
+  const questions = selectBalancedQuestions(candidates, itemCount, planQuestionMix(itemCount, questionType), usable);
+
+  return {
+    questions,
+    tokensUsed,
+    provider: 'openai',
+    model: AI_MODEL,
+    requested: itemCount,
+    kept: questions.length,
+    candidates: candidates.length,
+    topUpUsed
+  };
+}
+
+/** Split `total` into `parts` whole numbers that differ by at most one. */
+function spreadEvenly(total, parts) {
+  const base = Math.floor(total / parts);
+  return Array.from({ length: parts }, (_v, i) => base + (i < total % parts ? 1 : 0));
+}
+
+/** Run an async job over items, at most `limit` in flight. */
+async function runWithConcurrency(items, limit, job) {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      await job(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
+/** One from each handout in turn, so the exam does not run in per-handout blocks. */
+function interleaveByHandout(slots) {
+  const out = [];
+  const depth = Math.max(0, ...slots.map((s) => s.questions.length));
+  for (let i = 0; i < depth; i++) {
+    for (const slot of slots) {
+      if (slot.questions[i]) out.push(slot.questions[i]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Choose which `itemCount` of the candidates make the final exam.
+ *
+ * Taking the first N in arrival order looked fine and was not: the model emits
+ * questions in blocks, so a 30-item cut of 36 candidates came back with 11 essays
+ * instead of 6, and 3 questions from the last handout instead of 12 — the tail of
+ * the reply is always the same handout, so truncation silently starved it. That
+ * defeats the weak-area view, which is only as good as its coverage.
+ *
+ * So the cut respects both quotas first, then relaxes them rather than returning
+ * short: a slightly lopsided exam beats a 27-item one.
+ */
+function selectBalancedQuestions(candidates, itemCount, typeMix, usable) {
+  const typeQuota = { ...typeMix };
+  const handoutQuota = {};
+  const ids = usable.map((h) => Number(h.handout_id));
+  const base = Math.floor(itemCount / ids.length);
+  ids.forEach((id, i) => { handoutQuota[id] = base + (i < itemCount % ids.length ? 1 : 0); });
+
+  const chosen = [];
+  const taken = new Set();
+
+  const sweep = (accept) => {
+    for (let i = 0; i < candidates.length && chosen.length < itemCount; i++) {
+      if (taken.has(i)) continue;
+      const q = candidates[i];
+      if (!accept(q)) continue;
+      taken.add(i);
+      chosen.push({ index: i, question: q });
+      typeQuota[q.question_type] = (typeQuota[q.question_type] || 0) - 1;
+      handoutQuota[q.source_handout_id] = (handoutQuota[q.source_handout_id] || 0) - 1;
+    }
+  };
+
+  sweep((q) => typeQuota[q.question_type] > 0 && handoutQuota[q.source_handout_id] > 0);
+  sweep((q) => typeQuota[q.question_type] > 0);   // type balance matters more than
+  sweep((q) => handoutQuota[q.source_handout_id] > 0); // even coverage
+  sweep(() => true);
+
+  // Back to the order the model produced them in, which follows the handouts.
+  return chosen.sort((a, b) => a.index - b.index).map((c) => c.question);
+}
+
+/** Compare question texts ignoring case, punctuation and spacing. */
+function normalizeQuestionKey(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Build the system + user prompts for one handout's batch of questions.
+ *
+ * One handout per call is what makes the per-handout split reliable: the reply
+ * cannot cite a handout it was never shown. Split out from the caller so the
+ * top-up pass reuses the identical rules — two copies of this prompt would drift.
+ */
+function buildHandoutPrompts({ handout, wanted, questionType, subject, yearLevel, avoidTexts = [] }) {
+  const itemCount = wanted;
   const mix = planQuestionMix(itemCount, questionType);
   const mixText = Object.entries(mix).map(([type, n]) => `${n} x ${type}`).join(', ');
-
-  // Asking the model to "spread questions across handouts" was not enough — in
-  // testing it drew all 8 questions from the first handout, which would make the
-  // weak-area view blind to the other modules. So the quota is stated per
-  // handout id, explicitly.
-  const perHandout = new Array(usable.length).fill(Math.floor(itemCount / usable.length));
-  for (let i = 0; i < itemCount % usable.length; i++) perHandout[i]++;
-  const quotaText = usable
-    .map((h, i) => `- handout_id ${h.handout_id}: exactly ${perHandout[i]} question(s)`)
-    .filter((_line, i) => perHandout[i] > 0)
-    .join('\n');
 
   const systemPrompt = `You write assessment questions for a tutorial centre, using ONLY the handout text provided.
 
 Return a JSON object with a single key "questions", an array of exactly ${itemCount} objects.
 Produce this mix of question types: ${mixText}.
 
-Draw this many questions from each handout — this quota is mandatory:
-${quotaText}
-
 Every question object must have:
-- "question_text": the question, answerable purely from the handouts
+- "question_text": the question, answerable purely from the handout
 - "question_type": one of "multiple_choice", "true_false", "fill_blank", "essay"
-- "source_handout_id": the integer id of the handout the question comes from. Use ONLY the ids listed in the handout sections below.
+- "source_handout_id": always the integer ${handout.handout_id}
 - "correct_answer":
     * multiple_choice -> the letter of the correct choice ("A", "B", "C" or "D")
     * true_false      -> exactly "true" or "false"
@@ -580,48 +766,30 @@ Rules:
 - Base every question on the handout content. Never invent facts that are not in the text.
 - For fill_blank, write the sentence with a blank shown as ____ and put the missing text in correct_answer.
 - Make the difficulty appropriate for a ${yearLevel || 'general'} student.
-- Respect the per-handout quota above exactly.
+- Keep the choices out of "question_text": no "A) ... B) ..." list, no answer letter.
 - In "choices", give the answer text ONLY. Do not prefix it with "A.", "B)" or any label.
 - All four choices of a multiple_choice question must be different from each other.
-- Output strict JSON only. No commentary, no markdown.`;
+- Every question must be different from every other question in this set.
+- Output strict JSON only. No commentary, no markdown.${avoidTexts.length ? `
 
-  const sources = usable
-    .map((h) => {
-      const label = `Module ${h.order_number} — ${h.module_title}` + (h.file_original_name ? ` (${h.file_original_name})` : '');
-      return `### handout_id: ${h.handout_id}\n### source: ${label}\n${String(h.extracted_text).trim()}`;
-    })
-    .join('\n\n---\n\n');
+These questions already exist in this assessment. Do NOT repeat them or ask the
+same thing in different words:
+${avoidTexts.map((t) => `- ${t}`).join('\n')}` : ''}`;
+
+  const label = `Module ${handout.order_number} — ${handout.module_title}`
+    + (handout.file_original_name ? ` (${handout.file_original_name})` : '');
 
   const userPrompt = `Subject: ${subject || 'General'}
 Student level: ${yearLevel || 'General'}
 Number of questions: ${itemCount}
 
-HANDOUTS:
+HANDOUT
+### handout_id: ${handout.handout_id}
+### source: ${label}
 
-${sources}`;
+${String(handout.extracted_text).trim()}`;
 
-  const { result, tokensUsed } = await callOpenAI(systemPrompt, userPrompt);
-  const rawQuestions = Array.isArray(result.questions) ? result.questions : [];
-
-  const questions = [];
-  for (const raw of rawQuestions) {
-    const validated = validateGeneratedQuestion(raw, allowed);
-    if (validated) questions.push(validated);
-    if (questions.length >= itemCount) break;
-  }
-
-  if (!questions.length) {
-    throw new Error('The AI did not return any usable questions. Please try again.');
-  }
-
-  return {
-    questions,
-    tokensUsed,
-    provider: 'openai',
-    model: AI_MODEL,
-    requested: itemCount,
-    kept: questions.length
-  };
+  return { systemPrompt, userPrompt };
 }
 
 /**
