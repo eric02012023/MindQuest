@@ -58,14 +58,32 @@ function transformSql(sqlText) {
   text = text.replace(/NOW\(\)/gi, 'DATEADD(hour, 8, GETUTCDATE())');
   text = text.replace(/\bCURRENT_TIMESTAMP\b/gi, 'DATEADD(hour, 8, GETUTCDATE())');
   text = rewriteLimit(text);
+  // Placeholders, but ONLY outside string literals (audit bug #8).
+  //
+  // The previous version replaced every `?` in the statement, including one
+  // inside a quoted literal — `WHERE title = 'What is it?'` became
+  // `'What is it@p0'`, silently corrupting the value and shifting every
+  // parameter after it by one. No query in the codebase happened to contain a
+  // question mark in text, so it never fired; it would have been a very
+  // confusing first failure. Walking the string keeps the scan honest about
+  // where it is, and doubled quotes ('' inside a literal) are handled because
+  // they simply close and reopen the literal.
   const params = [];
   let index = 0;
-  text = text.replace(/\?/g, () => {
-    const name = `p${index++}`;
-    params.push(name);
-    return `@${name}`;
-  });
-  return { text, params };
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "'") inString = !inString;
+    if (ch === '?' && !inString) {
+      const name = `p${index++}`;
+      params.push(name);
+      out += `@${name}`;
+      continue;
+    }
+    out += ch;
+  }
+  return { text: out, params };
 }
 
 // Function: runQuery
