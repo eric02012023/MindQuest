@@ -114,7 +114,7 @@ async function guardHandoutAccess(req, res, next) {
   try {
     const {
       getModuleHandoutByPath, getStudentAssignments,
-      hasCompletedPreAssessment, moduleTargetsStudent
+      hasCompletedPreAssessment, moduleTargetsStudent, getUserById
     } = require('./lib/data');
 
     const handout = await getModuleHandoutByPath(`/uploads/handouts${req.path}`);
@@ -134,7 +134,11 @@ async function guardHandoutAccess(req, res, next) {
         .send('Complete the Pre-Assessment for this subject before opening its handouts.');
     }
 
-    if (!moduleTargetsStudent(handout, user)) {
+    // Load the student from the DB rather than the session: neither the login
+    // query nor setUserLocals selects year_level/grade_level, so the session copy
+    // has neither and this check would reject every student.
+    const studentRecord = await getUserById(user.id);
+    if (!moduleTargetsStudent(handout, studentRecord)) {
       return res.status(403).type('text/plain').send('This module is not assigned to your year level.');
     }
 

@@ -1180,7 +1180,13 @@ router.get('/modules/:moduleId', async (req, res, next) => {
     // Year-level targeting. moduleTargetsStudent matches the exact label against
     // year_level AND grade_level — deliberately not the collapsed key, which
     // would treat "Kinder 1" and "Grade 5" as the same audience.
-    if (!moduleTargetsStudent(mod, req.session.user)) {
+    //
+    // The student is loaded from the DB, NOT from req.session.user: neither the
+    // login query nor setUserLocals selects year_level/grade_level, so the session
+    // copy has neither. Passing it here made the check find no year level at all
+    // and lock students out of their own modules.
+    const studentRecord = await getUserById(studentId);
+    if (!moduleTargetsStudent(mod, studentRecord)) {
       setFlash(req, 'error', 'This module is not assigned to your year level.');
       return res.redirect(`/student/subjects/${mod.subject_id}`);
     }
