@@ -327,6 +327,60 @@ One wording fix after the run: the badge said "Extract failed" for a scanned PDF
 
 **Exit criteria:** met, and extended — PPTX and the unusable-file path are covered too.
 
+---
+
+### Phase 4b — OCR for scanned handouts — ✅ **DONE 2026-08-19**
+
+Added because the scanned-PDF limitation was unacceptable: a handout the system cannot read is a handout that cannot become an assessment.
+
+**Correction to the Phase 4 framing above.** The 3 "unusable" PDFs were inspected by rendering them to PNG and looking at them. They are **not teaching material** — they are this project's own **ER diagram and Administrator DFD**, thesis documentation uploaded as test files. So the earlier "37% of your PDFs are unusable" framing overstated the problem for real handouts. The capability gap was still worth closing, since photographing a worksheet is a realistic way to produce a handout.
+
+**How it works — no new dependency, no new provider:**
+
+1. `pdf-parse`'s own `getScreenshot()` renders each page to a `data:image/png;base64` URL. It renders internally, so **no `node-canvas` or native build toolchain** is needed — which matters on Windows.
+2. `aiService.transcribeImage()` sends the page to **`gpt-4o-mini`**, which is multimodal, over the **existing** OpenAI config. Section 6's "do not introduce a separate AI provider" is respected; no OCR engine is added.
+
+**Cost and speed, measured:** ~3.0–3.6s and ~$0.004 per page; ~25,500 tokens per page. A 16-page scan is roughly **$0.06**. Capped at `MAX_OCR_PAGES = 10` so a 60-page book cannot run away with time or budget.
+
+**Opt-in, not automatic.** Upload does the fast text pass only. If that finds nothing, the handout card shows "No text for questions" and a **"Read with AI"** button. One click transcribes it. Automatic OCR on every upload would risk request timeouts (10 pages ≈ 36s) and spend money without the admin choosing to.
+
+`extraction_method` (`'text'` / `'ocr'`) was added to `module_handouts` via the migration script, and the badge reads "Text ready (AI-read scan)" when OCR produced the text, so the provenance is never hidden.
+
+#### A prompt bug worth recording
+
+The first version of the transcription prompt ended with *"If the page genuinely contains no readable words at all, output exactly: NO_TEXT"*. The model **took that escape hatch on diagram-heavy pages** and returned `NO_TEXT` for a page whose labels it transcribed perfectly once the escape was removed. Offering a model an easy out invites it to take one. The instruction is gone; emptiness is now judged by the caller from the length of what came back, and a separate guard catches a model that describes a page instead of transcribing it.
+
+#### Result: every PDF in this project is now usable
+
+| File | Before | After |
+|---|---|---|
+| ER diagram, 3 pages | 0 chars | **1,884 chars** in 8.6s |
+| Administrator DFD, 1 page | 0 chars | **452 chars** in 3.0s |
+| 5 text-layer PDFs | already fine | unchanged, no OCR spend |
+
+#### Proof that the pipeline produces a real assessment
+
+Run against the project's own largest real handout — **STI `IT2501` "Social Engineering Techniques and Countermeasures"**, 16 pages, 47,368 characters:
+
+```
+provider=openai model=gpt-4o-mini tokens=1268 (4899ms)
+
+1. [Identification]    What is social engineering?
+                       -> The art of manipulating people to divulge sensitive information
+2. [True or False]     Social engineering attacks can be easily detected.  -> false
+3. [Multiple Choice]   Which method is NOT a type of social engineering attack?
+                       A) Impersonation  B) Phishing  C) Tailgating  D) Data Encryption  -> D
+4. [Identification]    What kind of information do attackers typically gather from official websites?
+                       -> Employees' IDs, names, and email addresses
+5. [True or False]     Security policies completely prevent social engineering attacks.  -> false
+```
+
+These are grounded in the handout, not generic. A useful signal: the call deliberately passed `subject: 'Mathematics'` while the handout was about social engineering, and the questions followed **the handout**, not the subject label.
+
+**Caveat — this used the pre-existing generator**, which emits `Multiple Choice` / `True or False` / `Identification` and does not yet carry `source_handout_id`. Phase 5 replaces it with the spec's four types (adding **essay** and **fill-in-the-blank**), per-question source attribution, and `handout_version` caching. What is proven here is that the extraction → generation pipeline yields real, handout-specific questions.
+
+Extraction unit suite re-run after the OCR changes: **20/20 still passing.**
+
 ### Phase 5 — AI Pre-Assessment generation (Sections 5, 6)
 1. Add `generatePreAssessmentFromHandouts()` to `services/aiService.js` — **same `callOpenAI` client, no new provider.**
 2. Prompt: strict JSON only, mixed types (MC / True-False / Fill-in-Blank / Essay), and **each question must carry the `source_handout_id`** it came from. Pass handouts as an id-labelled list so the model can attribute correctly; validate every returned `source_handout_id` against the real ids and drop questions that fail.

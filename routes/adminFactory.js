@@ -1343,14 +1343,24 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Handout not found.');
         return res.redirect(back);
       }
+      // allowOcr: this route is the explicit "read it properly" action, so a PDF
+      // with no text layer gets its pages transcribed by the vision model rather
+      // than being written off. That path costs money and takes a few seconds per
+      // page, which is why it is not run automatically on upload.
       const extraction = await extractHandoutText({
         absolutePath: path.join(__dirname, '..', 'public', handout.file_path),
-        originalName: handout.file_original_name || handout.file_path
+        originalName: handout.file_original_name || handout.file_path,
+        allowOcr: true
       });
       await saveHandoutExtraction(handout.id, extraction);
       if (extraction.usable) {
         await bumpSubjectHandoutVersion(handout.subject_id);
-        setFlash(req, 'success', `Read ${extraction.chars.toLocaleString()} characters. This handout can now be used for question generation.`);
+        const how = extraction.method === 'ocr' ? ' by reading the scanned pages with AI' : '';
+        setFlash(
+          req,
+          'success',
+          `Read ${extraction.chars.toLocaleString()} characters${how}. This handout can now be used for question generation.`
+        );
       } else {
         setFlash(req, 'error', extraction.error || extraction.warning || 'Still no readable text in this file.');
       }

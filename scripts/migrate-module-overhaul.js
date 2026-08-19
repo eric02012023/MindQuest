@@ -191,6 +191,15 @@ async function main() {
     `CREATE INDEX ix_mh_module ON dbo.module_handouts(module_id) WHERE is_archived = 0`
   );
 
+  await step(
+    'module_handouts.extraction_method',
+    `SELECT CASE WHEN OBJECT_ID('dbo.module_handouts','U') IS NOT NULL
+       AND COL_LENGTH('dbo.module_handouts','extraction_method') IS NULL THEN 1 ELSE 0 END AS needed`,
+    // 'text' = read from the file's own text layer; 'ocr' = the file is a scan and
+    // its pages were transcribed by the vision model.
+    `ALTER TABLE dbo.module_handouts ADD extraction_method NVARCHAR(20) NULL`
+  );
+
   // -------------------------------------------------------- tutor_assessments
   console.log('\ntutor_assessments');
   // Pre/Post assessments belong to a SUBJECT and span every module, so module_id

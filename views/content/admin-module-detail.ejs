@@ -48,7 +48,9 @@
             <%# "Not usable" rather than "failed": a scanned PDF is a perfectly
                 valid handout for students to read, it just has no text layer to
                 generate questions from. The reason is spelled out below. %>
-            <% if (handout.extracted_at) { %>
+            <% if (handout.extracted_at && handout.extraction_method === 'ocr') { %>
+              <span class="badge badge-success">Text ready (AI-read scan)</span>
+            <% } else if (handout.extracted_at) { %>
               <span class="badge badge-success">Text ready</span>
             <% } else if (handout.extraction_error) { %>
               <span class="badge badge-warning">No text for questions</span>
@@ -79,7 +81,7 @@
             <% if (currentUser.role === 'admin') { %>
               <% if (!handout.extracted_at) { %>
                 <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/handouts/<%= handout.id %>/extract">
-                  <button class="btn btn-primary btn-sm" type="submit">Re-read Text</button>
+                  <button class="btn btn-primary btn-sm" type="submit">Read with AI</button>
                 </form>
               <% } %>
               <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/handouts/<%= handout.id %>/delete" data-confirm-message="Remove this handout? The Pre-Assessment will regenerate from the remaining handouts.">

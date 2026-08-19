@@ -45,6 +45,13 @@ const MIN_USABLE_CHARS = 120;
 /** Hard cap per handout, to keep the generation prompt within a sane token budget. */
 const MAX_CHARS_PER_HANDOUT = 12000;
 
+/**
+ * Cap on pages sent through OCR. Each page is one vision call — roughly 3.6s and
+ * $0.004 — so an unbounded scan of a 60-page book would be slow and costly.
+ * Ten pages is plenty of source material for generating an assessment.
+ */
+const MAX_OCR_PAGES = 10;
+
 function cleanText(raw) {
   return String(raw || '')
     // pdf-parse v2 inserts "-- 1 of 3 --" page markers; they are not content.
@@ -66,6 +73,57 @@ async function extractPdf(buffer) {
       try { await parser.destroy(); } catch (_e) { /* nothing useful to do */ }
     }
   }
+}
+
+/**
+ * OCR a scanned PDF: render each page to a PNG with pdf-parse's own renderer,
+ * then have the existing OpenAI vision model transcribe it.
+ *
+ * pdf-parse renders internally, so this needs no node-canvas or other native
+ * dependency — which matters on Windows, where those require a build toolchain.
+ *
+ * Pages are transcribed sequentially rather than in parallel: a handout upload is
+ * not latency-critical, and serial calls avoid hitting rate limits.
+ */
+async function ocrPdf(buffer) {
+  const { transcribeImage, isOpenAIConfigured } = require('./aiService');
+  if (!isOpenAIConfigured()) {
+    return { text: '', pages: 0, ocrPages: 0, error: 'AI is not configured, so scanned pages cannot be read.' };
+  }
+
+  const { PDFParse } = require('pdf-parse');
+  const parser = new PDFParse({ data: buffer });
+  let shot;
+  try {
+    shot = await parser.getScreenshot({});
+  } finally {
+    if (typeof parser.destroy === 'function') {
+      try { await parser.destroy(); } catch (_e) { /* nothing useful to do */ }
+    }
+  }
+
+  const pages = (shot.pages || []).slice(0, MAX_OCR_PAGES);
+  if (!pages.length) return { text: '', pages: 0, ocrPages: 0, error: 'The PDF could not be rendered for reading.' };
+
+  const parts = [];
+  let failed = 0;
+  for (const page of pages) {
+    if (!page.dataUrl) { failed++; continue; }
+    try {
+      const { text } = await transcribeImage(page.dataUrl);
+      if (text) parts.push(text);
+    } catch (_error) {
+      failed++;
+    }
+  }
+
+  return {
+    text: parts.join('\n\n'),
+    pages: shot.total || pages.length,
+    ocrPages: pages.length,
+    truncatedPages: (shot.total || pages.length) > MAX_OCR_PAGES ? (shot.total - MAX_OCR_PAGES) : 0,
+    error: parts.length ? null : (failed ? 'Could not read any page of this scan.' : null)
+  };
 }
 
 async function extractDocx(buffer) {
@@ -126,12 +184,15 @@ function decodeXmlEntities(value) {
  * @param {string} [input.absolutePath] path on disk
  * @param {Buffer} [input.buffer] file contents, if already in memory
  * @param {string} input.originalName used to pick the parser
- * @returns {Promise<{text: string, chars: number, pages: number|null, usable: boolean, truncated: boolean, warning: string|null, error: string|null}>}
+ * @param {boolean} [input.allowOcr=false] when a PDF has no text layer, transcribe
+ *        its pages with the OpenAI vision model. Off by default: it costs money
+ *        and takes ~3.6s per page, so it is an explicit admin action.
+ * @returns {Promise<{text: string, chars: number, pages: number|null, method: string, usable: boolean, truncated: boolean, warning: string|null, error: string|null}>}
  */
 async function extractHandoutText(input = {}) {
-  const { absolutePath, buffer, originalName } = input;
+  const { absolutePath, buffer, originalName, allowOcr = false } = input;
   const base = {
-    text: '', chars: 0, pages: null, usable: false, truncated: false, warning: null, error: null
+    text: '', chars: 0, pages: null, method: 'text', usable: false, truncated: false, warning: null, error: null
   };
 
   const ext = path.extname(String(originalName || absolutePath || '')).toLowerCase();
@@ -166,7 +227,36 @@ async function extractHandoutText(input = {}) {
     return { ...base, pages, error: `Could not read the ${ext.replace('.', '').toUpperCase()}: ${error.message}` };
   }
 
-  const cleaned = cleanText(raw);
+  let cleaned = cleanText(raw);
+  let method = 'text';
+  let ocrNote = null;
+
+  // A PDF with no text layer is a scan. Fall back to OCR when the caller allows
+  // it — that path costs money and takes a few seconds per page, so it is
+  // opt-in rather than automatic on every upload.
+  if (cleaned.length < MIN_USABLE_CHARS && ext === '.pdf' && allowOcr) {
+    const ocr = await ocrPdf(data);
+    const ocrText = cleanText(ocr.text);
+    if (ocrText.length >= MIN_USABLE_CHARS) {
+      cleaned = ocrText;
+      method = 'ocr';
+      pages = ocr.pages || pages;
+      ocrNote = `Read with AI from ${ocr.ocrPages} scanned page${ocr.ocrPages === 1 ? '' : 's'}.`
+        + (ocr.truncatedPages ? ` The remaining ${ocr.truncatedPages} page(s) were skipped — ${MAX_OCR_PAGES} pages is the limit.` : '');
+    } else {
+      return {
+        ...base,
+        chars: 0,
+        pages,
+        method: 'ocr',
+        usable: false,
+        error: ocr.error || null,
+        warning: ocr.error
+          ? null
+          : 'Even reading the scan with AI found no words. Students can still open this file, but it cannot generate questions.'
+      };
+    }
+  }
 
   if (cleaned.length < MIN_USABLE_CHARS) {
     return {
@@ -174,24 +264,30 @@ async function extractHandoutText(input = {}) {
       text: cleaned,
       chars: cleaned.length,
       pages,
+      method,
       usable: false,
       warning: ext === '.pdf'
-        ? 'No readable text found — this looks like a scanned PDF. Students can still open it, but it cannot be used to generate assessment questions.'
+        ? 'No readable text found — this looks like a scanned PDF. Use “Read with AI” to transcribe it, or re-upload a PDF exported from a document.'
         : 'No readable text found in this file, so it cannot be used to generate assessment questions.'
     };
   }
 
   const truncated = cleaned.length > MAX_CHARS_PER_HANDOUT;
+  const notes = [];
+  if (ocrNote) notes.push(ocrNote);
+  if (truncated) {
+    notes.push(`Only the first ${MAX_CHARS_PER_HANDOUT.toLocaleString()} of ${cleaned.length.toLocaleString()} characters are used for question generation.`);
+  }
+
   return {
     ...base,
     text: truncated ? cleaned.slice(0, MAX_CHARS_PER_HANDOUT) : cleaned,
     chars: cleaned.length,
     pages,
+    method,
     usable: true,
     truncated,
-    warning: truncated
-      ? `Only the first ${MAX_CHARS_PER_HANDOUT.toLocaleString()} of ${cleaned.length.toLocaleString()} characters are used for question generation.`
-      : null
+    warning: notes.length ? notes.join(' ') : null
   };
 }
 
@@ -200,5 +296,6 @@ module.exports = {
   EXTRACTABLE,
   NOT_EXTRACTABLE,
   MIN_USABLE_CHARS,
-  MAX_CHARS_PER_HANDOUT
+  MAX_CHARS_PER_HANDOUT,
+  MAX_OCR_PAGES
 };
