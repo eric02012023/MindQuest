@@ -64,7 +64,12 @@ const {
   // Tutor module assessments (Phase 7)
   getModuleById,
   getModuleHandouts,
-  getModuleHandoutTexts
+  getModuleHandoutTexts,
+  // Post-Assessment (Phase 8)
+  getPostAssessment,
+  getSubjectPrePostComparison,
+  getSubjectPostReadiness,
+  createPostAssessmentFromPre
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
@@ -308,7 +313,11 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       // Module system (overhaul Phase 6): the modules Admin set up, and how each
       // student did on the generated Pre-Assessment.
       modules: await getSubjectModules(req.params.subjectId),
-      preResults: await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' })
+      preResults: await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' }),
+      // Post-Assessment (Phase 8): who is ready for it, and pre-vs-post once taken.
+      postAssessment: await getPostAssessment(req.params.subjectId),
+      comparisons: await getSubjectPrePostComparison(req.params.subjectId),
+      readiness: await getSubjectPostReadiness(req.params.subjectId)
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -416,6 +425,42 @@ router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', async
     res.redirect(`/tutor/subjects/${subjectId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not publish assessment.');
+    res.redirect(`/tutor/subjects/${subjectId}`);
+  }
+});
+
+// --------------------------------------------------------------------------
+// Create the Post-Assessment (overhaul Phase 8, acceptance item 12)
+//
+// It is a verbatim copy of the subject's Pre-Assessment — same questions, same
+// choices, same answers, same source attribution — so the pre-vs-post comparison
+// measures the student, not a different exam.
+// --------------------------------------------------------------------------
+router.post('/subjects/:subjectId/create-post-assessment', async (req, res, next) => {
+  const subjectId = Number(req.params.subjectId);
+  try {
+    const assigned = await getTutorAssignedSubjects(req.session.user.id);
+    if (!assigned.some((a) => Number(a.subject_id) === subjectId)) {
+      setFlash(req, 'error', 'That subject is not assigned to you.');
+      return res.redirect('/tutor/subjects');
+    }
+
+    // At least one student must have finished the cycle. Opening it for a class
+    // where nobody is done would let a student sit the same questions again
+    // before doing any of the material in between.
+    const readiness = await getSubjectPostReadiness(subjectId);
+    if (!readiness.readyCount) {
+      setFlash(req, 'error', 'No student has finished all the modules and activities yet.');
+      return res.redirect(`/tutor/subjects/${subjectId}`);
+    }
+
+    const result = await createPostAssessmentFromPre(subjectId, req.session.user.id);
+    setFlash(req, result.created ? 'success' : 'info', result.created
+      ? `Post-Assessment created with the same ${result.question_count} items as the Pre-Assessment. ${readiness.readyCount} student(s) can take it now.`
+      : 'This subject already has a Post-Assessment.');
+    res.redirect(`/tutor/subjects/${subjectId}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not create the Post-Assessment.');
     res.redirect(`/tutor/subjects/${subjectId}`);
   }
 });

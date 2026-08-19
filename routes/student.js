@@ -77,6 +77,11 @@ const {
   getWeakAreasForSubmission,
   getModuleHandouts,
   getSubjectHandoutTexts,
+  // Post-Assessment (Phase 8)
+  recordModuleOpen,
+  getStudentSubjectCompletion,
+  getPostAssessment,
+  getSubjectPrePostComparison,
   moduleTargetsStudent
 } = require('../lib/data');
 const { determineLevel } = require('../config/levelThresholds');
@@ -287,6 +292,14 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     const newModules = await getStudentSubjectModules(req.session.user.id, Number(req.params.subjectId));
     const handoutsReady = (await getSubjectHandoutTexts(Number(req.params.subjectId))).length;
 
+    // ---- Post-Assessment (Phase 8) ---------------------------------------
+    // The student sees how close they are to the end of the cycle, and the
+    // pre-vs-post comparison once both attempts exist.
+    const completion = await getStudentSubjectCompletion(req.session.user.id, Number(req.params.subjectId));
+    const postAssessmentOpen = await getPostAssessment(Number(req.params.subjectId));
+    const comparison = (await getSubjectPrePostComparison(Number(req.params.subjectId)))
+      .find((row) => Number(row.student_id) === Number(req.session.user.id)) || null;
+
     const shell = await buildShell(req, {
       pageTitle: assignment.subject_name,
       section: 'subjects',
@@ -297,6 +310,9 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       newModules,
       preAssessmentDone,
       handoutsReady,
+      completion,
+      postAssessmentOpen,
+      comparison,
       activeCycle,
       tutor,
       attendanceLogs,
@@ -1117,6 +1133,102 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Post-Assessment (overhaul Phase 8, spec Section 4b)
+//
+// Gated per student, server-side, on the same completion rule the tutor's button
+// uses: the Pre-Assessment done, every visible module opened, and every published
+// tutor assessment on those modules submitted.
+// ---------------------------------------------------------------------------
+
+/** Shared guard: returns { assignment, assessment } or null after flashing. */
+async function requirePostAssessment(req, subjectId) {
+  const assignment = await requireEnrolment(req, subjectId);
+  if (!assignment) {
+    setFlash(req, 'error', 'Subject not found in your account.');
+    return null;
+  }
+
+  const assessment = await getPostAssessment(subjectId);
+  if (!assessment) {
+    setFlash(req, 'error', 'Your tutor has not opened the Post-Assessment for this subject yet.');
+    return null;
+  }
+
+  const completion = await getStudentSubjectCompletion(req.session.user.id, subjectId);
+  if (!completion.isComplete) {
+    setFlash(req, 'error', 'Finish every module and its assessments first — then the Post-Assessment opens.');
+    return null;
+  }
+  if (completion.postTaken) {
+    setFlash(req, 'info', 'You have already completed the Post-Assessment for this subject.');
+    return { redirectTo: `/student/results/${completion.postSubmission.id}` };
+  }
+
+  return { assignment, assessment };
+}
+
+router.get('/subjects/:subjectId/post-assessment', async (req, res, next) => {
+  const subjectId = Number(req.params.subjectId);
+  try {
+    const gate = await requirePostAssessment(req, subjectId);
+    if (!gate) return res.redirect(`/student/subjects/${subjectId}`);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
+
+    const shell = await buildShell(req, {
+      pageTitle: `Post-Assessment — ${gate.assignment.subject_name}`,
+      section: 'subjects',
+      contentView: '../content/student-pre-assessment',
+      assessment: await getAssessmentWithQuestions(gate.assessment.id),
+      assignment: gate.assignment,
+      subjectId,
+      kind: 'post',
+      startedAt: new Date().toISOString()
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.post('/subjects/:subjectId/post-assessment', async (req, res, next) => {
+  const subjectId = Number(req.params.subjectId);
+  try {
+    const gate = await requirePostAssessment(req, subjectId);
+    if (!gate) return res.redirect(`/student/subjects/${subjectId}`);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
+
+    const answers = [];
+    for (const key of Object.keys(req.body)) {
+      if (!key.startsWith('answer_')) continue;
+      answers.push({ question_id: Number(key.slice(7)), student_answer: req.body[key] });
+    }
+
+    const result = await gradeAndSubmitAssessment({
+      assessment_id: gate.assessment.id,
+      student_id: req.session.user.id,
+      answers,
+      started_at: req.body.started_at || null
+    });
+
+    // The classification on record follows the latest measurement, which is the
+    // point of sitting the same questions again.
+    await setStudentSubjectLevel({
+      student_id: req.session.user.id,
+      subject_id: subjectId,
+      level: result.level,
+      pre_assessment_id: gate.assessment.id,
+      score: Math.round(result.score),
+      total_points: result.totalPoints,
+      percentage: result.percentage
+    }).catch((error) => console.error('[post-assessment] could not save subject level:', error.message));
+
+    setFlash(req, 'success', `Post-Assessment submitted. Your level: ${result.level} (${result.percentage}%).`);
+    res.redirect(`/student/results/${result.submissionId}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not submit the Post-Assessment.');
+    res.redirect(`/student/subjects/${subjectId}`);
+  }
+});
+
 // Result page: percentage, classification, per-item breakdown and weak areas.
 router.get('/results/:submissionId', async (req, res, next) => {
   try {
@@ -1190,6 +1302,12 @@ router.get('/modules/:moduleId', async (req, res, next) => {
       setFlash(req, 'error', 'This module is not assigned to your year level.');
       return res.redirect(`/student/subjects/${mod.subject_id}`);
     }
+
+    // Reaching this line means the student passed every gate and is looking at
+    // the module's handouts, which is what "opened the module" means for the
+    // Post-Assessment completion check (Phase 8). Recorded after the guards, never
+    // before, so a blocked attempt cannot count as progress.
+    await recordModuleOpen(studentId, mod.id, mod.subject_id);
 
     const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
     const handouts = await getModuleHandouts(mod.id);

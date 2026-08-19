@@ -153,6 +153,86 @@
     <% } %>
   </section>
 
+  <%# ------------------------------------------------------------------------
+      Pre vs Post (overhaul Phase 8, acceptance item 12). Read-only here — the
+      tutor opens the Post-Assessment; Admin monitors the outcome.
+      ------------------------------------------------------------------------ %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Pre vs Post</h3>
+      <% if (postAssessment) { %>
+        <span class="badge badge-success">Post-Assessment open</span>
+      <% } else { %>
+        <span class="badge badge-info">Not opened yet</span>
+      <% } %>
+    </div>
+    <p class="table-note">
+      The Post-Assessment reuses the Pre-Assessment's exact items, so the change below is the
+      student's improvement rather than a difference between two papers.
+      <% if (!postAssessment) { %>
+        The assigned tutor opens it once a student has finished all modules and activities.
+      <% } %>
+    </p>
+
+    <% const taken = comparisons.filter((c) => c.pre_submission_id || c.post_submission_id); %>
+    <% if (!taken.length) { %>
+      <p class="empty-state">No student has taken an assessment in this subject yet.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Year Level</th>
+              <th>Pre</th>
+              <th>Post</th>
+              <th>Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% taken.forEach((c) => { %>
+              <tr>
+                <td>
+                  <strong><%= c.first_name %> <%= c.last_name || '' %></strong>
+                  <span class="module-card-meta"><%= c.student_code %></span>
+                </td>
+                <td><%= c.grade_level || c.year_level || '-' %></td>
+                <td>
+                  <% if (c.pre_submission_id) { %>
+                    <a href="<%= basePath %>/results/<%= c.pre_submission_id %>"><%= Number(c.pre_percentage).toFixed(1) %>%</a>
+                    <span class="res-level res-level-<%= String(c.pre_level || '').toLowerCase() %>"><%= c.pre_level %></span>
+                  <% } else { %>
+                    <span class="module-card-meta">not taken</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (c.post_submission_id) { %>
+                    <a href="<%= basePath %>/results/<%= c.post_submission_id %>"><%= Number(c.post_percentage).toFixed(1) %>%</a>
+                    <span class="res-level res-level-<%= String(c.post_level || '').toLowerCase() %>"><%= c.post_level %></span>
+                  <% } else { %>
+                    <span class="module-card-meta">not taken</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (c.delta === null) { %>
+                    <span class="module-card-meta">&mdash;</span>
+                  <% } else { %>
+                    <span class="prepost-delta <%= c.delta > 0 ? 'is-up' : c.delta < 0 ? 'is-down' : '' %>">
+                      <%= c.delta > 0 ? '+' : '' %><%= c.delta %>
+                      <% if (c.level_changed) { %>
+                        <span class="prepost-move"><%= c.pre_level %> &rarr; <%= c.post_level %></span>
+                      <% } %>
+                    </span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
   <section class="panel-card">
     <div class="panel-card-head"><h3>Legacy Modules</h3></div>
     <p class="table-note">Read-only. These were uploaded under the previous module system and are kept so existing student records still resolve. New material belongs in the Modules section above.</p>

@@ -99,6 +99,9 @@ const {
   getSubjectSubmissions,
   getSubmissionWithAnswers,
   getWeakAreasForSubmission,
+  // Post-Assessment (Phase 8)
+  getPostAssessment,
+  getSubjectPrePostComparison,
   saveHandoutExtraction,
   getModuleHandoutById,
   bumpSubjectHandoutVersion,
@@ -1167,7 +1170,11 @@ function createAdminRouter(role) {
         // Module system (overhaul Phase 3): All Subjects -> subject -> Modules
         modules: await getSubjectModules(req.params.id),
         moduleTargetOptions: getModuleTargetOptions(),
-        preResults: await getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' })
+        preResults: await getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' }),
+        // Post-Assessment (overhaul Phase 8): Admin reads the before-and-after,
+        // but the tutor is the one who opens it.
+        postAssessment: await getPostAssessment(req.params.id),
+        comparisons: await getSubjectPrePostComparison(req.params.id)
       });
       res.render('shells/dashboard', shell);
     } catch (error) {

@@ -91,6 +91,81 @@
         <% }) %>
       </div>
     </section>
+
+    <%# --------------------------------------------------------------------
+        Post-Assessment (overhaul Phase 8). Per student: it opens for whoever
+        has finished, rather than making them wait on their classmates. The
+        same rule is enforced server-side on the route.
+        -------------------------------------------------------------------- %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Post-Assessment</h3>
+        <% if (completion.postTaken) { %>
+          <span class="badge badge-success">Done</span>
+        <% } else if (completion.isComplete && postAssessmentOpen) { %>
+          <span class="badge badge-success">Ready</span>
+        <% } else { %>
+          <span class="badge badge-info">
+            <%= completion.modulesOpened %>/<%= completion.modulesTotal %> modules
+            &middot; <%= completion.assessmentsDone %>/<%= completion.assessmentsTotal %> activities
+          </span>
+        <% } %>
+      </div>
+
+      <% if (completion.postTaken) { %>
+        <p class="table-note">
+          You scored <%= Number(completion.postSubmission.percentage).toFixed(1) %>%
+          (<%= completion.postSubmission.level %>).
+          <a href="/student/results/<%= completion.postSubmission.id %>">View your result and topic breakdown</a>
+        </p>
+
+        <% if (comparison && comparison.pre_submission_id) { %>
+          <div class="prepost-compare">
+            <div class="prepost-cell">
+              <span class="prepost-cap">Before</span>
+              <span class="prepost-pct"><%= Number(comparison.pre_percentage).toFixed(1) %>%</span>
+              <span class="res-level res-level-<%= String(comparison.pre_level || '').toLowerCase() %>"><%= comparison.pre_level %></span>
+            </div>
+            <div class="prepost-arrow" aria-hidden="true">&rarr;</div>
+            <div class="prepost-cell">
+              <span class="prepost-cap">After</span>
+              <span class="prepost-pct"><%= Number(comparison.post_percentage).toFixed(1) %>%</span>
+              <span class="res-level res-level-<%= String(comparison.post_level || '').toLowerCase() %>"><%= comparison.post_level %></span>
+            </div>
+            <div class="prepost-delta <%= comparison.delta > 0 ? 'is-up' : comparison.delta < 0 ? 'is-down' : '' %>">
+              <%= comparison.delta > 0 ? '+' : '' %><%= comparison.delta %> points
+              <% if (comparison.level_changed) { %>
+                <span class="prepost-move"><%= comparison.pre_level %> &rarr; <%= comparison.post_level %></span>
+              <% } %>
+            </div>
+          </div>
+        <% } %>
+
+      <% } else if (!postAssessmentOpen) { %>
+        <p class="empty-state">
+          Your tutor opens this once the class material is complete. It is the same set of
+          questions as your Pre-Assessment, so you can see how much you have improved.
+        </p>
+
+      <% } else if (completion.isComplete) { %>
+        <p class="table-note">
+          You have finished every module and activity in this subject. The Post-Assessment
+          asks the same questions as your Pre-Assessment.
+        </p>
+        <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/post-assessment">Start Post-Assessment</a>
+
+      <% } else { %>
+        <p class="table-note">Finish these first and the Post-Assessment opens on its own:</p>
+        <ul class="module-handout-list">
+          <% if (completion.modulesOpened < completion.modulesTotal) { %>
+            <li>Open all your modules (<%= completion.modulesOpened %> of <%= completion.modulesTotal %> so far)</li>
+          <% } %>
+          <% completion.pendingAssessments.forEach((a) => { %>
+            <li><a href="/student/tutor-assessments/<%= a.id %>"><%= a.title %></a></li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </section>
   <% } %>
 
   <% if (typeof activeCycle !== 'undefined' && activeCycle) { %>

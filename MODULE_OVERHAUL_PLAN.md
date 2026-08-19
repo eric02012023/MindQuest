@@ -561,13 +561,49 @@ Phase 6's 35/35 re-run clean afterwards.
 
 **Exit criteria:** checklist items 9, 10, 11 — met.
 
-### Phase 8 — Post-Assessment (Section 4b)
-1. Completion check: all modules in the subject have handouts read/attempted **and** every `tutor_assessment` in the subject has a submission from that student → show "Create Post Assessment" on the tutor's subject page.
-2. On click: clone the subject's pre-assessment rows **verbatim** (same questions, same choices, same correct answers, same source FKs) into a new `assessment_kind='post_assessment'` with `source_pre_assessment_id` set.
-   ⚠️ **Corrected:** an earlier draft of this plan said to "reuse the proven `copy-as-post` logic." It was **never proven** — see bug #16: that route crashed with `MODULE_NOT_FOUND` on every click and has been deleted. Build the clone fresh, and prefer referencing the pre-assessment via `source_pre_assessment_id` over blind row duplication so "exact same items" is guaranteed by structure rather than by a copy that can drift.
-3. Pre-vs-post comparison view (Beginner → Intermediate) for Student, Tutor, and Admin.
+### Phase 8 — Post-Assessment (Section 4b) — ✅ **DONE 2026-08-19**
 
-**Exit criteria:** checklist item 12.
+| # | Change | Status |
+|---|---|---|
+| 1 | **Completion is per student** (decision D5): Pre-Assessment done, every *visible* module opened, every published tutor assessment on those modules submitted | ✅ |
+| 2 | **`student_module_reads`** — a new table, because "opened the module" was not recorded anywhere for the new module system | ✅ |
+| 3 | `POST /tutor/subjects/:id/create-post-assessment` clones the Pre-Assessment **verbatim** — questions, choices, answers, rubrics and source attribution — into `assessment_kind='post_assessment'` with `source_pre_assessment_id` set | ✅ |
+| 4 | Student takes it through the same view as the Pre-Assessment, parameterised by `kind` | ✅ |
+| 5 | **Pre-vs-post comparison** on the Student subject page (before → after with the classification move), the Tutor subject page (per student, with readiness) and the Admin subject page (read-only) | ✅ |
+
+#### Why a new table rather than reusing `module_reads`
+
+`module_reads.resource_id` points at the legacy `subject_resources`, not at `modules`. Writing module ids into it would have silently mixed two id spaces that both look like plain integers — the kind of bug that surfaces months later as a student credited for a module they never opened. `student_module_reads` has its own FK to `modules` and a unique index on `(student_id, module_id)`, so a second open updates a timestamp instead of inflating the count. Migration re-run: `applied 0, skipped 45, failed 0`.
+
+#### The completion rule counts only what the student can actually see
+
+`getStudentSubjectCompletion` measures against `getStudentSubjectModules` — the modules **targeted at this student's year level**. Counting every module in the subject would leave a Kinder 1 student permanently one short because of a Grade 5 module they are not allowed to open, and the Post-Assessment would never unlock. Proven by test: a Grade 5 module is excluded from a Kinder 1 student's total *and* stays blocked to them.
+
+#### The clone is a real copy, not a reference
+
+`source_pre_assessment_id` records provenance, but the questions are **duplicated rows**. A student answering the post version writes `tutor_student_answers` against post question ids, so pointing both assessments at one set of question rows would have made the two attempts indistinguishable in the answer table. Nothing is regenerated — a second AI call would produce different questions and the comparison would measure the exam, not the student.
+
+⚠️ The earlier plan text said to reuse the "proven `copy-as-post` logic". It was **never proven** — audit bug #16: that route crashed with `MODULE_NOT_FOUND` on every click and was deleted in Phase 1. This was written fresh.
+
+#### Verification — 41/41 over real HTTP
+
+One student walked through the entire cycle with throwaway accounts, cleaned up afterwards:
+
+```
+PASS  the Grade 5 module is excluded from a Kinder 1 student's total
+PASS  student cannot open the Post-Assessment yet; tutor cannot create it either
+PASS  opening a module counts once — opening it twice still counts once
+PASS  complete student STILL cannot take it before the tutor opens it
+PASS  same items: text, answers, choices and source attribution all identical
+PASS  pressing Create twice does not make a second one
+PASS  a retake sends them to their result instead
+PASS  comparison shows improvement and the classification moved
+PASS  Student, Tutor and Admin all see the before-and-after
+```
+
+Phases 6 (35/35) and 7 (48/48) re-ran clean afterwards.
+
+**Exit criteria:** checklist item 12 — met.
 
 ### Phase 9 — Consolidation + final sweep
 1. Retire the Gen 1 / Gen 2 code paths per **decision D2**.
@@ -639,7 +675,7 @@ Ang tanong: **per-student** ba o **per-class**?
 - **Per-student** — lalabas ang button kapag *itong* student ay natapos na lahat
 - **Per-class** — lalabas lang kapag **lahat** ng student sa subject ay tapos na
 
-**Naka-assume ang Phase 8 sa per-student.**
+**Naka-assume ang Phase 8 sa per-student.** — ✅ **Ito ang ipinatupad (2026-08-19).** Bawat estudyante ang binibilang: bumubukas ang Post-Assessment para sa sinumang tapos na, hindi hinihintay ang buong klase. Nakikita pa rin ng tutor kung ilan ang handa bago niya ito buksan.
 
 ---
 

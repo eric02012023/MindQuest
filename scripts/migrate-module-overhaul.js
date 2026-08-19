@@ -474,6 +474,37 @@ async function main() {
        CHECK (level IN ('Beginner','Intermediate','Advance'))`
   );
 
+  // ------------------------------------------------ Phase 8: module opens
+  //
+  // "All modules completed" (spec Section 4b) needs a record that the student
+  // actually opened each module. The existing module_reads table cannot serve:
+  // its resource_id points at the legacy subject_resources, not at `modules`.
+  // Writing module ids into it would silently mix two id spaces.
+  console.log('\nPhase 8 — module opens');
+  await step(
+    'table student_module_reads',
+    `SELECT CASE WHEN OBJECT_ID('dbo.student_module_reads', 'U') IS NULL THEN 1 ELSE 0 END AS needed`,
+    `CREATE TABLE dbo.student_module_reads (
+       id INT IDENTITY(1,1) PRIMARY KEY,
+       student_id INT NOT NULL,
+       module_id INT NOT NULL,
+       subject_id INT NOT NULL,
+       first_opened_at DATETIME2 NOT NULL CONSTRAINT df_smr_first DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+       last_opened_at DATETIME2 NOT NULL CONSTRAINT df_smr_last DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+       CONSTRAINT fk_smr_student FOREIGN KEY (student_id) REFERENCES dbo.users(id),
+       CONSTRAINT fk_smr_module FOREIGN KEY (module_id) REFERENCES dbo.modules(id) ON DELETE CASCADE
+     )`
+  );
+  await step(
+    'unique index on (student_id, module_id)',
+    `SELECT CASE WHEN NOT EXISTS (
+       SELECT 1 FROM sys.indexes WHERE name = 'uq_smr_student_module' AND object_id = OBJECT_ID('dbo.student_module_reads')
+     ) THEN 1 ELSE 0 END AS needed`,
+    // One row per student per module: the guard against a double-open creating a
+    // second row and inflating the completion count.
+    `CREATE UNIQUE INDEX uq_smr_student_module ON dbo.student_module_reads (student_id, module_id)`
+  );
+
   console.log('');
   console.log(`applied: ${results.applied}   skipped: ${results.skipped}   failed: ${results.failed}`);
   if (results.failed) {

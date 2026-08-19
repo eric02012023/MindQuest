@@ -121,6 +121,106 @@
     <% } %>
   </section>
 
+  <%# ------------------------------------------------------------------------
+      Post-Assessment (overhaul Phase 8, acceptance item 12).
+
+      Readiness is per student (decision D5): the table shows who has finished,
+      and the Post-Assessment opens for those students individually rather than
+      making the whole class wait on its slowest member.
+      ------------------------------------------------------------------------ %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Post-Assessment</h3>
+      <% if (postAssessment) { %>
+        <span class="badge badge-success">Open</span>
+      <% } else { %>
+        <span class="badge badge-info"><%= readiness.readyCount %> of <%= readiness.total %> ready</span>
+      <% } %>
+    </div>
+
+    <% if (postAssessment) { %>
+      <p class="table-note">
+        Created from the Pre-Assessment with the same <%= postAssessment.item_count %> items.
+        Each student sees it once they have opened every module and submitted every activity.
+      </p>
+    <% } else { %>
+      <p class="table-note">
+        This copies the subject's Pre-Assessment exactly — same questions, same answers — so the
+        before-and-after comparison measures the student, not a different exam.
+        It becomes available once a student has finished all their modules and activities.
+      </p>
+      <form method="post" action="/tutor/subjects/<%= subjectId %>/create-post-assessment"
+            data-confirm-message="Create the Post-Assessment for this subject? It reuses the Pre-Assessment's items exactly.">
+        <button type="submit" class="btn btn-primary" <%= readiness.readyCount ? '' : 'disabled' %>>
+          Create Post Assessment
+        </button>
+      </form>
+      <% if (!readiness.readyCount) { %>
+        <p class="empty-state">No student has finished everything yet.</p>
+      <% } %>
+    <% } %>
+
+    <% if (readiness.students.length) { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Modules</th>
+              <th>Activities</th>
+              <th>Pre</th>
+              <th>Post</th>
+              <th>Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% readiness.students.forEach((r) => { %>
+              <% const cmp = comparisons.find((c) => Number(c.student_id) === Number(r.id)) || {}; %>
+              <tr>
+                <td>
+                  <strong><%= r.first_name %> <%= r.last_name || '' %></strong>
+                  <span class="module-card-meta"><%= r.student_code %></span>
+                </td>
+                <td><%= r.modulesOpened %>/<%= r.modulesTotal %></td>
+                <td><%= r.assessmentsDone %>/<%= r.assessmentsTotal %></td>
+                <td>
+                  <% if (cmp.pre_submission_id) { %>
+                    <a href="/tutor/results/<%= cmp.pre_submission_id %>"><%= Number(cmp.pre_percentage).toFixed(1) %>%</a>
+                    <span class="res-level res-level-<%= String(cmp.pre_level || '').toLowerCase() %>"><%= cmp.pre_level %></span>
+                  <% } else { %>
+                    <span class="module-card-meta">not taken</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (cmp.post_submission_id) { %>
+                    <a href="/tutor/results/<%= cmp.post_submission_id %>"><%= Number(cmp.post_percentage).toFixed(1) %>%</a>
+                    <span class="res-level res-level-<%= String(cmp.post_level || '').toLowerCase() %>"><%= cmp.post_level %></span>
+                  <% } else if (r.isComplete) { %>
+                    <span class="module-card-meta"><%= postAssessment ? 'ready to take' : 'ready' %></span>
+                  <% } else { %>
+                    <span class="module-card-meta">&mdash;</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (cmp.delta === null || cmp.delta === undefined) { %>
+                    <span class="module-card-meta">&mdash;</span>
+                  <% } else { %>
+                    <span class="prepost-delta <%= cmp.delta > 0 ? 'is-up' : cmp.delta < 0 ? 'is-down' : '' %>">
+                      <%= cmp.delta > 0 ? '+' : '' %><%= cmp.delta %>
+                      <% if (cmp.level_changed) { %>
+                        <span class="prepost-move"><%= cmp.pre_level %> &rarr; <%= cmp.post_level %></span>
+                      <% } %>
+                    </span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
   <section class="panel-card">
     <div class="panel-card-head"><h3>Legacy Modules</h3></div>
     <p class="table-note">Uploaded under the previous module system. Kept so existing student records still resolve; new material lives in the Modules section above.</p>

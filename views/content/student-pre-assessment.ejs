@@ -1,11 +1,20 @@
 <%# File: views/content/student-pre-assessment.ejs
-    Purpose: The Pre-Assessment a student must finish before any module or handout
-    in the subject unlocks. Questions are AI-generated from the subject's handouts,
-    so the four types below are rendered generically rather than per-subject. %>
+    Purpose: The subject-level assessment a student sits — the Pre-Assessment that
+    unlocks the modules, and the Post-Assessment that closes the cycle with the
+    exact same items. Questions are AI-generated from the subject's handouts, so
+    the four types below are rendered generically rather than per-subject.
+
+    One view for both (Phase 8): the Post-Assessment IS the Pre-Assessment's items,
+    so rendering it through a second template would be two copies of the same form
+    waiting to drift. `kind` is 'pre' or 'post'. %>
+<%
+  const isPost = (typeof kind !== 'undefined') && kind === 'post';
+  const heading = isPost ? 'Post-Assessment' : 'Pre-Assessment';
+%>
 <section class="page-stack">
   <div class="toolbar-card split">
     <div>
-      <h2>Pre-Assessment</h2>
+      <h2><%= heading %></h2>
       <p class="pa-subtitle"><%= assignment.subject_name %></p>
     </div>
     <span class="badge badge-info"><%= assessment.questions.length %> item<%= assessment.questions.length === 1 ? '' : 's' %></span>
@@ -14,12 +23,17 @@
   <section class="panel-card pa-intro">
     <p><%= assessment.instructions || 'Answer every item as best you can.' %></p>
     <p class="pa-note">
-      This is not graded for marks. It shows your tutor what you already know, so the lessons
-      can focus on what you need. Your modules unlock as soon as you submit.
+      <% if (isPost) { %>
+        These are the same questions you answered at the start. Answering them again
+        shows you and your tutor exactly how much you have improved.
+      <% } else { %>
+        This is not graded for marks. It shows your tutor what you already know, so the lessons
+        can focus on what you need. Your modules unlock as soon as you submit.
+      <% } %>
     </p>
   </section>
 
-  <form method="post" action="/student/subjects/<%= subjectId %>/pre-assessment" class="pa-form" data-confirm-message="Submit your Pre-Assessment? You cannot change your answers afterwards.">
+  <form method="post" action="/student/subjects/<%= subjectId %>/<%= isPost ? 'post-assessment' : 'pre-assessment' %>" class="pa-form" data-confirm-message="Submit your <%= heading %>? You cannot change your answers afterwards.">
     <input type="hidden" name="assessment_id" value="<%= assessment.id %>" />
     <input type="hidden" name="started_at" value="<%= startedAt %>" />
 
@@ -70,7 +84,7 @@
     <% }) %>
 
     <div class="pa-submit-row">
-      <button type="submit" class="btn btn-primary">Submit Pre-Assessment</button>
+      <button type="submit" class="btn btn-primary">Submit <%= heading %></button>
     </div>
   </form>
 </section>
