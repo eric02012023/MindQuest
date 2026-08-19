@@ -18,10 +18,114 @@
     </div>
   </section>
 
+  <%# ------------------------------------------------------------------------
+      Modules (overhaul Phase 6). Read-only for the tutor: Admin owns module
+      creation and handouts. Shown here so the tutor can see what material the
+      student has, and which year levels each module is restricted to.
+      ------------------------------------------------------------------------ %>
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Admin Modules</h3></div>
+    <div class="panel-card-head">
+      <h3>Modules</h3>
+      <span class="badge badge-info"><%= modules.length %> module<%= modules.length === 1 ? '' : 's' %></span>
+    </div>
+    <p class="table-note">Set up by Admin. You can build assessments on top of these modules.</p>
+
+    <% if (!modules.length) { %>
+      <p class="empty-state">Admin has not added a module to this subject yet.</p>
+    <% } %>
+
+    <div class="module-grid">
+      <% modules.forEach((mod) => { %>
+        <article class="module-card">
+          <div class="module-card-head">
+            <span class="module-number">Module <%= mod.order_number %></span>
+            <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>">
+              <%= mod.handout_count %> handout<%= Number(mod.handout_count) === 1 ? '' : 's' %>
+            </span>
+          </div>
+          <h4><%= mod.title %></h4>
+          <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
+
+          <div class="module-card-targets">
+            <strong>Visible to</strong>
+            <div class="target-chips">
+              <% if (!mod.target_year_levels.length) { %>
+                <span class="target-chip target-chip-all">All year levels</span>
+              <% } else { %>
+                <% mod.target_year_levels.forEach((lvl) => { %>
+                  <span class="target-chip"><%= lvl %></span>
+                <% }) %>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="module-card-foot">
+            <% if (Number(mod.assessment_count)) { %>
+              <span class="module-card-meta"><%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %></span>
+            <% } %>
+            <a class="btn btn-secondary btn-sm" href="/tutor/modules/<%= mod.id %>/create-assessment">Create Assessment</a>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
+  <%# ------------------------------------------------------------------------
+      Pre-Assessment results + weak areas (overhaul Phase 6, acceptance item 8).
+      ------------------------------------------------------------------------ %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Pre-Assessment Results</h3>
+      <span class="badge badge-info"><%= preResults.length %> submission<%= preResults.length === 1 ? '' : 's' %></span>
+    </div>
+    <p class="table-note">How each student scored on the Pre-Assessment generated from this subject's handouts. Open a row to see which module and handout the missed items came from.</p>
+
+    <% if (!preResults.length) { %>
+      <p class="empty-state">No student has taken the Pre-Assessment for this subject yet.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Year Level</th>
+              <th>Score</th>
+              <th>Percentage</th>
+              <th>Classification</th>
+              <th>Submitted</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% preResults.forEach((r) => { %>
+              <tr>
+                <td>
+                  <strong><%= r.first_name %> <%= r.last_name || '' %></strong>
+                  <span class="module-card-meta"><%= r.student_code %></span>
+                </td>
+                <td><%= r.grade_level || r.year_level || '-' %></td>
+                <td><%= Number(r.score) %>/<%= Number(r.total_points) %></td>
+                <td><%= Number(r.percentage).toFixed(1) %>%</td>
+                <td>
+                  <span class="res-level res-level-<%= (r.level || 'beginner').toLowerCase() %>"><%= r.level %></span>
+                </td>
+                <td><%= formatDateTime(r.submitted_at) %></td>
+                <td>
+                  <a class="btn btn-secondary btn-sm" href="/tutor/results/<%= r.id %>">View Breakdown</a>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Legacy Modules</h3></div>
+    <p class="table-note">Uploaded under the previous module system. Kept so existing student records still resolve; new material lives in the Modules section above.</p>
     <div class="list-stack">
-      <% if (!adminResources.length) { %><p class="empty-state">No posted module yet.</p><% } %>
+      <% if (!adminResources.length) { %><p class="empty-state">No legacy module.</p><% } %>
       <% adminResources.forEach((resource) => { %>
         <article class="list-card">
           <div>

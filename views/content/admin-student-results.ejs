@@ -19,6 +19,7 @@
               <th>Score</th>
               <th>Percentage</th>
               <th>Submitted</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -28,7 +29,7 @@
                 <td><%= r.assessment_title %></td>
                 <td><%= r.subject_name %></td>
                 <td><span class="level-badge <%= (r.level || '').toLowerCase() %>"><%= r.level %></span></td>
-                <td><span class="pill <%= r.purpose === 'pre' ? 'partial' : r.purpose === 'post' ? 'paid' : '' %>"><%= r.purpose %></span></td>
+                <td><span class="pill <%= r.purpose === 'pre' ? 'partial' : r.purpose === 'post' ? 'paid' : '' %>"><%= r.purpose || r.assessment_kind %></span></td>
                 <td><%= r.score %>/<%= r.total_points %></td>
                 <td>
                   <div class="result-bar-container">
@@ -37,6 +38,9 @@
                   </div>
                 </td>
                 <td><%= new Date(r.submitted_at).toLocaleDateString() %></td>
+                <td>
+                  <a class="btn btn-secondary btn-sm" href="<%= basePath %>/results/<%= r.id %>">View Breakdown</a>
+                </td>
               </tr>
             <% }) %>
           </tbody>

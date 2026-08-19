@@ -96,6 +96,9 @@ const {
   getModuleHandouts,
   addModuleHandouts,
   archiveModuleHandout,
+  getSubjectSubmissions,
+  getSubmissionWithAnswers,
+  getWeakAreasForSubmission,
   saveHandoutExtraction,
   getModuleHandoutById,
   bumpSubjectHandoutVersion,
@@ -1163,7 +1166,8 @@ function createAdminRouter(role) {
         subjectAssessments: await getSubjectAssessments(req.params.id),
         // Module system (overhaul Phase 3): All Subjects -> subject -> Modules
         modules: await getSubjectModules(req.params.id),
-        moduleTargetOptions: getModuleTargetOptions()
+        moduleTargetOptions: getModuleTargetOptions(),
+        preResults: await getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' })
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -1934,6 +1938,28 @@ function createAdminRouter(role) {
         section: 'assessment_monitoring',
         contentView: '../content/admin-assessment-monitoring',
         assessments
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  // Result breakdown with weak areas (overhaul Phase 6, acceptance item 8).
+  // Admin and Admin Assistant both read results; neither can alter them.
+  router.get('/results/:submissionId', async (req, res, next) => {
+    try {
+      const submission = await getSubmissionWithAnswers(Number(req.params.submissionId));
+      if (!submission) {
+        setFlash(req, 'error', 'Result not found.');
+        return res.redirect(`${basePath}/student-results`);
+      }
+      const weakAreas = await getWeakAreasForSubmission(submission.id);
+      const shell = await buildShellData(req, {
+        pageTitle: `${submission.first_name} ${submission.last_name || ''} - ${submission.title}`,
+        section: 'student_results',
+        contentView: '../content/student-assessment-breakdown',
+        submission,
+        weakAreas,
+        viewerRole: 'admin'
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }

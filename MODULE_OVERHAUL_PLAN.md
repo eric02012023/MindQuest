@@ -444,15 +444,61 @@ Real output after the fixes — a clean 4/4 split across two modules, all four t
 
 **Exit criteria:** checklist item 4 met; opening the subject repeatedly makes exactly one OpenAI call per handout version.
 
-### Phase 6 — Student: lock, take, grade, classify, weak areas (Section 5)
-1. **Server-side lock:** a reusable `requirePreAssessment(studentId, subjectId)` guard on `GET /student/modules/:id`, on the handout download route, and on tutor-assessment routes. Not UI hiding — checklist item 5 explicitly requires this.
-2. **Year-level filter:** reuse `moduleTargetsStudent()` from Phase 3 — already built and tested. **Do NOT use `normalizeYearLevelKey` / `getStudentYearLevelKeys` here**: they collapse `Kinder 1` and `Grade 5` to the same key and would leak modules across year levels. See the Phase 3 note above.
-3. **Grading:** port the `submitAssessment` engine (`lib/data.js:2964`) onto `tutor_assessment_submissions` / `tutor_student_answers`, and **fix bugs #4/#5/#6 in the port** — persist per-question `is_correct`, `points_earned`, and `ai_feedback`; do the AI call before opening the transaction.
-4. **Classification:** 0–50 Beginner / 51–80 Intermediate / 81–100 Advance. `config/levelThresholds.js` + `determineLevel` already exist — verify the boundaries match these exact bands before reusing.
-5. **Result page:** %, classification, right/wrong per item. `views/content/student-assessment-result.ejs` already renders exactly this shape once #4 is fixed.
-6. **Weak areas:** join incorrect answers → `source_module_id` / `source_handout_id` → "Module 2 — Handout: Fractions". Surface on the student result page and on the Tutor/Admin views.
+### Phase 6 — Student: lock, take, grade, classify, weak areas (Section 5) — ✅ **DONE 2026-08-19**
 
-**Exit criteria:** checklist items 5, 6, 7, 8.
+Shipped in two parts: **part 1** the student path (grading engine, lock, result page), **part 2** the Tutor/Admin views of the same results.
+
+#### Part 1 — student
+
+| # | Change | Status |
+|---|---|---|
+| 1 | **Server-side lock** on `GET /student/modules/:id` **and** on `/uploads/handouts` — the file URL resolves back to its handout and takes the same three checks (enrolment → Pre-Assessment → year level), so typing a URL does not bypass it. Closes the `TODO(Phase 6)` left in `server.js` by Phase 0 | ✅ |
+| 2 | **Year-level filter** via `moduleTargetsStudent()` from Phase 3 — exact labels, never the collapsed key | ✅ |
+| 3 | **`gradeAndSubmitAssessment()`** replaces `submitTutorAssessment`; AI essay grading runs with no transaction open, and per-question `is_correct` / `points_earned` / `ai_feedback` are persisted (audit bugs #4/#5/#6) | ✅ |
+| 4 | **Classification** via `determineLevel()` on the spec bands 0–50 / 51–80 / 81–100 → `Advance` | ✅ |
+| 5 | **Result page** `student-assessment-breakdown.ejs` — %, classification against the three bands, correct/incorrect counts, item-by-item with feedback and source attribution. Takes a `viewerRole` so staff reuse it | ✅ |
+| 6 | **Weak areas** group wrong answers by `source_module_id` / `source_handout_id`; a question whose handout was since deleted falls into an "Unattributed" bucket so the totals still add up | ✅ |
+
+**Audit finding #18 — the grading engine never worked.** `submitTutorAssessment()` did `const questions = await connection.query(...)` without destructuring, but `withTransaction`'s `connection.query` returns `[rows]`. The loop therefore iterated once over the rows *array*, every `q.id` / `q.points` was `undefined`, and `totalPoints` came out `NaN`. Every other call site in the file destructures; this one did not. It went unnoticed because these tables were empty and the path had never been exercised.
+
+**Schema this part needed:** `tutor_assessment_submissions` + `level` (checked), `started_at`, `time_spent_seconds`, and a unique index on `(assessment_id, student_id)` so a double submit is stopped by the DB rather than by a read-then-insert two concurrent requests could both pass. `tutor_student_answers` + `ai_feedback`, and `points_earned` → `DECIMAL(6,2)` because essay grading gives fractional credit.
+
+**A bug the first test run caught — the lock rejected students from their own modules.** The year-level check was handed `req.session.user`, but neither the login query nor `setUserLocals` selects `year_level` / `grade_level`, so the session copy has neither. `moduleTargetsStudent()` found no year level and matched nothing. Dangerous shape: the subject page *listed* the module correctly (it loads the student via `getUserById()`), so only clicking through failed — the UI and the guard disagreed and the guard was the strict one, which reads as "the lock works" rather than "the lock is wrong". Both guards now load the student with `getUserById()`.
+
+**Student end-to-end: 44/44** over real HTTP with a real student session — the lock blocks modules and handouts before the Pre-Assessment (403 on a direct handout URL), all four types render and grade, a wrong fill-blank and a blank essay are marked incorrect, AI feedback is persisted, 60% classifies as Intermediate, weak-area totals trace to a named handout, and afterwards the Kinder 1 module opens (200) while the Grade 5 module stays blocked (302/403) for the same student.
+
+#### Part 2 — Tutor / Admin (acceptance item 8)
+
+| # | Change | Status |
+|---|---|---|
+| 1 | `GET /admin/results/:submissionId` and `GET /tutor/results/:submissionId` render the **same** breakdown view with `viewerRole` set — one page, three audiences, no third copy of the weak-area logic | ✅ |
+| 2 | The tutor route checks the submission's subject against `getTutorAssignedSubjects()`; a result from another subject redirects with a flash | ✅ |
+| 3 | Admin/Assistant **subject page** gains a Pre-Assessment Results table (student, year level, score, %, classification, link to the breakdown) | ✅ |
+| 4 | Tutor **subject page** gains a read-only Modules grid (Admin owns creation) plus the same results table; its legacy panel is relabelled "Legacy Modules" | ✅ |
+| 5 | `.target-chip*` / `.module-card-meta` appended to `tutor/subjects.css` — the tutor page reuses the Admin module card, and this project keeps one CSS file per page rather than a shared sheet | ✅ |
+
+**A separate route, not a reuse of `/tutor/student-results/:id`.** That older review INNER JOINs `modules` and filters on `ta.tutor_id` — both NULL for a generated Pre-Assessment, so it can never return one.
+
+**The same two joins were hiding Pre-Assessments from the Student Results lists.** `getStudentResultsAdmin()` and `getTutorStudentResults()` had the identical `JOIN modules` + `tutor_id` shape, so every generated Pre-Assessment was silently missing from the page staff actually navigate to. The module join is now `LEFT`, the tutor query also accepts the subjects that tutor is assigned to (matching the route guard), and `level` now comes from the submission — the student's classification, which is what that column always claimed to show — instead of the module's difficulty. Both lists link each row to the new breakdown.
+
+#### Verification — 35/35 over real HTTP
+
+Seeded one module, two handouts, a four-type Pre-Assessment attributed to them, and a graded submission answered **right on handout A and wrong on handout B**; then deleted everything (`modules 0, handouts 0, assessments 0, submissions 0, answers 0` afterwards).
+
+```
+PASS  syllables.pdf flagged "Needs review"; letters.pdf not flagged
+PASS  admin + assistant + tutor subject pages show the results table
+PASS  admin breakdown names the weak handout, uses staff wording not "Your answer"
+PASS  Pre-Assessment now appears in both Student Results lists (was hidden)
+PASS  tutor list does NOT leak a submission from an unassigned subject
+PASS  tutor CANNOT open a result from an unassigned subject
+PASS  unknown submission id redirects with a flash, no 500
+PASS  anonymous request redirects to login
+```
+
+Staff logins in that run used **throwaway accounts created and deleted by the test**, so no real user's password was touched; the tutor/student OTP was skipped with a temporary `trusted_devices` row rather than by sending mail. This also closes the Phase 3 gap: the assistant-admin restriction is now proven by a real assistant session, not assumed.
+
+**Exit criteria:** checklist items 5, 6, 7, 8 — met.
 
 ### Phase 7 — Tutor: module assessments (Section 4a)
 1. `/tutor/modules` — list assigned subjects → modules, showing each module's target year levels (read-only).

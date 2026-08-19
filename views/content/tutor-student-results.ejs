@@ -29,7 +29,7 @@
                 <td><%= r.assessment_title %></td>
                 <td><%= r.subject_name %></td>
                 <td><span class="level-badge <%= (r.level || '').toLowerCase() %>"><%= r.level %></span></td>
-                <td><span class="pill <%= r.purpose === 'pre' ? 'partial' : r.purpose === 'post' ? 'paid' : '' %>"><%= r.purpose %></span></td>
+                <td><span class="pill <%= r.purpose === 'pre' ? 'partial' : r.purpose === 'post' ? 'paid' : '' %>"><%= r.purpose || r.assessment_kind %></span></td>
                 <td><%= r.score %>/<%= r.total_points %></td>
                 <td>
                   <div class="result-bar-container">
@@ -39,7 +39,10 @@
                 </td>
                 <td><%= new Date(r.submitted_at).toLocaleDateString() %></td>
                 <td>
-                  <a class="btn btn-secondary btn-sm" href="/tutor/student-results/<%= r.id %>">View Details</a>
+                  <%# The breakdown route works for every submission kind; the older
+                      /tutor/student-results/:id review INNER JOINs modules and so
+                      cannot render a subject-level Pre-Assessment. %>
+                  <a class="btn btn-secondary btn-sm" href="/tutor/results/<%= r.id %>">View Breakdown</a>
                 </td>
               </tr>
             <% }) %>

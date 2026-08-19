@@ -1289,3 +1289,28 @@ body {
 .res-feedback { color: var(--primary-900, #0b3b53); }
 .res-explain { color: var(--text-soft, #5f7084); }
 .res-source { font-size: 12px; color: var(--text-soft, #5f7084); font-style: italic; }
+
+/* Module target chips (overhaul Phase 6) — the tutor's read-only Modules panel
+   reuses the Admin module card, which needs these. Values mirror
+   public/css/admin/subjects.css; this project keeps one CSS file per page
+   instead of a shared sheet, so the rules are repeated rather than imported. */
+.module-card-targets { display: grid; gap: 6px; }
+.module-card-targets > strong {
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-soft, #5f7084);
+}
+.target-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.target-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-muted, #f4f8fb);
+  color: var(--primary-900, #0b3b53);
+  border: 1px solid var(--border, #dfe7ee);
+}
+.target-chip-all { background: rgba(22, 168, 200, .12); color: #0a6f8a; }
+.module-card-meta { font-size: 12px; color: var(--text-soft, #5f7084); }
+.module-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 6px; }

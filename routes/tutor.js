@@ -55,7 +55,12 @@ const {
   createTutorAssessment,
   getTutorAssessmentsByModule,
   getTutorAssessmentById,
-  getTutorStudentResults
+  getTutorStudentResults,
+  // Module -> Handout -> Assessment overhaul (Phase 6)
+  getSubjectModules,
+  getSubjectSubmissions,
+  getSubmissionWithAnswers,
+  getWeakAreasForSubmission
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 
@@ -293,7 +298,11 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       contentView: '../content/tutor-subject-detail',
       subjectId: req.params.subjectId,
       students,
-      adminResources
+      adminResources,
+      // Module system (overhaul Phase 6): the modules Admin set up, and how each
+      // student did on the generated Pre-Assessment.
+      modules: await getSubjectModules(req.params.subjectId),
+      preResults: await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' })
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -1348,6 +1357,42 @@ router.get('/student-results/:id', async (req, res, next) => {
       contentView: '../content/tutor-result-detail',
       submission,
       answers
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+
+// --------------------------------------------------------------------------
+// Result breakdown with weak areas (overhaul Phase 6, acceptance item 8)
+//
+// A separate route from /student-results/:id because that one INNER JOINs modules
+// and filters on ta.tutor_id — both NULL for a generated Pre-Assessment, so it can
+// never return one.
+// --------------------------------------------------------------------------
+router.get('/results/:submissionId', async (req, res, next) => {
+  try {
+    const submission = await getSubmissionWithAnswers(Number(req.params.submissionId));
+    if (!submission) {
+      setFlash(req, 'error', 'Result not found.');
+      return res.redirect('/tutor/student-results');
+    }
+
+    // A tutor may only read results for subjects they are assigned to.
+    const assigned = await getTutorAssignedSubjects(req.session.user.id);
+    if (!assigned.some((a) => Number(a.subject_id) === Number(submission.subject_id))) {
+      setFlash(req, 'error', 'That result belongs to a subject you are not assigned to.');
+      return res.redirect('/tutor/student-results');
+    }
+
+    const weakAreas = await getWeakAreasForSubmission(submission.id);
+    const shell = await buildShell(req, {
+      pageTitle: `${submission.first_name} ${submission.last_name || ''} - ${submission.title}`,
+      section: 'student_results',
+      contentView: '../content/student-assessment-breakdown',
+      submission,
+      weakAreas,
+      viewerRole: 'tutor'
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
