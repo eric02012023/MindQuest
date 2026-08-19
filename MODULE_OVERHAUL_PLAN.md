@@ -662,7 +662,7 @@ Ang `student_learning_cycles`, `assessment_requests` (kung saan ang student ang 
 - **(a) Tanggalin lahat** — pinakamalinis, kaunti na lang ang aalagaan
 - **(b) Pabayaan itong tumakbo kasama ng bago** — pero ito mismo ang duplication na sanhi ng stale-data bugs na nakita natin
 
-**Rekomendasyon ko: (a) tanggalin.** — ✅ **Ito ang sinunod (2026-08-19).** Tanging ang *code* ang tinanggal; **walang table na ni-drop**. Nababalik ang code sa ; ang na-drop na table, hindi na.
+**Rekomendasyon ko: (a) tanggalin.** — ✅ **Ito ang sinunod (2026-08-19).** Tanging ang *code* ang tinanggal; **walang table na ni-drop**. Nababalik ang code sa `git revert`; ang na-drop na table, hindi na.
 
 ❗ Sabihin mo agad kung kailangan mo ang alinman dito para sa **defense** mo — kapag natanggal na, mahirap nang ibalik.
 
