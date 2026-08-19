@@ -279,14 +279,53 @@ DB and disk left clean afterwards; no server errors.
 
 **Exit criteria:** checklist items 2 and 3 — met.
 
-### Phase 4 — Handout text extraction (Section 6)
-New `services/extractionService.js`:
-- `.pdf` → `pdf-parse`; `.docx` → `mammoth.extractRawText`; `.pptx` → `jszip` over `ppt/slides/slideN.xml`, strip `<a:t>` text nodes; `.txt` → read directly.
-- Add `officeparser` (or promote `jszip` to a direct dependency in `package.json` — right now it is only a transitive dep of `mammoth` and could vanish on an install).
-- Cache into `module_handouts.extracted_text` on upload; never re-extract on read.
-- Truncate/chunk to fit the model budget (current prompt caps at 3000 chars — raise deliberately and note token cost).
+### Phase 4 — Handout text extraction — ✅ **DONE 2026-08-19**
 
-**Exit criteria:** one PDF, one DOCX, one PPTX upload each produce non-empty `extracted_text`.
+New **`services/extractionService.js`**. `.pdf` → `pdf-parse`, `.docx` → `mammoth`, `.pptx` → `jszip`, `.txt` → direct read. `jszip` **promoted to a direct dependency** in `package.json` — it was only a transitive dep of `mammoth`, so an `npm install` could have removed it and broken PPTX silently.
+
+**`pdf-parse` here is v2.4.5, not v1** — the API is `new PDFParse({ data: buffer })` then `await parser.getText()` → `{ text, pages, total }`, and the parser is `destroy()`ed in a `finally`. v1 examples found online will not work.
+
+#### The finding that shaped this phase
+
+Running extraction over the project's own existing uploads:
+
+```
+3 of 8 existing PDFs have NO text layer at all (0 usable chars) — they are scans.
+The other 5 yield 14,937 - 47,368 chars.
+```
+
+Handing an empty string to the model would make it **invent questions unrelated to the handout**. So extraction reports `usable: false` with a human-readable reason instead, `extracted_at` is left NULL, and **no empty text is stored**. `getSubjectHandoutTexts()` — the query that feeds generation — only returns rows with `extracted_at IS NOT NULL`, so unusable handouts are structurally excluded rather than filtered by convention.
+
+#### Design points
+
+- **Inline, not a background job.** Extraction is local CPU: ~200ms per PDF, measured 1,761ms for a two-PDF upload over HTTP. The admin gets immediate feedback on which files can produce questions.
+- **Cached once** on `module_handouts.extracted_text`; generation never re-parses a file.
+- **12,000-char budget per handout**, with the true source length kept in the response so the admin is told "only the first 12,000 of 47,368 characters are used". The old prompt capped at 3,000.
+- **Never throws.** One bad file must not fail an upload of ten. Failures return `{ usable: false, error }`.
+- **Formats accepted but not extractable** (`.doc`, `.ppt`, `.xls`, `.xlsx`) stay downloadable as study material and get an actionable message ("Re-save as .docx to use it for assessment generation").
+- **Retry action** (`POST /modules/:id/handouts/:handoutId/extract`). Without it a handout whose first parse failed would be permanently unusable with no recovery short of delete-and-reupload.
+- **PPTX ordering:** slides are sorted numerically, so `slide10` comes after `slide2` rather than between `slide1` and `slide2`. `slideLayouts/` is ignored — only real slides are read.
+- **XML entities** are decoded with `&amp;` **last**, so `&amp;lt;` stays the literal text `&lt;` instead of being double-decoded into `<`.
+
+#### Verification
+
+**Unit, 20/20** — including PPTX slide ordering, layout exclusion, entity decoding and the no-double-decode case, DOCX, TXT, the real scanned PDF from this project, legacy `.doc`, missing file, corrupt PDF, corrupt PPTX, and truncation.
+
+**End-to-end over HTTP, 21/21** — uploading a text PDF and a scanned PDF in one submit:
+
+```
+PASS  upload 302 in 1761ms (extraction ran inline)
+PASS  12000 chars cached in the DB; respects the prompt budget
+PASS  scanned PDF: extracted_at NULL, reason recorded, no empty text stored
+PASS  generation source query returns 1 of 2, excluding the scan
+PASS  carries module_id + handout_id for weak-area attribution
+PASS  module page shows Text ready / No text for questions / char count / Re-read
+PASS  retry on the scan stays honest (does not pretend to succeed)
+```
+
+One wording fix after the run: the badge said "Extract failed" for a scanned PDF. That is inaccurate — the file is a perfectly valid handout, it just has no text layer. Now "No text for questions", with the reason below it.
+
+**Exit criteria:** met, and extended — PPTX and the unusable-file path are covered too.
 
 ### Phase 5 — AI Pre-Assessment generation (Sections 5, 6)
 1. Add `generatePreAssessmentFromHandouts()` to `services/aiService.js` — **same `callOpenAI` client, no new provider.**

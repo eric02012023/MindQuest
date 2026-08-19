@@ -45,12 +45,15 @@
         <article class="handout-card">
           <div class="handout-card-head">
             <span class="handout-ext"><%= ((handout.file_original_name || '').split('.').pop() || 'file').toUpperCase() %></span>
+            <%# "Not usable" rather than "failed": a scanned PDF is a perfectly
+                valid handout for students to read, it just has no text layer to
+                generate questions from. The reason is spelled out below. %>
             <% if (handout.extracted_at) { %>
               <span class="badge badge-success">Text ready</span>
             <% } else if (handout.extraction_error) { %>
-              <span class="badge badge-danger">Extract failed</span>
+              <span class="badge badge-warning">No text for questions</span>
             <% } else { %>
-              <span class="badge badge-warning">Not extracted</span>
+              <span class="badge badge-info">Not read yet</span>
             <% } %>
           </div>
 
@@ -59,6 +62,11 @@
             <%= handout.file_size_bytes ? (Math.round(Number(handout.file_size_bytes) / 1024) + ' KB') : 'size unknown' %>
             · <%= formatDate(handout.created_at) %>
           </p>
+          <% if (handout.extracted_at) { %>
+            <p class="handout-meta">
+              <%= (handout.extracted_text || '').length.toLocaleString() %> characters feed question generation
+            </p>
+          <% } %>
           <% if (handout.first_name) { %>
             <p class="handout-meta">Uploaded by <%= handout.first_name %> <%= handout.last_name || '' %></p>
           <% } %>
@@ -69,6 +77,11 @@
           <div class="handout-card-foot">
             <a class="btn btn-secondary btn-sm" href="<%= handout.file_path %>" target="_blank" rel="noopener">Open</a>
             <% if (currentUser.role === 'admin') { %>
+              <% if (!handout.extracted_at) { %>
+                <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/handouts/<%= handout.id %>/extract">
+                  <button class="btn btn-primary btn-sm" type="submit">Re-read Text</button>
+                </form>
+              <% } %>
               <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/handouts/<%= handout.id %>/delete" data-confirm-message="Remove this handout? The Pre-Assessment will regenerate from the remaining handouts.">
                 <button class="btn btn-secondary btn-sm" type="submit">Remove</button>
               </form>

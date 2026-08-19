@@ -11,7 +11,9 @@ const {
   authorize,
   setFlash
 } = require('../middleware/auth');
+const path = require('path');
 const { createUploader, describeUploadRejection } = require('../lib/uploads');
+const { extractHandoutText } = require('../services/extractionService');
 const {
   getBranches,
   addBranch,
@@ -94,6 +96,8 @@ const {
   getModuleHandouts,
   addModuleHandouts,
   archiveModuleHandout,
+  saveHandoutExtraction,
+  getModuleHandoutById,
   bumpSubjectHandoutVersion,
   getModuleTargetOptions,
   deleteModule,
@@ -1292,15 +1296,67 @@ function createAdminRouter(role) {
         req.session.user.id
       );
 
+      // Extract text now, once, so generation never re-parses the file. This is
+      // local CPU work (~200ms per PDF), so it stays inline and the admin gets
+      // immediate feedback on which files can actually produce questions.
+      let unusable = 0;
+      for (let i = 0; i < result.ids.length; i++) {
+        const file = files[i];
+        const extraction = await extractHandoutText({
+          absolutePath: file.path,
+          originalName: file.originalname
+        });
+        await saveHandoutExtraction(result.ids[i], extraction);
+        if (!extraction.usable) unusable++;
+      }
+
       const rejected = describeUploadRejection(req);
-      setFlash(
-        req,
-        rejected ? 'info' : 'success',
-        `${result.inserted} handout${result.inserted === 1 ? '' : 's'} uploaded.${rejected ? ' ' + rejected : ''}`
-      );
+      const parts = [`${result.inserted} handout${result.inserted === 1 ? '' : 's'} uploaded.`];
+      if (unusable) {
+        parts.push(
+          `${unusable} of them had no readable text (often a scanned PDF) and cannot be used to generate questions — see the handout cards below.`
+        );
+      }
+      if (rejected) parts.push(rejected);
+      setFlash(req, unusable || rejected ? 'info' : 'success', parts.join(' '));
       res.redirect(back);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not upload the handouts.');
+      res.redirect(back);
+    }
+  });
+
+  /**
+   * Retry extraction for one handout. Without this, a handout whose first parse
+   * failed would stay permanently unusable with no way to recover short of
+   * deleting and re-uploading it.
+   */
+  router.post('/modules/:id/handouts/:handoutId/extract', async (req, res, next) => {
+    const back = `${basePath}/modules/${req.params.id}`;
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can re-read handouts.');
+        return res.redirect(back);
+      }
+      const handout = await getModuleHandoutById(Number(req.params.handoutId));
+      if (!handout) {
+        setFlash(req, 'error', 'Handout not found.');
+        return res.redirect(back);
+      }
+      const extraction = await extractHandoutText({
+        absolutePath: path.join(__dirname, '..', 'public', handout.file_path),
+        originalName: handout.file_original_name || handout.file_path
+      });
+      await saveHandoutExtraction(handout.id, extraction);
+      if (extraction.usable) {
+        await bumpSubjectHandoutVersion(handout.subject_id);
+        setFlash(req, 'success', `Read ${extraction.chars.toLocaleString()} characters. This handout can now be used for question generation.`);
+      } else {
+        setFlash(req, 'error', extraction.error || extraction.warning || 'Still no readable text in this file.');
+      }
+      res.redirect(back);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not re-read the handout.');
       res.redirect(back);
     }
   });
