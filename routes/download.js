@@ -1,8 +1,7 @@
 const express = require('express');
-const { resolveUploadPath } = require('../lib/paths');
+const { getFile } = require('../lib/storage');
 const router = express.Router();
 const path = require('path');
-const fs = require('fs');
 const { setFlash } = require('../middleware/auth');
 
 // Require authentication for all downloads
@@ -48,17 +47,19 @@ router.get('/module/:id', async (req, res) => {
       }
     }
 
-    // If physical file exists, serve it
+    // If the stored file is still there, serve it
     if (resource.file_path) {
       const cleaned = resource.file_path.replace(/\\/g, '/');
-      const absolutePath = resolveUploadPath(cleaned);
-      if (fs.existsSync(absolutePath)) {
-        const ext = path.extname(absolutePath).toLowerCase();
+      const stored = await getFile(cleaned);
+      if (stored) {
+        const ext = path.extname(cleaned).toLowerCase();
         if (ext === '.pdf') {
           res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', 'inline; filename="' + path.basename(absolutePath) + '"');
+          res.setHeader('Content-Disposition', 'inline; filename="' + path.basename(cleaned) + '"');
+        } else {
+          res.type(ext || 'bin');
         }
-        return res.sendFile(absolutePath);
+        return res.send(stored.buffer);
       }
     }
 
@@ -147,7 +148,7 @@ ${resource.content_text}
 });
 
 // Download/view file by path
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const fileUrlPath = req.query.path;
     if (!fileUrlPath) {
@@ -163,42 +164,45 @@ router.get('/', (req, res, next) => {
       return res.redirect('back');
     }
 
-    const absolutePath = resolveUploadPath(cleaned);
+    const stored = await getFile(cleaned);
 
-    if (!fs.existsSync(absolutePath)) {
-      // File is missing — try to find the resource in DB and redirect to /download/module/:id
-      (async () => {
-        try {
-          const { query: dbQuery } = require('../config/db');
-          const rows = await dbQuery('SELECT id, content_text FROM subject_resources WHERE file_path = ?', [cleaned]);
-          if (rows.length && rows[0].content_text) {
-            return res.redirect(`/download/module/${rows[0].id}`);
-          }
-          setFlash(req, 'error', 'File not found or has been removed from the server.');
-          return res.redirect('back');
-        } catch (dbErr) {
-          console.error('[Download DB Fallback Error]', dbErr);
-          setFlash(req, 'error', 'File not found or has been removed from the server.');
-          return res.redirect('back');
+    if (!stored) {
+      // File is missing — fall back to the cached text held in the database.
+      // This mattered even on disk; it matters more now, because a row can
+      // outlive its object in remote storage just as easily.
+      try {
+        const { query: dbQuery } = require('../config/db');
+        const rows = await dbQuery('SELECT id, content_text FROM subject_resources WHERE file_path = ?', [cleaned]);
+        if (rows.length && rows[0].content_text) {
+          return res.redirect(`/download/module/${rows[0].id}`);
         }
-      })();
-      return;
+      } catch (dbErr) {
+        console.error('[Download DB Fallback Error]', dbErr);
+      }
+      setFlash(req, 'error', 'File not found or has been removed from the server.');
+      return res.redirect('back');
     }
 
-    const ext = path.extname(absolutePath).toLowerCase();
+    const ext = path.extname(cleaned).toLowerCase();
+    const baseName = path.basename(cleaned);
+
     if (ext === '.html' || ext === '.htm') {
-      return res.sendFile(absolutePath);
+      res.type('html');
+      return res.send(stored.buffer);
     }
     if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'].includes(ext)) {
-      return res.sendFile(absolutePath);
+      res.type(ext);
+      return res.send(stored.buffer);
     }
     if (ext === '.pdf') {
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'inline; filename="' + path.basename(absolutePath) + '"');
-      return res.sendFile(absolutePath);
+      res.setHeader('Content-Disposition', 'inline; filename="' + baseName + '"');
+      return res.send(stored.buffer);
     }
 
-    res.download(absolutePath);
+    res.setHeader('Content-Disposition', 'attachment; filename="' + baseName + '"');
+    res.type(ext || 'bin');
+    return res.send(stored.buffer);
   } catch (err) {
     console.error('[Download Route Error]', err);
     try {

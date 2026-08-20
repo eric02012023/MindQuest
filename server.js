@@ -24,6 +24,7 @@ const studentRoutes = require('./routes/student');
 const tutorRoutes = require('./routes/tutor');
 const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName } = require('./lib/utils');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
+const { getFile, usingSupabase, describeBackend } = require('./lib/storage');
 
 const app = express();
 const server = http.createServer(app);
@@ -58,11 +59,69 @@ app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
+
+/**
+ * Serve one upload folder, whichever backend holds it.
+ *
+ * On the local backend this stays express.static — it streams, honours range
+ * requests and conditional GETs, and there is no reason to give that up. When
+ * uploads live in Supabase there is no local file to hand to express.static, so
+ * the object is fetched with the service key and written to the response.
+ *
+ * The guards in front of a mount are unchanged either way: this only replaces
+ * *how the bytes are read*, never *who is allowed to read them*. A miss calls
+ * next() rather than 404ing directly, so a mount stays transparent to whatever
+ * is behind it — the same thing express.static does.
+ *
+ * @param {string} folder            upload folder name, e.g. "handouts"
+ * @param {(res, ext) => void} [decorate]  extra headers, by file extension
+ * @param {string} [cacheControl]    Cache-Control for the remote backend
+ */
+function serveUploadFolder(folder, { decorate, cacheControl } = {}) {
+  if (!usingSupabase) {
+    return express.static(uploadFolder(folder), {
+      setHeaders(res, filePath) {
+        // The cache policy is applied on both backends, or a handout served off
+        // local disk would still be cacheable while the same file from Supabase
+        // is not — the two must not differ on something the lock depends on.
+        if (cacheControl) res.setHeader('Cache-Control', cacheControl);
+        if (decorate) decorate(res, path.extname(filePath).toLowerCase());
+      }
+    });
+  }
+
+  return async function serveFromStorage(req, res, next) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    try {
+      const object = await getFile(`/uploads/${folder}${req.path}`);
+      if (!object) return next();
+
+      const ext = path.extname(req.path).toLowerCase();
+      if (object.contentType) res.setHeader('Content-Type', object.contentType);
+      else res.type(ext || 'bin');
+      res.setHeader('Content-Length', object.buffer.length);
+      if (cacheControl) res.setHeader('Cache-Control', cacheControl);
+      if (decorate) decorate(res, ext);
+
+      if (req.method === 'HEAD') return res.end();
+      return res.send(object.buffer);
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
 // Public upload folders stay mounted here, ahead of the session middleware, so
 // avatars and chat attachments are served without a session lookup or a DB round
 // trip per file. Study-material folders are NOT served here — they are mounted
 // behind an access check below app.use(setUserLocals).
-app.use('/uploads/profiles', express.static(uploadFolder('profiles')));
+//
+// Uploaded names carry a uuid and are never rewritten, so an avatar can be cached
+// hard: without this, every page view would cost a round trip to Supabase for
+// each face on it.
+app.use('/uploads/profiles', serveUploadFolder('profiles', {
+  cacheControl: 'public, max-age=31536000, immutable'
+}));
 
 // Chat attachments are the one public folder that accepts arbitrary file types,
 // and they are served from this app's own origin — so anything the browser will
@@ -73,10 +132,10 @@ app.use('/uploads/profiles', express.static(uploadFolder('profiles')));
 //   nosniff             stops the browser guessing a dangerous type from content
 //   Content-Disposition forces a download for anything that is not a plain image,
 //                       so it can never render in this origin
-app.use('/uploads/messages', express.static(uploadFolder('messages'), {
-  setHeaders(res, filePath) {
+app.use('/uploads/messages', serveUploadFolder('messages', {
+  cacheControl: 'private, max-age=86400',
+  decorate(res, ext) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    const ext = path.extname(filePath).toLowerCase();
     const inlineSafe = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'];
     if (!inlineSafe.includes(ext)) {
       res.setHeader('Content-Disposition', 'attachment');
@@ -174,7 +233,10 @@ for (const folder of PROTECTED_UPLOAD_DIRS) {
   app.use(
     `/uploads/${folder}`,
     ...guards,
-    express.static(uploadFolder(folder))
+    // no-store, not the immutable policy the public folders get: a cached handout
+    // would outlive the Pre-Assessment lock in the browser and on any proxy in
+    // between, which is exactly what these guards exist to prevent.
+    serveUploadFolder(folder, { cacheControl: 'private, no-store' })
   );
 }
 
@@ -311,12 +373,15 @@ async function start() {
       console.log(`- Network: http://${localIP}:${port}`);
       console.log(`Connected database: ${dbName}`);
       // Say where uploads land. On a host with an ephemeral filesystem (Render),
-      // seeing the in-repo default here means every uploaded handout will be lost
-      // on the next deploy — set UPLOAD_ROOT to a mounted disk.
-      console.log(
-        `Uploads directory: ${UPLOADS_ROOT}`
-        + (usingExternalUploadRoot ? ' (persistent, from UPLOAD_ROOT)' : ' (inside the app folder)')
-      );
+      // "inside the app folder" means every uploaded handout will be lost on the
+      // next restart — configure Supabase, or a disk with UPLOAD_ROOT.
+      console.log(`Uploads: ${describeBackend()}`);
+      if (!usingSupabase) {
+        console.log(
+          `  directory: ${UPLOADS_ROOT}`
+          + (usingExternalUploadRoot ? ' (persistent, from UPLOAD_ROOT)' : ' (inside the app folder)')
+        );
+      }
 
       // Say plainly whether the AI key arrived. .env files are not deployed — on a
       // host, these come from the dashboard — and a missing key does not crash

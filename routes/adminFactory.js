@@ -15,7 +15,7 @@ const path = require('path');
 const { createUploader, describeUploadRejection } = require('../lib/uploads');
 const { extractHandoutText } = require('../services/extractionService');
 const { schedulePreAssessmentWarmup, getWarmupState } = require('../lib/preAssessmentWarmup');
-const { resolveUploadPath } = require('../lib/paths');
+const { getFile, deleteFile } = require('../lib/storage');
 const {
   getBranches,
   addBranch,
@@ -1323,8 +1323,10 @@ function createAdminRouter(role) {
       let unusable = 0;
       for (let i = 0; i < result.ids.length; i++) {
         const file = files[i];
+        // The bytes are still in hand from the upload, so this reads them
+        // directly instead of fetching the object back out of storage.
         const extraction = await extractHandoutText({
-          absolutePath: file.path,
+          buffer: file.buffer,
           originalName: file.originalname
         });
         await saveHandoutExtraction(result.ids[i], extraction);
@@ -1373,8 +1375,12 @@ function createAdminRouter(role) {
       // with no text layer gets its pages transcribed by the vision model rather
       // than being written off. That path costs money and takes a few seconds per
       // page, which is why it is not run automatically on upload.
+      // Fetch the stored object rather than a disk path: on the remote backend
+      // there is no local file. A missing object leaves buffer null, which
+      // extractHandoutText already reports as "could not be found on the server".
+      const stored = await getFile(handout.file_path);
       const extraction = await extractHandoutText({
-        absolutePath: resolveUploadPath(handout.file_path),
+        buffer: stored ? stored.buffer : null,
         originalName: handout.file_original_name || handout.file_path,
         allowOcr: true
       });
@@ -1428,21 +1434,21 @@ function createAdminRouter(role) {
 
       let contentText = '';
       if (req.file) {
-        const fs = require('fs');
-        const absolutePath = resolveUploadPath('/uploads/resources/' + req.file.filename);
-        
+        // Read the bytes the upload already produced. The file may live in remote
+        // storage now, where there is no path for a parser to open.
+        const dataBuffer = req.file.buffer;
+
         try {
           if (req.file.mimetype === 'application/pdf') {
             const pdfParse = require('pdf-parse');
-            const dataBuffer = fs.readFileSync(absolutePath);
             const data = await pdfParse(dataBuffer);
             contentText = data.text;
           } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
             const mammoth = require('mammoth');
-            const result = await mammoth.extractRawText({ path: absolutePath });
+            const result = await mammoth.extractRawText({ buffer: dataBuffer });
             contentText = result.value;
           } else if (req.file.mimetype === 'text/plain') {
-            contentText = fs.readFileSync(absolutePath, 'utf8');
+            contentText = dataBuffer.toString('utf8');
           }
         } catch (parseError) {
           console.error('[AI File Parser] Error extracting text:', parseError);
@@ -1925,14 +1931,13 @@ function createAdminRouter(role) {
       let filesDeleted = 0;
       for (const mod of aiModules) {
         if (mod.file_path) {
-          const filePath = resolveUploadPath(mod.file_path);
           try {
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-              filesDeleted++;
-            }
+            // deleteFile is a no-op for an object that is already gone, so the
+            // count reflects rows processed, not disk hits.
+            await deleteFile(mod.file_path);
+            filesDeleted++;
           } catch (e) {
-            console.error('[Cleanup] Failed to delete file:', filePath, e.message);
+            console.error('[Cleanup] Failed to delete file:', mod.file_path, e.message);
           }
         }
       }

@@ -34,7 +34,8 @@ The migration is safe to re-run: every step is guarded, so a second run reports 
 | `AI_MODEL` | `gpt-4o-mini` |
 | `SESSION_SECRET` | Login sessions. The code has a hardcoded fallback — set a real one |
 | `SMTP_*` / `RESEND_API_KEY` | OTP email at login |
-| **`UPLOAD_ROOT`** | See below — without it, uploaded handouts are lost on every deploy |
+| **`SUPABASE_URL` + `SUPABASE_SERVICE_KEY`** | See below — without persistent storage, uploaded handouts are lost on every restart |
+| `UPLOAD_ROOT` | The alternative to Supabase, for a paid instance with a disk attached |
 
 `PORT` is provided by Render and the server already reads it.
 
@@ -46,21 +47,68 @@ Render rebuilds the application's filesystem from the repository on **every depl
 
 This affects handouts, profile photos, chat attachments and AI-generated modules.
 
-**The fix:** attach a Render disk and point `UPLOAD_ROOT` at its mount path.
+**On the free instance this is worse than it sounds.** Free instances also spin down after a period of inactivity and rebuild when the next visitor arrives, so uploads are lost on ordinary quiet days, not only when someone deploys.
+
+There are two ways out. The application supports both, and picks between them from the environment alone.
+
+### Option A — a Render disk (needs a paid instance)
+
+Free instances **cannot mount a persistent disk**; the dashboard lists disks alongside SSH and one-off jobs as paid-only features. On Starter ($7/month) or above:
 
 1. Render dashboard → your service → **Disks** → *Add Disk*
 2. Mount path: `/var/data` · size: 1 GB is plenty to start
 3. Add the environment variable `UPLOAD_ROOT=/var/data/uploads`
 4. Redeploy
 
-Nothing else changes: `lib/paths.js` is the only place that decides where uploads live, and stored paths in the database stay in their public form (`/uploads/handouts/x.pdf`) either way. The startup log tells you which is in effect:
+Note the mount path is `/var/data` while `UPLOAD_ROOT` is `/var/data/uploads` — the application creates that subfolder itself. Disk size can be raised later but never lowered.
+
+### Option B — Supabase Storage (works on the free instance)
+
+Uploads go to a **private** Supabase bucket instead of local disk, so nothing depends on this container's filesystem surviving.
+
+1. Create a project at supabase.com
+2. **Storage** → *New bucket* → name it `mindquest-uploads` → leave it **Private**
+3. **Project Settings → API** → copy the project URL and the `service_role` key
+4. Set on Render:
+
+| Variable | Value |
+|---|---|
+| `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | the **service_role** key, not the anon key |
+| `SUPABASE_BUCKET` | `mindquest-uploads` (optional; this is the default) |
+
+**The bucket must stay private.** Handouts are gated behind the Pre-Assessment lock, and a public bucket URL would walk straight past it — the hole closed in Phase 0. Files are fetched server-side with the service key and streamed to the browser only after the guards have run; the key never reaches a client. The `service_role` key bypasses row-level security, so it belongs only in Render's dashboard — never in a committed file.
+
+### Which one is running
+
+Setting `SUPABASE_URL` **and** `SUPABASE_SERVICE_KEY` selects Supabase; leaving either unset keeps everything on local disk, which is what local development uses. Removing the two variables rolls the change back with no code change and no data migration — stored paths in the database stay in their public form (`/uploads/handouts/x.pdf`) under both backends.
+
+The startup log states which is in effect:
 
 ```
-Uploads directory: /var/data/uploads (persistent, from UPLOAD_ROOT)
-Uploads directory: /opt/render/project/src/public/uploads (inside the app folder)
+Uploads: Supabase Storage, bucket "mindquest-uploads" (survives restarts)
+
+Uploads: local filesystem (lost on every restart if the disk is not persistent)
+  directory: /var/data/uploads (persistent, from UPLOAD_ROOT)
+
+Uploads: local filesystem (lost on every restart if the disk is not persistent)
+  directory: /opt/render/project/src/public/uploads (inside the app folder)
 ```
 
-The second line means files are being written somewhere that will be erased.
+The third form means files are being written somewhere that will be erased.
+
+---
+
+## ⚠️ The database has a 30 MB ceiling
+
+The Somee database is capped at **30 MB**, and about 8 MB of that was already in use before any module existed. This is why uploaded files are **not** stored in the database: a single PDF could exhaust the remaining headroom.
+
+It still bounds what else can grow there. Extracted handout text, generated questions and every student's submitted answers all live in that 30 MB. Worth watching before a real cohort starts using the system:
+
+```sql
+SELECT name, size * 8 / 1024 AS used_mb, max_size * 8 / 1024 AS cap_mb
+FROM sys.database_files;
+```
 
 ---
 
