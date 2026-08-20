@@ -60,41 +60,56 @@
   </section>
 
   <% if (currentUser.role === 'admin') { %>
+    <%# The dialog is split into head / body / foot so the year-level picker
+        scrolls on its own instead of pushing the title and the submit button
+        past the edge of the screen. %>
     <div class="global-modal" id="add-module">
-      <div class="global-modal-card">
-        <button type="button" class="modal-close" data-close-modal>&times;</button>
-        <h3>Add Module</h3>
-        <p class="empty-state">It is numbered automatically as the next module in this subject.</p>
-        <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/modules" class="stack-form">
-          <label>Module Title
-            <input type="text" name="title" placeholder="e.g. Fractions and Decimals" />
-          </label>
-          <label>Description
-            <textarea name="description" rows="3" placeholder="What this module covers"></textarea>
-          </label>
+      <div class="global-modal-card modal-shell">
+        <header class="modal-head">
+          <div>
+            <h3>Add Module</h3>
+            <p class="modal-sub">Numbered automatically as the next module in this subject.</p>
+          </div>
+          <button type="button" class="modal-close" data-close-modal aria-label="Close">&times;</button>
+        </header>
 
-          <fieldset class="target-fieldset">
-            <legend>Visible to which year level(s)?</legend>
-            <p class="empty-state">Leave everything unchecked to show this module to all year levels.</p>
-            <% moduleTargetOptions.forEach((opt) => { %>
-              <div class="target-group">
-                <label class="target-option target-option-group">
-                  <input type="checkbox" name="target_year_levels" value="<%= opt.group %>" />
-                  <span><%= opt.group %></span>
-                </label>
-                <div class="target-group-grades">
-                  <% opt.grades.forEach((grade) => { %>
-                    <label class="target-option">
-                      <input type="checkbox" name="target_year_levels" value="<%= grade %>" />
-                      <span><%= grade %></span>
-                    </label>
-                  <% }) %>
+        <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/modules" class="stack-form modal-form">
+          <div class="modal-body">
+            <label class="field">
+              <span class="field-label">Module Title</span>
+              <input type="text" name="title" placeholder="e.g. Fractions and Decimals" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Description</span>
+              <textarea name="description" rows="3" placeholder="What this module covers"></textarea>
+            </label>
+
+            <fieldset class="target-fieldset">
+              <legend>Visible to which year level(s)?</legend>
+              <p class="field-hint">Leave everything unchecked to show this module to all year levels.</p>
+              <% moduleTargetOptions.forEach((opt) => { %>
+                <div class="target-group">
+                  <label class="target-option target-option-group">
+                    <input type="checkbox" name="target_year_levels" value="<%= opt.group %>" />
+                    <span><%= opt.group %></span>
+                  </label>
+                  <div class="target-group-grades">
+                    <% opt.grades.forEach((grade) => { %>
+                      <label class="target-option">
+                        <input type="checkbox" name="target_year_levels" value="<%= grade %>" />
+                        <span><%= grade %></span>
+                      </label>
+                    <% }) %>
+                  </div>
                 </div>
-              </div>
-            <% }) %>
-          </fieldset>
+              <% }) %>
+            </fieldset>
+          </div>
 
-          <button type="submit" class="btn btn-primary">Add Module</button>
+          <footer class="modal-foot">
+            <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
+            <button type="submit" class="btn btn-primary">Add Module</button>
+          </footer>
         </form>
       </div>
     </div>

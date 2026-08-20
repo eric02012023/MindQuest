@@ -42,4 +42,9 @@
   <% styles.forEach((stylePath) => { %>
     <link rel="stylesheet" href="<%= stylePath %>" />
   <% }); %>
+
+  <!-- Shared UI polish. Loaded last so it can correct the shared components
+       (forms, checkboxes, modals, buttons, tables) that every page copies,
+       while each page CSS above still owns its own look. -->
+  <link rel="stylesheet" href="/css/ui-polish.css" />
 </head>

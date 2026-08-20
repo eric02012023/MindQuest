@@ -104,12 +104,18 @@
     <div class="panel-card-head"><h3>Module Settings</h3></div>
     <% if (currentUser.role === 'admin') { %>
       <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/update" class="stack-form">
-        <label>Module Title<input type="text" name="title" value="<%= mod.title %>" required /></label>
-        <label>Description<textarea name="description" rows="3"><%= mod.description || '' %></textarea></label>
+        <label class="field">
+          <span class="field-label">Module Title</span>
+          <input type="text" name="title" value="<%= mod.title %>" required />
+        </label>
+        <label class="field">
+          <span class="field-label">Description</span>
+          <textarea name="description" rows="3"><%= mod.description || '' %></textarea>
+        </label>
 
         <fieldset class="target-fieldset">
           <legend>Visible to which year level(s)?</legend>
-          <p class="empty-state">Leave everything unchecked to show this module to all year levels.</p>
+          <p class="field-hint">Leave everything unchecked to show this module to all year levels.</p>
           <% moduleTargetOptions.forEach((opt) => { %>
             <div class="target-group">
               <label class="target-option target-option-group">

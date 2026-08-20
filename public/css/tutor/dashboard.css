@@ -26,10 +26,7 @@
   --gradient-dark: linear-gradient(145deg, #0f2a0d, #144a18 48%, #20bd1d 100%);
 }
 
-* {
-  box-sizing: border-box;
-  margin-bottom: 5px;
-}
+* { box-sizing: border-box; }
 
 html {
   scroll-behavior: smooth;
