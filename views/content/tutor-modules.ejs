@@ -3,14 +3,9 @@
     subject, its numbered modules, and the year levels each module is restricted
     to. Read-only: Admin owns modules and handouts; the tutor builds assessments
     on top of them. %>
+<%# The page header card that used to sit here repeated the title already in the
+    topbar and described what the subject panels below already show. %>
 <section class="page-stack">
-  <div class="toolbar-card split">
-    <div>
-      <h2>Modules &amp; Assessments</h2>
-      <p class="res-subtitle">The modules Admin set up for your subjects. Open one to see its handouts and build an assessment.</p>
-    </div>
-  </div>
-
   <% if (!(subjectsWithModules || []).length) { %>
     <section class="panel-card">
       <p class="empty-state">You have no assigned subjects yet.</p>

@@ -1316,3 +1316,73 @@ body {
 @media (max-width: 640px) {
   .choice-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Checking one module assessment's answers
+   ========================================================================== */
+
+.tutor-submissions .toolbar-card.split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.tutor-submissions .toolbar-card h2 { margin: 0; }
+.tutor-submissions .res-subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+
+.ts-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 14px;
+}
+
+.ts-tile {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #f7fbf8);
+}
+
+.ts-tile-lead {
+  color: #fff;
+  border-color: transparent;
+  background: var(--gradient-dark);
+}
+
+.ts-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.ts-tile-lead .ts-tile-label,
+.ts-tile-lead .ts-tile-foot { color: rgba(255, 255, 255, .78); }
+
+.ts-tile-value {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.ts-tile-foot { font-size: 12px; color: var(--text-soft); }
+
+.ts-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+/* A student who has not answered yet is still a row worth reading, just quieter. */
+.ts-row-pending { background: rgba(210, 138, 31, .05); }
+.ts-row-pending td { color: var(--text-soft); }
+.ts-row-pending strong { color: var(--text); }

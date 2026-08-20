@@ -339,14 +339,23 @@ Make questions perfectly appropriate for the student's education level.`;
 // Pre/Post assessment generation from handouts (overhaul Phase 5)
 // ============================================================================
 
-/** The four types the spec requires, as stored in tutor_assessment_questions. */
-const SPEC_QUESTION_TYPES = ['multiple_choice', 'true_false', 'fill_blank', 'essay'];
+/**
+ * The types an assessment may be written in, as stored in
+ * tutor_assessment_questions.
+ *
+ * Fill in the blank was dropped: it is graded by exact string match, so a correct
+ * answer phrased differently — or spelled differently — is marked wrong, and the
+ * generator kept producing open questions with no blank in them. Existing
+ * fill_blank rows already in the database still render and still grade; nothing
+ * new is written in that type.
+ */
+const SPEC_QUESTION_TYPES = ['multiple_choice', 'true_false', 'essay'];
 const { PRE_ASSESSMENT_ITEM_COUNT } = require('../config/assessmentDefaults');
 
 /**
  * How many of each type to ask for, given a total item count.
- * The spec requires a Pre-Assessment to contain a mix of all four, so every type
- * gets at least one slot once there is room for it.
+ * A mixed assessment contains all three, so every type gets at least one slot
+ * once there is room for it.
  */
 function planQuestionMix(itemCount, requestedType = 'mixed') {
   const total = Math.max(1, Number(itemCount) || 10);
@@ -355,19 +364,20 @@ function planQuestionMix(itemCount, requestedType = 'mixed') {
     return { [requestedType]: total };
   }
 
-  if (total < 4) {
-    // Not enough room for all four; lead with the most gradeable types.
-    const order = ['multiple_choice', 'true_false', 'fill_blank', 'essay'];
+  if (total < SPEC_QUESTION_TYPES.length) {
+    // Not enough room for all of them; lead with the most gradeable types.
     const mix = {};
-    for (let i = 0; i < total; i++) mix[order[i]] = (mix[order[i]] || 0) + 1;
+    for (let i = 0; i < total; i++) {
+      const type = SPEC_QUESTION_TYPES[i];
+      mix[type] = (mix[type] || 0) + 1;
+    }
     return mix;
   }
 
   const mix = {
-    multiple_choice: Math.max(1, Math.round(total * 0.4)),
-    true_false: Math.max(1, Math.round(total * 0.2)),
-    fill_blank: Math.max(1, Math.round(total * 0.2)),
-    essay: Math.max(1, Math.round(total * 0.2))
+    multiple_choice: Math.max(1, Math.round(total * 0.5)),
+    true_false: Math.max(1, Math.round(total * 0.25)),
+    essay: Math.max(1, Math.round(total * 0.25))
   };
   // Rounding can overshoot or undershoot; settle the difference on MC.
   const diff = total - Object.values(mix).reduce((a, b) => a + b, 0);
@@ -458,18 +468,9 @@ function validateGeneratedQuestion(raw, allowedHandouts) {
     return base;
   }
 
-  if (type === 'fill_blank') {
-    const answer = String(raw.correct_answer || '').trim();
-    if (!answer) return null;
-    // A fill-in-the-blank with no blank is just an open question the student has
-    // to guess the exact wording of, and it is graded by exact match. Observed:
-    // "What are the five major elements of information security?" typed as
-    // fill_blank. Rejected rather than patched — the batch is over-requested, so
-    // a replacement is already on hand.
-    if (!/_{3,}/.test(questionText)) return null;
-    base.correct_answer = answer.slice(0, 500);
-    return base;
-  }
+  // fill_blank is no longer generated (see SPEC_QUESTION_TYPES). If a model
+  // returns one anyway, drop it rather than storing a type nothing offers.
+  if (type === 'fill_blank') return null;
 
   // essay
   const rubric = String(raw.answer_rubric || raw.expected_answer || '').trim();
@@ -702,12 +703,11 @@ Produce this mix of question types: ${mixText}.
 
 Every question object must have:
 - "question_text": the question, answerable purely from the handout
-- "question_type": one of "multiple_choice", "true_false", "fill_blank", "essay"
+- "question_type": one of "multiple_choice", "true_false", "essay"
 - "source_handout_id": always the integer ${handout.handout_id}
 - "correct_answer":
     * multiple_choice -> the letter of the correct choice ("A", "B", "C" or "D")
     * true_false      -> exactly "true" or "false"
-    * fill_blank      -> the exact word or short phrase that fills the blank
     * essay           -> a concise model answer
 - "choices": for multiple_choice ONLY, an array of 4 distinct answer strings in A,B,C,D order. Omit for other types.
 - "answer_rubric": for essay ONLY, the key points a correct answer must mention, so it can be graded automatically.
@@ -715,7 +715,7 @@ Every question object must have:
 
 Rules:
 - Base every question on the handout content. Never invent facts that are not in the text.
-- For fill_blank, write the sentence with a blank shown as ____ and put the missing text in correct_answer.
+- Never write a fill-in-the-blank question. Ask it as multiple_choice instead.
 - Make the difficulty appropriate for a ${yearLevel || 'general'} student.
 - Keep the choices out of "question_text": no "A) ... B) ..." list, no answer letter.
 - In "choices", give the answer text ONLY. Do not prefix it with "A.", "B)" or any label.

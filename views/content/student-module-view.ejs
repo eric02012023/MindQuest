@@ -15,7 +15,14 @@
     </div>
     <div class="module-hero-right">
       <div class="module-hero-badges">
-        <span class="level-badge-lg <%= (mod.level || '').toLowerCase() %>"><%= mod.level %></span>
+        <%# mod.level belongs to the legacy three-level system and is NULL on every
+            overhauled module, so this printed an empty badge. The module's number
+            is what identifies it now. %>
+        <% if (mod.order_number) { %>
+          <span class="module-number-badge">Module <%= mod.order_number %></span>
+        <% } else if (mod.level) { %>
+          <span class="level-badge-lg <%= String(mod.level).toLowerCase() %>"><%= mod.level %></span>
+        <% } %>
         <span class="subject-badge"><%= mod.subject_name %></span>
       </div>
       <h1 class="module-hero-title"><%= mod.title %></h1>
@@ -39,34 +46,50 @@
     </div>
   </section>
 
-  <%# Handout Section %>
+  <%# Handout Section
+      The files come from `handouts` (module_handouts), which is where Admin
+      uploads them. This block used to read mod.file_path / mod.file_original_name
+      — legacy columns that are NULL for every overhauled module — so a module with
+      handouts still reported "No handout file uploaded yet". %>
+  <% const moduleHandouts = handouts || []; %>
   <section class="module-section">
     <div class="module-section-header" onclick="toggleSection(this)">
       <div class="section-header-left">
         <span class="section-icon">📄</span>
         <h3>Learning Handout</h3>
+        <span class="section-count"><%= moduleHandouts.length %></span>
       </div>
       <div class="section-header-right">
-        <span class="section-status done">✓ Available</span>
+        <% if (moduleHandouts.length) { %>
+          <span class="section-status done">✓ Available</span>
+        <% } else { %>
+          <span class="section-status pending">None yet</span>
+        <% } %>
         <span class="section-chevron">▼</span>
       </div>
     </div>
     <div class="module-section-body open">
-      <div class="handout-card">
-        <div class="handout-info">
-          <% if (mod.file_original_name) { %>
-            <span class="handout-filename">📁 <%= mod.file_original_name %></span>
-          <% } %>
-          <p>Read through this handout to understand the key concepts before attempting the activities.</p>
+      <% if (!moduleHandouts.length) { %>
+        <p class="section-empty">No handout has been uploaded for this module yet.</p>
+      <% } else { %>
+        <p class="handout-lead">Read through these before attempting the activities.</p>
+        <div class="handout-file-list">
+          <% moduleHandouts.forEach((h) => { %>
+            <div class="handout-card">
+              <div class="handout-info">
+                <span class="handout-filename">📁 <%= h.title || h.file_original_name || 'Handout' %></span>
+                <span class="handout-sub">
+                  <%= ((h.file_original_name || '').split('.').pop() || 'file').toUpperCase() %>
+                  <% if (h.file_size_bytes) { %> &middot; <%= Math.round(Number(h.file_size_bytes) / 1024) %> KB<% } %>
+                </span>
+              </div>
+              <a href="<%= h.file_path %>" target="_blank" rel="noopener" class="btn btn-primary handout-btn">
+                📖 Open Handout
+              </a>
+            </div>
+          <% }) %>
         </div>
-        <% if (mod.file_path) { %>
-          <a href="<%= mod.file_path %>" target="_blank" class="btn btn-primary handout-btn">
-            📖 OPEN HANDOUT
-          </a>
-        <% } else { %>
-          <span class="no-file">No handout file uploaded yet.</span>
-        <% } %>
-      </div>
+      <% } %>
     </div>
   </section>
 

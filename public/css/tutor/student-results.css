@@ -1244,3 +1244,105 @@ body {
 .res-feedback { color: var(--primary-900, #0b3b53); }
 .res-explain { color: var(--text-soft, #5f7084); }
 .res-source { font-size: 12px; color: var(--text-soft, #5f7084); font-style: italic; }
+
+/* ==========================================================================
+   Student Results (also the old Analytics & Reports, merged into this page)
+   ========================================================================== */
+
+.tutor-results .panel-card-head h2,
+.tutor-results .panel-card-head h3 { margin: 0; }
+.tutor-results .panel-card-head p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+
+.tr-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tr-search input {
+  width: min(240px, 60vw);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 9px 13px;
+  background: #fff;
+}
+
+/* ----------------------------------------------------------------- summary */
+.tr-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.tr-tile {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #f7fbf8);
+}
+
+.tr-tile-lead {
+  color: #fff;
+  border-color: transparent;
+  background: var(--gradient-dark);
+}
+
+.tr-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.tr-tile-lead .tr-tile-label { color: rgba(255, 255, 255, .78); }
+
+.tr-tile-value {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+/* ------------------------------------------------------------------ tables */
+.tr-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.result-bar-container {
+  position: relative;
+  min-width: 110px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--surface-muted, #eef4f8);
+  overflow: hidden;
+}
+.result-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--gradient-main);
+  transition: width .5s ease;
+}
+.result-bar-container span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .tr-search { width: 100%; }
+  .tr-search input { flex: 1; width: auto; }
+}

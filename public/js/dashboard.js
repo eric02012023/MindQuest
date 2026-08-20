@@ -261,9 +261,8 @@ document.querySelectorAll('[data-assessment-builder]').forEach((form) => {
           </select>
         </label>`;
     }
-    if (normalized === 'Fill in the Blank') {
-      return '<label>Correct Answer<input type="text" name="correct_answer" required></label>';
-    }
+    // Identification and anything else: a typed answer. "Fill in the Blank" is no
+    // longer offered as a type anywhere, so it no longer needs its own branch.
     return '<label>Correct Answer<input type="text" name="correct_answer" required></label>';
   };
 

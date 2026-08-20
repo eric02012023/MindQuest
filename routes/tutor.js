@@ -52,6 +52,7 @@ const {
   getModuleBySubjectAndLevel,
   createTutorAssessment,
   getTutorAssessmentsByModule,
+  getSubmissionsByAssessment,
   getTutorAssessmentById,
   getTutorStudentResults,
   // Module -> Handout -> Assessment overhaul (Phase 6)
@@ -871,27 +872,10 @@ router.get('/students/:studentId/analytics', async (req, res, next) => {
   }
 });
 
-// Tutor Analytics & Reports page
-router.get('/analytics', async (req, res, next) => {
-  try {
-    const search = String(req.query.search || '').trim();
-    const data = await getTutorStudentsForAnalytics(req.session.user.id, search);
-
-    const shell = await buildShell(req, {
-      pageTitle: 'Analytics & Reports',
-      section: 'analytics',
-      contentView: '../content/tutor-analytics',
-      students: data.students,
-      summary: data.summary,
-      // Phase 9: pendingRequests is gone with the request/approve loop.
-      pendingRequests: [],
-      search
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) {
-    next(error);
-  }
-});
+// Analytics & Reports used to be its own page. It listed the tutor's students
+// and how they were doing — the same question Student Results answers, off the
+// same submissions — so the two are one page now and this stays as a URL only.
+router.get('/analytics', (req, res) => res.redirect('/tutor/student-results'));
 
 // Phase 9: POST /assessment-requests/:id/accept and .../decline were removed.
 //
@@ -962,6 +946,38 @@ router.get('/modules/:id', async (req, res, next) => {
       mod,
       handouts: await getModuleHandouts(mod.id),
       assessments: await getTutorAssessmentsByModule(mod.id)
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// --------------------------------------------------------------------------
+// Check the answers on one module assessment.
+//
+// The last step of the tutor's loop: they write an assessment on a module, the
+// student answers it inside that module, and this page is where the tutor checks
+// it. Guarded by resolveTutorModule, and the assessment must belong to that
+// module — otherwise any assessment id in the URL would open here.
+// --------------------------------------------------------------------------
+router.get('/modules/:id/assessments/:assessmentId/submissions', async (req, res, next) => {
+  try {
+    const mod = await resolveTutorModule(req, req.params.id);
+    if (!mod) return res.redirect('/tutor/modules');
+
+    const assessments = await getTutorAssessmentsByModule(mod.id);
+    const assessment = assessments.find((a) => Number(a.id) === Number(req.params.assessmentId));
+    if (!assessment) {
+      setFlash(req, 'error', 'That assessment does not belong to this module.');
+      return res.redirect(`/tutor/modules/${mod.id}`);
+    }
+
+    const shell = await buildShell(req, {
+      pageTitle: `${assessment.title} — Answers`,
+      section: 'modules',
+      contentView: '../content/tutor-assessment-submissions',
+      mod,
+      assessment,
+      submissions: await getSubmissionsByAssessment(assessment.id)
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -1107,14 +1123,24 @@ router.post('/modules/:id/create-assessment', async (req, res, next) => {
 });
 
 // Tutor: View student results
+//
+// This is also the old Analytics & Reports page: the per-student roll-up at the
+// top, then every individual attempt underneath. The search box filters the
+// roll-up, which is what it filtered on the page it came from.
 router.get('/student-results', async (req, res, next) => {
   try {
+    const search = String(req.query.search || '').trim();
     const results = await getTutorStudentResults(req.session.user.id);
+    const analytics = await getTutorStudentsForAnalytics(req.session.user.id, search);
+
     const shell = await buildShell(req, {
       pageTitle: 'Student Results',
       section: 'student_results',
       contentView: '../content/tutor-student-results',
-      results
+      results,
+      students: analytics.students,
+      summary: analytics.summary,
+      search
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }

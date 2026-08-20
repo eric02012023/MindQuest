@@ -10,7 +10,6 @@
   const typeLabels = {
     multiple_choice: 'Multiple Choice',
     true_false: 'True or False',
-    fill_blank: 'Fill in the Blank',
     essay: 'Essay'
   };
 %>
@@ -48,10 +47,9 @@
         <div class="draft-row">
           <label>Question type
             <select name="question_type">
-              <option value="mixed" <%= f.question_type === 'mixed' || !f.question_type ? 'selected' : '' %>>Mixed (all four)</option>
+              <option value="mixed" <%= f.question_type === 'mixed' || !f.question_type ? 'selected' : '' %>>Mixed (all three)</option>
               <option value="multiple_choice" <%= f.question_type === 'multiple_choice' ? 'selected' : '' %>>Multiple Choice</option>
               <option value="true_false" <%= f.question_type === 'true_false' ? 'selected' : '' %>>True or False</option>
-              <option value="fill_blank" <%= f.question_type === 'fill_blank' ? 'selected' : '' %>>Fill in the Blank</option>
               <option value="essay" <%= f.question_type === 'essay' ? 'selected' : '' %>>Essay</option>
             </select>
           </label>
@@ -79,7 +77,6 @@
             <option value="mixed" <%= f.question_type === 'mixed' || !f.question_type ? 'selected' : '' %>>Mixed</option>
             <option value="multiple_choice" <%= f.question_type === 'multiple_choice' ? 'selected' : '' %>>Multiple Choice</option>
             <option value="true_false" <%= f.question_type === 'true_false' ? 'selected' : '' %>>True or False</option>
-            <option value="fill_blank" <%= f.question_type === 'fill_blank' ? 'selected' : '' %>>Fill in the Blank</option>
             <option value="essay" <%= f.question_type === 'essay' ? 'selected' : '' %>>Essay</option>
           </select>
         </label>
@@ -97,7 +94,6 @@
       <div class="add-question-row">
         <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('multiple_choice')">+ Multiple Choice</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('true_false')">+ True or False</button>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('fill_blank')">+ Fill in the Blank</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('essay')">+ Essay</button>
       </div>
 
@@ -121,7 +117,6 @@
   const TYPE_LABELS = {
     multiple_choice: 'Multiple Choice',
     true_false: 'True or False',
-    fill_blank: 'Fill in the Blank',
     essay: 'Essay'
   };
 
@@ -194,13 +189,6 @@
             <option value="true" ${answer === 'true' ? 'selected' : ''}>True</option>
             <option value="false" ${answer === 'false' ? 'selected' : ''}>False</option>
           </select>
-        </div>
-      `;
-    } else if (type === 'fill_blank') {
-      html += `
-        <div class="form-group">
-          <label>Correct Answer <span class="field-hint">write the blank as ____ in the question</span></label>
-          <input type="text" class="q-answer" placeholder="The expected answer..." value="${escapeHtml(q.correct_answer)}" required />
         </div>
       `;
     } else {

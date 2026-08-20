@@ -1,0 +1,103 @@
+<%# File: views/content/tutor-assessment-submissions.ejs
+    Purpose: Who has answered one module assessment, and who has not.
+
+    Closes the loop the tutor works in: they write an assessment on a module, the
+    student answers it inside that same module, and this is where the tutor comes
+    to check it. Students who have not answered are listed too — knowing who is
+    outstanding is half of checking a class. %>
+<%
+  const rows = submissions || [];
+  const answered = rows.filter((r) => r.submission_id);
+  const pending = rows.length - answered.length;
+  const avg = answered.length
+    ? (answered.reduce((sum, r) => sum + Number(r.percentage || 0), 0) / answered.length).toFixed(1)
+    : null;
+%>
+<section class="page-stack tutor-submissions">
+  <div class="toolbar-card split">
+    <div>
+      <h2><%= assessment.title %></h2>
+      <p class="res-subtitle">
+        <%= mod.subject_name %> &middot; Module <%= mod.order_number %> — <%= mod.title %>
+      </p>
+    </div>
+    <a class="btn btn-secondary" href="/tutor/modules/<%= mod.id %>">Back to Module</a>
+  </div>
+
+  <section class="panel-card">
+    <div class="ts-summary">
+      <article class="ts-tile ts-tile-lead">
+        <span class="ts-tile-label">Answered</span>
+        <strong class="ts-tile-value"><%= answered.length %></strong>
+        <span class="ts-tile-foot">of <%= rows.length %> student<%= rows.length === 1 ? '' : 's' %></span>
+      </article>
+      <article class="ts-tile">
+        <span class="ts-tile-label">Not Yet Answered</span>
+        <strong class="ts-tile-value"><%= pending %></strong>
+        <span class="ts-tile-foot">still outstanding</span>
+      </article>
+      <article class="ts-tile">
+        <span class="ts-tile-label">Class Average</span>
+        <strong class="ts-tile-value"><%= avg === null ? '—' : avg + '%' %></strong>
+        <span class="ts-tile-foot">of those who answered</span>
+      </article>
+      <article class="ts-tile">
+        <span class="ts-tile-label">Items</span>
+        <strong class="ts-tile-value"><%= assessment.question_count %></strong>
+        <span class="ts-tile-foot"><%= assessment.is_published ? 'published' : 'draft' %></span>
+      </article>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Student Answers</h3>
+      <span class="badge badge-info"><%= rows.length %></span>
+    </div>
+
+    <% if (!rows.length) { %>
+      <p class="empty-state">No student is enrolled in this subject yet, so there is nothing to check.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Year Level</th>
+              <th>Score</th>
+              <th>Percentage</th>
+              <th>Classification</th>
+              <th>Submitted</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% rows.forEach((r) => { %>
+              <tr class="<%= r.submission_id ? '' : 'ts-row-pending' %>">
+                <td>
+                  <strong><%= r.first_name %> <%= r.last_name || '' %></strong>
+                  <% if (r.student_code) { %><span class="ts-sub"><%= r.student_code %></span><% } %>
+                </td>
+                <td><%= r.grade_level || r.year_level || '—' %></td>
+                <% if (r.submission_id) { %>
+                  <td><%= r.score %>/<%= r.total_points %></td>
+                  <td><strong><%= Number(r.percentage).toFixed(1) %>%</strong></td>
+                  <td>
+                    <% if (r.level) { %>
+                      <span class="badge badge-<%= String(r.level).toLowerCase() === 'advance' ? 'success' : String(r.level).toLowerCase() === 'intermediate' ? 'info' : 'warning' %>"><%= r.level %></span>
+                    <% } else { %>&mdash;<% } %>
+                  </td>
+                  <td><%= formatDateTime(r.submitted_at) %></td>
+                  <td><a class="btn btn-secondary btn-sm" href="/tutor/results/<%= r.submission_id %>">Check Answers</a></td>
+                <% } else { %>
+                  <td colspan="4"><span class="badge badge-warning">Not answered yet</span></td>
+                  <td><span class="ts-sub">Waiting on the student</span></td>
+                <% } %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+</section>

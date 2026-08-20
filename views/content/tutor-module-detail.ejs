@@ -69,6 +69,11 @@
       <span class="badge badge-info"><%= assessments.length %></span>
     </div>
 
+    <p class="table-note">
+      An assessment you create here shows up inside this module for every student it
+      is assigned to. Once they answer it, "Check Answers" opens their work.
+    </p>
+
     <% if (!assessments.length) { %>
       <p class="empty-state">No assessments yet. "Create Assessment" builds one by hand, or drafts it from the handouts above.</p>
     <% } else { %>
@@ -80,9 +85,10 @@
               <th>Kind</th>
               <th>Type</th>
               <th>Items</th>
-              <th>Submissions</th>
+              <th>Answered</th>
               <th>Status</th>
               <th>Created</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -90,19 +96,28 @@
               <tr>
                 <td><strong><%= a.title %></strong></td>
                 <td>
-                  <span class="pill <%= a.assessment_kind === 'pre_assessment' ? 'partial' : a.assessment_kind === 'post_assessment' ? 'paid' : '' %>">
+                  <span class="badge badge-<%= a.assessment_kind === 'pre_assessment' ? 'info' : a.assessment_kind === 'post_assessment' ? 'success' : 'warning' %>">
                     <%= a.assessment_kind === 'pre_assessment' ? 'Pre-Assessment'
                       : a.assessment_kind === 'post_assessment' ? 'Post-Assessment' : 'Tutor Assessment' %>
                   </span>
                 </td>
                 <td><%= a.question_type === 'mixed' || !a.question_type ? 'Mixed'
                       : a.question_type === 'multiple_choice' ? 'Multiple Choice'
-                      : a.question_type === 'true_false' ? 'True or False'
-                      : a.question_type === 'fill_blank' ? 'Fill in the Blank' : 'Essay' %></td>
+                      : a.question_type === 'true_false' ? 'True or False' : 'Essay' %></td>
                 <td><%= a.question_count %></td>
                 <td><%= a.submission_count %></td>
-                <td><%= a.is_published ? 'Published' : 'Draft' %></td>
+                <td>
+                  <span class="badge badge-<%= a.is_published ? 'success' : 'warning' %>">
+                    <%= a.is_published ? 'Published' : 'Draft' %>
+                  </span>
+                </td>
                 <td><%= formatDate(a.created_at) %></td>
+                <td>
+                  <a class="btn btn-secondary btn-sm"
+                     href="/tutor/modules/<%= mod.id %>/assessments/<%= a.id %>/submissions">
+                    Check Answers
+                  </a>
+                </td>
               </tr>
             <% }) %>
           </tbody>

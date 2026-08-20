@@ -1,11 +1,119 @@
-<%# Tutor Student Results View %>
-<section class="page-stack">
+<%# File: views/content/tutor-student-results.ejs
+    Purpose: Student Results — how the tutor's students are doing, and every
+    attempt they have handed in.
+
+    This page absorbed the old "Analytics & Reports" page. Both read the same
+    submissions to answer the same question, so the roll-up per student sits at
+    the top and the individual attempts sit underneath it. %>
+<section class="page-stack tutor-results">
+
+  <%# ---- Summary ----------------------------------------------------------- %>
   <section class="panel-card">
     <div class="panel-card-head">
-      <h2>Student Results</h2>
+      <div>
+        <h2>Student Results</h2>
+        <p>How your students are doing, and every assessment they have handed in.</p>
+      </div>
+      <form class="search-form tr-search" method="get" action="/tutor/student-results">
+        <input type="text" name="search" value="<%= search || '' %>" placeholder="Search student…" aria-label="Search student" />
+        <button class="btn btn-primary btn-sm" type="submit">Search</button>
+        <% if (search) { %><a class="btn btn-secondary btn-sm" href="/tutor/student-results">Clear</a><% } %>
+      </form>
     </div>
+
+    <div class="tr-summary">
+      <article class="tr-tile tr-tile-lead">
+        <span class="tr-tile-label">My Students</span>
+        <strong class="tr-tile-value"><%= summary.totalStudents %></strong>
+      </article>
+      <article class="tr-tile">
+        <span class="tr-tile-label">Average Score</span>
+        <strong class="tr-tile-value"><%= summary.avgScore %>%</strong>
+      </article>
+      <article class="tr-tile">
+        <span class="tr-tile-label">Active Learners</span>
+        <strong class="tr-tile-value"><%= summary.completedStudents %></strong>
+      </article>
+      <article class="tr-tile">
+        <span class="tr-tile-label">Submissions</span>
+        <strong class="tr-tile-value"><%= (results || []).length %></strong>
+      </article>
+    </div>
+  </section>
+
+  <%# ---- Per student (the old Analytics & Reports table) -------------------- %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Progress per Student</h3>
+      <span class="badge badge-info"><%= (students || []).length %></span>
+    </div>
+
+    <% if (!(students || []).length) { %>
+      <p class="empty-state">
+        <%= search ? 'No student matches that search.' : 'No students assigned to you yet.' %>
+      </p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Subjects</th>
+              <th>Level</th>
+              <th>Avg Score</th>
+              <th>Modules Read</th>
+              <th>Completed</th>
+              <th>Current Module</th>
+              <th>Violations</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% students.forEach((student) => { %>
+              <tr>
+                <td>
+                  <a href="/tutor/students/<%= student.id %>/analytics" class="student-name-link">
+                    <strong><%= student.full_name %></strong>
+                  </a>
+                  <span class="tr-sub"><%= student.branch_name || '' %></span>
+                </td>
+                <td><%= student.subjects %></td>
+                <td>
+                  <span class="badge badge-<%= student.current_level === 'Advance' ? 'success' : student.current_level === 'Intermediate' ? 'info' : 'warning' %>">
+                    <%= student.current_level %>
+                  </span>
+                </td>
+                <td><%= student.avg_score %></td>
+                <td><%= student.modules_read %></td>
+                <td><%= student.completed_modules %></td>
+                <td><%= student.current_module %></td>
+                <td>
+                  <% if (Number(student.total_violations) > 0) { %>
+                    <span class="badge badge-danger"><%= student.total_violations %></span>
+                  <% } else { %>
+                    &mdash;
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <%# ---- Every attempt ------------------------------------------------------ %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Submissions</h3>
+      <span class="badge badge-info"><%= (results || []).length %></span>
+    </div>
+    <p class="table-note">
+      Every attempt your students have handed in. Open one to check their answers
+      question by question, with the topics they struggled with.
+    </p>
+
     <% if (!(results || []).length) { %>
-      <p class="empty-state">No student submissions yet.</p>
+      <p class="empty-state">No student submission yet.</p>
     <% } else { %>
       <div class="table-wrap">
         <table>
@@ -14,8 +122,7 @@
               <th>Student</th>
               <th>Assessment</th>
               <th>Subject</th>
-              <th>Level</th>
-              <th>Purpose</th>
+              <th>Kind</th>
               <th>Score</th>
               <th>Percentage</th>
               <th>Submitted</th>
@@ -23,26 +130,32 @@
             </tr>
           </thead>
           <tbody>
-            <% results.forEach(r => { %>
+            <% results.forEach((r) => { %>
               <tr>
-                <td><strong><%= r.first_name %> <%= r.last_name %></strong></td>
+                <td>
+                  <strong><%= r.first_name %> <%= r.last_name || '' %></strong>
+                  <% if (r.level) { %><span class="tr-sub"><%= r.level %></span><% } %>
+                </td>
                 <td><%= r.assessment_title %></td>
                 <td><%= r.subject_name %></td>
-                <td><span class="level-badge <%= (r.level || '').toLowerCase() %>"><%= r.level %></span></td>
-                <td><span class="pill <%= r.purpose === 'pre' ? 'partial' : r.purpose === 'post' ? 'paid' : '' %>"><%= r.purpose || r.assessment_kind %></span></td>
+                <td>
+                  <span class="badge badge-<%= r.purpose === 'pre' ? 'info' : r.purpose === 'post' ? 'success' : 'warning' %>">
+                    <%= r.purpose === 'pre' ? 'Pre' : r.purpose === 'post' ? 'Post' : 'Activity' %>
+                  </span>
+                </td>
                 <td><%= r.score %>/<%= r.total_points %></td>
                 <td>
                   <div class="result-bar-container">
-                    <div class="result-bar" style="width: <%= r.percentage %>%"></div>
+                    <div class="result-bar" style="width: <%= Math.max(0, Math.min(100, Number(r.percentage) || 0)) %>%"></div>
                     <span><%= Number(r.percentage).toFixed(1) %>%</span>
                   </div>
                 </td>
-                <td><%= new Date(r.submitted_at).toLocaleDateString() %></td>
+                <td><%= formatDate(r.submitted_at) %></td>
                 <td>
                   <%# The breakdown route works for every submission kind; the older
                       /tutor/student-results/:id review INNER JOINs modules and so
                       cannot render a subject-level Pre-Assessment. %>
-                  <a class="btn btn-secondary btn-sm" href="/tutor/results/<%= r.id %>">View Breakdown</a>
+                  <a class="btn btn-secondary btn-sm" href="/tutor/results/<%= r.id %>">Check Answers</a>
                 </td>
               </tr>
             <% }) %>
@@ -52,29 +165,3 @@
     <% } %>
   </section>
 </section>
-
-<style>
-  .result-bar-container {
-    position: relative;
-    background: #eef4f8;
-    border-radius: 999px;
-    height: 24px;
-    min-width: 100px;
-    overflow: hidden;
-  }
-  .result-bar {
-    height: 100%;
-    border-radius: 999px;
-    background: var(--gradient-main);
-    transition: width 0.5s ease;
-  }
-  .result-bar-container span {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-  }
-</style>

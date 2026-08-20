@@ -85,6 +85,16 @@
   color: var(--text-soft);
   background: rgba(0, 0, 0, 0.05);
 }
+.module-number-badge {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--gradient-main, linear-gradient(135deg, #22c816, #004204));
+}
 .module-hero-title {
   font-size: 24px;
   margin: 0 0 8px;
@@ -179,22 +189,47 @@
 }
 
 /* Handout Card */
+.handout-lead {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.handout-file-list {
+  display: grid;
+  gap: 10px;
+}
 .handout-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px;
-  border-radius: 10px;
+  padding: 16px 20px;
+  border-radius: 12px;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.04), rgba(139, 92, 246, 0.04));
   border: 1px solid var(--border);
   gap: 16px;
   flex-wrap: wrap;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.handout-card:hover {
+  border-color: var(--primary-500, #22c816);
+  box-shadow: 0 6px 18px rgba(16, 51, 18, .08);
+}
+.handout-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 .handout-info p { font-size: 13px; color: var(--text-soft); margin: 6px 0 0; }
 .handout-filename {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.handout-sub {
+  font-size: 12px;
+  color: var(--text-soft);
+  letter-spacing: .02em;
 }
 .handout-btn {
   padding: 12px 28px;

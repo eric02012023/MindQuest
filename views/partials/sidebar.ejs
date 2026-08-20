@@ -31,8 +31,9 @@
       <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/student">Dashboard</a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/student/subjects">My Subject</a>
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="/student/billing">Billing Info</a>
+      <%# Analytics & Reports lived here. It read the same tables as My Progress to
+          answer the same question, so the two are one page. %>
       <a class="<%= section === 'progress' ? 'active' : '' %>" href="/student/progress">My Progress</a>
-      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/student/analytics">Analytics & Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="/student/profile">Profile</a>
     </nav>
   <% } %>
@@ -44,8 +45,9 @@
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/tutor/subjects">My Subject</a>
       <a class="<%= section === 'modules' ? 'active' : '' %>" href="/tutor/modules">Modules & Assessments</a>
       <a class="<%= section === 'attendance' ? 'active' : '' %>" href="/tutor/attendance">Attendance</a>
+      <%# Analytics & Reports lived here. It rolled up the same submissions Student
+          Results lists, so the two are one page. %>
       <a class="<%= section === 'student_results' ? 'active' : '' %>" href="/tutor/student-results">Student Results</a>
-      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/tutor/analytics">Analytics & Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="/tutor/profile">Profile</a>
     </nav>
   <% } %>

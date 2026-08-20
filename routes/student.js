@@ -579,26 +579,10 @@ router.post('/billing/pay-online', async (req, res, next) => {
   }
 });
 
-// Analytics & Reports page
-router.get('/analytics', async (req, res, next) => {
-  try {
-    const assignments = await getStudentAssignments(req.session.user.id);
-    const subjects = [];
-    for (const assignment of assignments) {
-      const analytics = await getStudentAnalytics(req.session.user.id, assignment.subject_id);
-      if (analytics) subjects.push(analytics);
-    }
-    const shell = await buildShell(req, {
-      pageTitle: 'Analytics & Reports',
-      section: 'analytics',
-      contentView: '../content/student-analytics',
-      subjects
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) {
-    next(error);
-  }
-});
+// Analytics & Reports used to be its own page. It answered the same question as
+// My Progress — "how am I doing in this subject?" — from the same tables, so the
+// two are one page now and this stays only as a working URL.
+router.get('/analytics', (req, res) => res.redirect('/student/progress'));
 
 // ==========================================================================
 // Phase 6: Module Level System — Pre-Assessment, Module View, Assessment
@@ -906,7 +890,9 @@ router.get('/modules/:moduleId', async (req, res, next) => {
     const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     const shell = await buildShell(req, {
-      pageTitle: `${mod.title} — ${mod.level}`,
+      // Overhauled modules have no `level` — that column belongs to the legacy
+      // three-level system — so titling the page with it printed "module1 — null".
+      pageTitle: `${mod.title} — ${mod.subject_name}`,
       section: 'subjects',
       contentView: '../content/student-module-view',
       mod,
@@ -1016,15 +1002,21 @@ router.get('/assessment-result/:submissionId', (req, res) => {
 });
 
 // Student: Progress page
+//
+// This is also the old Analytics & Reports page. Both were built from the same
+// two sources — the student's level per subject and their submissions — so they
+// are one page: a card per subject with the level and score up top, and the
+// per-subject counters and attempt history underneath.
 router.get('/progress', async (req, res, next) => {
   try {
-    const progress = await getStudentProgress(req.session.user.id);
-    const assignments = await getStudentAssignments(req.session.user.id);
+    const studentId = req.session.user.id;
+    const progress = await getStudentProgress(studentId);
+    const assignments = await getStudentAssignments(studentId);
 
     // For each subject with a level, get submission stats
     const enrichedProgress = [];
     for (const p of progress) {
-      const submissions = await getStudentSubmissions(req.session.user.id, p.subject_id);
+      const submissions = await getStudentSubmissions(studentId, p.subject_id);
       const assignedModule = await getModuleBySubjectAndLevel(p.subject_id, p.level);
       enrichedProgress.push({
         ...p,
@@ -1037,12 +1029,20 @@ router.get('/progress', async (req, res, next) => {
       });
     }
 
+    // The analytics half: counters and attempt history per enrolled subject.
+    const subjects = [];
+    for (const assignment of assignments) {
+      const analytics = await getStudentAnalytics(studentId, assignment.subject_id);
+      if (analytics) subjects.push(analytics);
+    }
+
     const shell = await buildShell(req, {
       pageTitle: 'My Progress',
       section: 'progress',
       contentView: '../content/student-progress',
       progress: enrichedProgress,
-      assignments
+      assignments,
+      subjects
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
