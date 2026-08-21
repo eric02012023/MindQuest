@@ -230,6 +230,30 @@ npm test
 None of them replaces a manual pass in a real browser after changing the
 anti-cheat event wiring.
 
+### If a tutor's Focus Areas page is empty
+
+A finished Pre-Assessment produces focus material for the student's tutor — the
+topics they scored worst on, with a plan for teaching them. It is built by the
+submit handler, so it only ever runs at the moment a student presses submit.
+
+That means a Pre-Assessment sat **before** `focus_handouts` existed has nothing,
+and never will on its own: the one code path that could build it has been and
+gone. The tutor opens Focus Areas, sees an empty list, and reasonably concludes
+the feature is broken.
+
+Nothing is actually missing — the per-question grading, the module each question
+came from and the tutor assignment are all still stored. Rebuild from them:
+
+```bash
+node scripts/backfill-focus-handouts.js --env .env.live --dry-run   # list only
+node scripts/backfill-focus-handouts.js --env .env.live             # build + notify
+```
+
+It runs the same generator the submit handler runs, so a backfilled handout is
+identical to one made at submit time, and it only picks up submissions that have
+no handout — so it is safe to re-run whenever the page looks emptier than it
+should. Add `--quiet` to build without notifying each tutor.
+
 ### Behaviours that changed
 
 - **The ₱500 minimum is a down payment, not a per-payment floor.** It applies to
