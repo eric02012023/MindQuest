@@ -15,13 +15,20 @@
     <nav class="sidebar-nav">
       <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="<%= basePath %>">Dashboard</a>
       <a class="<%= section === 'users' ? 'active' : '' %>" href="<%= basePath %>/users">User Management</a>
+      <a class="<%= section === 'students' ? 'active' : '' %>" href="<%= basePath %>/students">Student Profiles</a>
+      <a class="<%= section === 'tutors' ? 'active' : '' %>" href="<%= basePath %>/tutors">Tutor Profiles</a>
       <% if (currentUser.role === 'admin') { %><a class="<%= section === 'branches' ? 'active' : '' %>" href="<%= basePath %>/branches">Branch Management</a><% } %>
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="<%= basePath %>/billing">Student Bill</a>
       <a class="<%= section === 'income' ? 'active' : '' %>" href="<%= basePath %>/income-report">Income Report</a>
+      <%# Payment requests students submit land here, alongside the system alerts.
+          Badged so a pending cash payment is visible without opening the page. %>
+      <a class="<%= section === 'notifications' ? 'active' : '' %>" href="<%= basePath %>/notifications">
+        Notifications<% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
+      </a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects">All Subjects</a>
       <a class="<%= section === 'assessment_monitoring' ? 'active' : '' %>" href="<%= basePath %>/assessment-monitoring">Assessment Monitoring</a>
       <a class="<%= section === 'student_results' ? 'active' : '' %>" href="<%= basePath %>/student-results">Student Results</a>
-      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics">Analytics & Reports</a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics">Analytics &amp; Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="<%= basePath %>/profile/<%= currentUser.id %>">My Profile</a>
     </nav>
   <% } %>
@@ -30,10 +37,12 @@
     <nav class="sidebar-nav">
       <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/student">Dashboard</a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/student/subjects">My Subject</a>
-      <a class="<%= section === 'billing' ? 'active' : '' %>" href="/student/billing">Billing Info</a>
-      <%# Analytics & Reports lived here. It read the same tables as My Progress to
-          answer the same question, so the two are one page. %>
+      <a class="<%= section === 'billing' ? 'active' : '' %>" href="/student/billing">Billing Data</a>
       <a class="<%= section === 'progress' ? 'active' : '' %>" href="/student/progress">My Progress</a>
+      <%# Analytics & Reports is a required section for all four roles. It is the
+          scored view — trends, weak topics, module completion — where My Progress
+          is the per-subject checklist. %>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/student/analytics">Analytics &amp; Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="/student/profile">Profile</a>
     </nav>
   <% } %>
@@ -43,11 +52,15 @@
       <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/tutor">Dashboard</a>
       <a class="<%= section === 'students' ? 'active' : '' %>" href="/tutor/students">My Students</a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/tutor/subjects">My Subject</a>
-      <a class="<%= section === 'modules' ? 'active' : '' %>" href="/tutor/modules">Modules & Assessments</a>
+      <a class="<%= section === 'modules' ? 'active' : '' %>" href="/tutor/modules">Modules &amp; Assessments</a>
+      <%# Auto-generated from a student's Pre-Assessment: the topics to teach
+          first. Badged with the ones the tutor has not opened yet. %>
+      <a class="<%= section === 'focus' ? 'active' : '' %>" href="/tutor/focus-handouts">
+        Focus Areas<% if (typeof focusHandoutCount !== 'undefined' && focusHandoutCount > 0) { %> <span class="sidebar-badge"><%= focusHandoutCount %></span><% } %>
+      </a>
       <a class="<%= section === 'attendance' ? 'active' : '' %>" href="/tutor/attendance">Attendance</a>
-      <%# Analytics & Reports lived here. It rolled up the same submissions Student
-          Results lists, so the two are one page. %>
       <a class="<%= section === 'student_results' ? 'active' : '' %>" href="/tutor/student-results">Student Results</a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/tutor/analytics">Analytics &amp; Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="/tutor/profile">Profile</a>
     </nav>
   <% } %>

@@ -1,0 +1,265 @@
+<%# File: views/content/admin-notifications.ejs
+    Purpose: Notifications — student payment requests, and system alerts.
+
+    The brief: a student's cash payment request notifies BOTH Admin and Assistant
+    Admin, the card shows student / amount / branch / date-and-time / status, and
+    either role — whoever sees it first — can open it and mark it Completed.
+
+    That is why there is no "assigned to" column: the row is not owned by anyone.
+    Processing is a claim on the record itself (the status flip only succeeds while
+    it is still pending), so two people pressing Complete at the same moment
+    produce one payment, and the second is told someone got there first.
+
+    Locals: requests, alerts, summary, search, selectedStatus, openRequestId %>
+<%
+  const currentQuery = typeof query === 'undefined' ? {} : query;
+  const nameOf = (row) => `${titleCaseName(row.first_name)} ${titleCaseName(row.middle_name || '')} ${titleCaseName(row.last_name)}`.replace(/\s+/g, ' ').trim();
+%>
+<section class="mq-page">
+
+  <div class="mq-summary">
+    <div class="mq-summary-item is-negative">
+      <span>Pending requests</span><strong><%= summary.pending %></strong>
+    </div>
+    <div class="mq-summary-item is-positive">
+      <span>Completed</span><strong><%= summary.completed %></strong>
+    </div>
+    <div class="mq-summary-item is-accent">
+      <span>Unread alerts</span><strong><%= summary.unreadAlerts %></strong>
+    </div>
+  </div>
+
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/notifications">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= search || '' %>" placeholder="Student, ID, branch or message" />
+      </label>
+      <label class="mq-field">
+        <span>Status</span>
+        <select name="status" onchange="this.form.submit()">
+          <option value="all" <%= selectedStatus === 'all' ? 'selected' : '' %>>All</option>
+          <option value="pending" <%= selectedStatus === 'pending' ? 'selected' : '' %>>Pending</option>
+          <option value="completed" <%= selectedStatus === 'completed' ? 'selected' : '' %>>Completed</option>
+          <option value="cancelled" <%= selectedStatus === 'cancelled' ? 'selected' : '' %>>Cancelled</option>
+        </select>
+      </label>
+      <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
+    </div>
+    <div class="mq-toolbar-actions">
+      <a class="mq-btn" href="<%= basePath %>/billing"><%- icon('money') %> Student billing</a>
+      <a class="mq-btn" href="<%= basePath %>/notifications/history">Registration inbox</a>
+    </div>
+  </form>
+
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Cash payment requests</h2>
+        <p>Either Admin or Assistant Admin can process these — whoever gets there first.</p>
+      </div>
+      <span class="mq-count"><%= requests.length %> request<%= requests.length === 1 ? '' : 's' %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: 150px minmax(170px, 2fr) 1fr 110px 130px 110px 96px;">
+      <div class="mq-head">
+        <span>Submitted</span>
+        <span>Student</span>
+        <span>Branch</span>
+        <span class="mq-num">Amount</span>
+        <span>Preferred date</span>
+        <span>Status</span>
+        <span style="text-align:right;">Actions</span>
+      </div>
+
+      <% if (!requests.length) { %>
+        <div class="mq-empty">
+          <strong>No payment requests</strong>
+          When a student reserves a cash payment, it appears here straight away.
+        </div>
+      <% } %>
+
+      <% requests.forEach((request) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-sub" data-label="Submitted"><%= formatDateTime(request.created_at) %></span>
+
+          <span class="mq-cell mq-cell-primary" data-label="Student">
+            <span class="mq-name"><%= nameOf(request) %></span>
+            <span class="mq-sub"><%= request.student_code %><%= request.purpose ? ` · ${request.purpose}` : '' %></span>
+          </span>
+
+          <span class="mq-cell" data-label="Branch"><%= request.branch_name || '—' %></span>
+          <span class="mq-cell mq-money" data-label="Amount"><%= money(request.amount) %></span>
+          <span class="mq-cell mq-sub" data-label="Preferred date"><%= request.preferred_at ? formatDateTime(request.preferred_at) : 'Any time' %></span>
+
+          <span class="mq-cell" data-label="Status">
+            <span class="mq-status mq-status-<%= request.status %>"><%= request.status %></span>
+          </span>
+
+          <span class="mq-cell mq-cell-actions">
+            <button type="button" class="mq-icon" onclick="openRequestModal('request-<%= request.id %>')"
+                    title="Open request" aria-label="Open request"><%- icon('view') %></button>
+            <% if (request.status === 'pending') { %>
+              <button type="button" class="mq-icon mq-icon-add" onclick="openRequestModal('request-<%= request.id %>')"
+                      title="Mark completed" aria-label="Mark completed"><%- icon('check') %></button>
+            <% } %>
+          </span>
+        </div>
+      <% }) %>
+
+      <% if (typeof requestPager !== 'undefined') { %>
+        <%- include('../partials/mq-pager', {
+          pager: requestPager, baseUrl: `${basePath}/notifications`, params: currentQuery, noun: 'request'
+        }) %>
+      <% } %>
+    </div>
+  </section>
+
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>System alerts</h2>
+        <p>Automatic notices addressed to your role.</p>
+      </div>
+      <span class="mq-count"><%= alerts.length %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: 150px minmax(220px, 3fr) 1fr 110px 96px;">
+      <div class="mq-head">
+        <span>When</span><span>Alert</span><span>Branch</span><span>Read</span><span style="text-align:right;">Actions</span>
+      </div>
+
+      <% if (!alerts.length) { %>
+        <div class="mq-empty">Nothing to show. System alerts appear here as they happen.</div>
+      <% } %>
+
+      <% alerts.forEach((alert) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-sub" data-label="When"><%= formatDateTime(alert.created_at) %></span>
+          <span class="mq-cell mq-cell-primary" data-label="Alert">
+            <span class="mq-name"><%= alert.title %></span>
+            <span class="mq-sub"><%= alert.message || '' %></span>
+          </span>
+          <span class="mq-cell" data-label="Branch"><%= alert.branch_name || 'All' %></span>
+          <span class="mq-cell" data-label="Read">
+            <span class="mq-status mq-status-<%= alert.is_read ? 'completed' : 'pending' %>"><%= alert.is_read ? 'read' : 'new' %></span>
+          </span>
+          <span class="mq-cell mq-cell-actions">
+            <% if (alert.link_url) { %>
+              <a class="mq-icon" href="<%= alert.link_url %>" title="Open" aria-label="Open"><%- icon('view') %></a>
+            <% } %>
+            <% if (!alert.is_read) { %>
+              <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/read">
+                <button class="mq-icon" type="submit" title="Mark as read" aria-label="Mark as read"><%- icon('check') %></button>
+              </form>
+            <% } %>
+            <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/archive" data-confirm-message="Archive this notification?">
+              <button class="mq-icon mq-icon-danger" type="submit" title="Archive" aria-label="Archive"><%- icon('archive') %></button>
+            </form>
+          </span>
+        </div>
+      <% }) %>
+
+      <%# The alert list pages on its own key, so turning a page here does not
+          reset the request list above it. %>
+      <% if (typeof alertPager !== 'undefined') { %>
+        <%- include('../partials/mq-pager', {
+          pager: alertPager,
+          baseUrl: `${basePath}/notifications`,
+          params: currentQuery,
+          noun: 'alert',
+          pageParam: 'alert_page'
+        }) %>
+      <% } %>
+    </div>
+  </section>
+
+  <%# ------------------------------------------------ one dialog per request %>
+  <% requests.forEach((request) => { %>
+    <div class="global-modal <%= String(openRequestId || '') === String(request.id) ? 'is-open' : '' %>"
+         id="request-<%= request.id %>"
+         <%= String(openRequestId || '') === String(request.id) ? 'data-force-open="true"' : '' %>>
+      <div class="global-modal-card wide">
+        <button type="button" class="modal-close" data-close-modal>&times;</button>
+        <h3>Cash payment request #<%= request.id %></h3>
+
+        <div class="mq-detail">
+          <div class="mq-detail-item"><span>Student</span><strong><%= nameOf(request) %></strong></div>
+          <div class="mq-detail-item"><span>Student ID</span><strong><%= request.student_code %></strong></div>
+          <div class="mq-detail-item"><span>Branch</span><strong><%= request.branch_name || '—' %></strong></div>
+          <div class="mq-detail-item"><span>Amount requested</span><strong><%= money(request.amount) %></strong></div>
+          <div class="mq-detail-item"><span>Purpose</span><strong><%= request.purpose || 'Tuition' %></strong></div>
+          <div class="mq-detail-item"><span>Method</span><strong><%= request.payment_method === 'cash' ? 'Cash at branch' : request.payment_method %></strong></div>
+          <div class="mq-detail-item"><span>Submitted</span><strong><%= formatDateTime(request.created_at) %></strong></div>
+          <div class="mq-detail-item"><span>Preferred date &amp; time</span><strong><%= request.preferred_at ? formatDateTime(request.preferred_at) : 'Any time' %></strong></div>
+          <div class="mq-detail-item"><span>Contact</span><strong><%= request.contact_number || '—' %></strong></div>
+          <div class="mq-detail-item"><span>Status</span><strong><span class="mq-status mq-status-<%= request.status %>"><%= request.status %></span></strong></div>
+          <% if (request.reference_note) { %>
+            <div class="mq-detail-item is-wide"><span>Student note</span><strong><%= request.reference_note %></strong></div>
+          <% } %>
+          <% if (request.status !== 'pending') { %>
+            <div class="mq-detail-item is-wide">
+              <span>Processed</span>
+              <strong>
+                <%= request.processed_by_name || (request.processor_first_name ? `${request.processor_first_name} ${request.processor_last_name || ''}` : 'Unknown') %>
+                <% if (request.processed_by_role) { %>(<%= request.processed_by_role === 'admin' ? 'Admin' : 'Assistant Admin' %>)<% } %>
+                — <%= formatDateTime(request.processed_at) %>
+                <% if (request.recorded_amount) { %> · recorded <%= money(request.recorded_amount) %><% } %>
+              </strong>
+            </div>
+          <% } %>
+          <% if (request.processed_note) { %>
+            <div class="mq-detail-item is-wide"><span>Processing note</span><strong><%= request.processed_note %></strong></div>
+          <% } %>
+        </div>
+
+        <% if (request.status === 'pending') { %>
+          <form class="mq-form" method="post" action="<%= basePath %>/payment-requests/<%= request.id %>/complete"
+                data-confirm-message="Confirm the cash was received and add it to this student's ledger?">
+            <label>Amount actually received
+              <input type="number" name="amount" step="0.01" min="0.01" value="<%= Number(request.amount).toFixed(2) %>" required />
+            </label>
+            <label class="is-wide">Note (optional)
+              <input type="text" name="note" placeholder="e.g. paid in full at the front desk" />
+            </label>
+            <p class="mq-form-note">
+              Marking this completed appends a payment entry to
+              <%= nameOf(request) %>'s ledger and stamps it with your name and the time.
+              The student's balance updates immediately.
+            </p>
+            <div class="mq-form-foot">
+              <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Mark completed</button>
+            </div>
+          </form>
+
+          <form class="mq-form" method="post" action="<%= basePath %>/payment-requests/<%= request.id %>/cancel"
+                data-confirm-message="Cancel this payment request? Nothing is added to the ledger.">
+            <label class="is-wide">Reason for cancelling
+              <input type="text" name="note" placeholder="e.g. student did not turn up" />
+            </label>
+            <div class="mq-form-foot">
+              <button class="mq-btn mq-btn-danger" type="submit"><%- icon('close') %> Cancel request</button>
+            </div>
+          </form>
+        <% } else { %>
+          <div class="mq-form-foot" style="padding:0 16px 16px;">
+            <a class="mq-btn" href="<%= basePath %>/billing?info=<%= request.student_id %>"><%- icon('receipt') %> Open ledger</a>
+            <button type="button" class="mq-btn" data-close-modal>Close</button>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  <% }) %>
+
+</section>
+
+<script>
+  function openRequestModal(id) {
+    var modal = document.getElementById(id);
+    if (!modal) return;
+    document.querySelectorAll('.global-modal.is-open').forEach(function (item) {
+      if (item !== modal) item.classList.remove('is-open');
+    });
+    modal.classList.add('is-open');
+  }
+</script>

@@ -1,189 +1,249 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-users.ejs | Purpose: UI template/view used by the system. %>
-<section class="page-stack user-management-clean">
-  <div class="toolbar-card split sticky-toolbar">
-    <form method="get" action="<%= basePath %>/users" class="inline-form multi wrap-search-form">
-      <% if (currentUser.role === 'admin') { %>
-      <label>Branch
-        <select name="branch_id" onchange="this.form.submit()">
-          <option value="all">All branches</option>
-          <% branches.forEach((branch) => { %>
-            <option value="<%= branch.id %>" <%= Number(effectiveBranchId) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
-          <% }) %>
-        </select>
+<%# File: views/content/admin-users.ejs
+    Purpose: User Management, rebuilt as a row list.
+
+    It used to be a <table> whose only row action was Archive and which rendered
+    every user in the branch at once. It is now the shared .mq-table row system:
+    one line per user, key facts only, icon actions on the right, and a pager, so
+    the page stays the same size whether there are 20 users or 2,000.
+
+    The heavy detail (full profile, subjects, guardian, documents) is one click
+    away on the profile page rather than crammed into the row. %>
+<%
+  const pagerState = typeof pager === 'undefined' ? null : pager;
+  const currentQuery = typeof query === 'undefined' ? {} : query;
+%>
+<section class="mq-page">
+
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/users">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= search || '' %>" placeholder="Name, ID, email or contact number" />
       </label>
+
+      <% if (currentUser.role === 'admin') { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id" onchange="this.form.submit()">
+            <option value="all">All branches</option>
+            <% branches.forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= Number(effectiveBranchId) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
       <% } %>
-      <label>Role
+
+      <label class="mq-field">
+        <span>Role</span>
         <select name="role" onchange="this.form.submit()">
-          <option value="all" <%= selectedRole === 'all' ? 'selected' : '' %>>All role</option>
+          <option value="all" <%= selectedRole === 'all' ? 'selected' : '' %>>All roles</option>
           <option value="student" <%= selectedRole === 'student' ? 'selected' : '' %>>Student</option>
           <option value="tutor" <%= selectedRole === 'tutor' ? 'selected' : '' %>>Tutor</option>
         </select>
       </label>
-      <label>Search<input type="text" name="search" value="<%= search || '' %>" placeholder="Search student or tutor name" /></label>
-      <button class="btn btn-secondary btn-sm" type="submit">Search</button>
-    </form>
-    <div class="row-actions">
-      <button type="button" class="btn btn-secondary" data-modal-target="#archived-users-modal">View Archive</button>
+
+      <label class="mq-field">
+        <span>Status</span>
+        <select name="status" onchange="this.form.submit()">
+          <option value="all" <%= selectedStatus === 'all' ? 'selected' : '' %>>All</option>
+          <option value="approved" <%= selectedStatus === 'approved' ? 'selected' : '' %>>Approved</option>
+          <option value="pending" <%= selectedStatus === 'pending' ? 'selected' : '' %>>Pending</option>
+          <option value="rejected" <%= selectedStatus === 'rejected' ? 'selected' : '' %>>Rejected</option>
+        </select>
+      </label>
+
+      <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
+    </div>
+
+    <div class="mq-toolbar-actions">
+      <button type="button" class="mq-btn" data-modal-target="#archived-users-modal"><%- icon('archive') %> Archive</button>
       <% if (currentUser.role === 'admin') { %>
-        <button type="button" class="btn btn-primary" data-modal-target="#assistant-modal">Branch Account Management</button><button type="button" class="btn btn-secondary" data-modal-target="#archived-assistant-modal">View Archived Assistant Accounts</button>
+        <button type="button" class="mq-btn" data-modal-target="#archived-assistant-modal">Archived assistants</button>
+        <button type="button" class="mq-btn mq-btn-primary" data-modal-target="#assistant-modal"><%- icon('add') %> Branch account</button>
       <% } %>
     </div>
-  </div>
+  </form>
 
-  <section class="panel-card scroll-panel medium-scroll">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>User ID</th>
-            <th>Name</th>
-            <th>Branch</th>
-            <th>Role</th>
-            <th>Date</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% if (!users.length) { %>
-            <tr><td colspan="6">No users found.</td></tr>
-          <% } %>
-          <% users.forEach((user) => { %>
-            <tr>
-              <td><%= user.user_id %></td>
-              <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= titleCaseName(user.first_name) %> <%= titleCaseName(user.last_name) %></a><% if (user.role === "tutor") { const expertise = [...new Set([...(String(user.year_level || "").split(",").map((item) => item.trim()).filter(Boolean)), ...safeJsonArray(user.extra?.year_levels || [])])].filter(Boolean); if (expertise.length) { %><div style="font-size:12px;color:#5b6d80;margin-top:4px;">Year Level Expertise: <%= expertise.join(", ") %></div><% } } %></td>
-              <td><%= user.branch_name || '-' %></td>
-              <td><%= user.role %></td>
-              <td><%= formatDate(user.created_at) %></td>
-              <td>
-                <form method="post" action="<%= basePath %>/users/<%= user.id %>/archive" data-confirm-message="Archive this user?">
-                  <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
-                </form>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <h2>All users</h2>
+      <span class="mq-count"><%= pagerState ? pagerState.total : users.length %> total</span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: 120px minmax(180px, 2fr) 1fr 110px 110px 110px 96px;">
+      <div class="mq-head">
+        <span>User ID</span>
+        <span>Name</span>
+        <span>Branch</span>
+        <span>Role</span>
+        <span>Status</span>
+        <span>Joined</span>
+        <span style="text-align:right;">Actions</span>
+      </div>
+
+      <% if (!users.length) { %>
+        <div class="mq-empty">
+          <strong>No users found</strong>
+          Try a different search term, or clear the filters above.
+        </div>
+      <% } %>
+
+      <% users.forEach((user) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-sub" data-label="User ID"><%= user.user_id %></span>
+
+          <span class="mq-cell mq-cell-primary" data-label="Name">
+            <a class="mq-name" href="<%= basePath %>/profile/<%= user.id %>"><%= titleCaseName(user.first_name) %> <%= titleCaseName(user.last_name) %></a>
+            <span class="mq-sub"><%= user.email || user.contact_number || '—' %></span>
+          </span>
+
+          <span class="mq-cell" data-label="Branch"><%= user.branch_name || '—' %></span>
+
+          <span class="mq-cell" data-label="Role">
+            <span class="mq-chip mq-chip-role"><%= user.role %></span>
+          </span>
+
+          <span class="mq-cell" data-label="Status">
+            <span class="mq-status mq-status-<%= user.status === 'approved' ? 'approved' : user.status === 'pending' ? 'pending' : 'rejected' %>"><%= user.status %></span>
+          </span>
+
+          <span class="mq-cell mq-sub" data-label="Joined"><%= formatDate(user.created_at) %></span>
+
+          <span class="mq-cell mq-cell-actions">
+            <a class="mq-icon" href="<%= basePath %>/profile/<%= user.id %>" title="View profile" aria-label="View profile"><%- icon('view') %></a>
+            <form method="post" action="<%= basePath %>/users/<%= user.id %>/archive" data-confirm-message="Archive <%= titleCaseName(user.first_name) %> <%= titleCaseName(user.last_name) %>? They will no longer be able to log in.">
+              <button class="mq-icon mq-icon-danger" type="submit" title="Archive user" aria-label="Archive user"><%- icon('archive') %></button>
+            </form>
+          </span>
+        </div>
+      <% }) %>
+
+      <% if (pagerState) { %>
+        <%- include('../partials/mq-pager', { pager: pagerState, baseUrl: `${basePath}/users`, params: currentQuery, noun: 'user' }) %>
+      <% } %>
     </div>
   </section>
 
-  
+  <% if (currentUser.role === 'admin') { %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <h2>Branch assistant accounts</h2>
+        <span class="mq-count"><%= assistantAccounts.length %> account<%= assistantAccounts.length === 1 ? '' : 's' %></span>
+      </div>
+
+      <div class="mq-table" style="--mq-cols: minmax(160px, 2fr) minmax(160px, 2fr) 1fr 110px 96px;">
+        <div class="mq-head">
+          <span>Assistant</span>
+          <span>Email</span>
+          <span>Branch</span>
+          <span>Created</span>
+          <span style="text-align:right;">Actions</span>
+        </div>
+
+        <% if (!assistantAccounts.length) { %>
+          <div class="mq-empty"><strong>No assistant accounts yet</strong>Create one with the button above.</div>
+        <% } %>
+
+        <% assistantAccounts.forEach((assistant) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-cell-primary" data-label="Assistant">
+              <span class="mq-name"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></span>
+              <span class="mq-sub">Admin Assistant</span>
+            </span>
+            <span class="mq-cell mq-sub" data-label="Email"><%= assistant.email %></span>
+            <span class="mq-cell" data-label="Branch"><%= assistant.branch_name || '—' %></span>
+            <span class="mq-cell mq-sub" data-label="Created"><%= formatDate(assistant.created_at) %></span>
+            <span class="mq-cell mq-cell-actions">
+              <a class="mq-icon" href="<%= basePath %>/profile/<%= assistant.id %>" title="View account" aria-label="View account"><%- icon('view') %></a>
+              <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/archive" data-confirm-message="Archive this assistant account?">
+                <button class="mq-icon mq-icon-danger" type="submit" title="Archive account" aria-label="Archive account"><%- icon('archive') %></button>
+              </form>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
+
+  <%# ---------------------------------------------------------------- modals %>
 
   <div class="global-modal" id="archived-users-modal">
     <div class="global-modal-card wide">
       <button type="button" class="modal-close" data-close-modal>&times;</button>
-      <h3>Archived Users</h3>
-      <div class="table-wrap max-modal-table">
-        <table>
-          <thead><tr><th>User ID</th><th>Name</th><th>Role</th><th>Recover</th></tr></thead>
-          <tbody>
-            <% if (!archivedUsers.length) { %>
-              <tr><td colspan="4">No archived users.</td></tr>
-            <% } %>
-            <% archivedUsers.forEach((user) => { %>
-              <tr>
-                <td><%= user.user_id %></td>
-                <td><%= user.first_name %> <%= user.last_name %></td>
-                <td><%= user.role %></td>
-                <td>
-                  <form method="post" action="<%= basePath %>/users/<%= user.id %>/recover" data-confirm-message="Recover this archived user?">
-                    <button class="btn btn-primary btn-sm" type="submit">Recover</button>
-                  </form>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
+      <h3>Archived users</h3>
+      <div class="mq-table" style="--mq-cols: 120px minmax(160px,2fr) 110px 96px;">
+        <div class="mq-head">
+          <span>User ID</span><span>Name</span><span>Role</span><span style="text-align:right;">Recover</span>
+        </div>
+        <% if (!archivedUsers.length) { %>
+          <div class="mq-empty">No archived users.</div>
+        <% } %>
+        <% archivedUsers.forEach((user) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-sub" data-label="User ID"><%= user.user_id %></span>
+            <span class="mq-cell mq-name" data-label="Name"><%= titleCaseName(user.first_name) %> <%= titleCaseName(user.last_name) %></span>
+            <span class="mq-cell" data-label="Role"><span class="mq-chip mq-chip-role"><%= user.role %></span></span>
+            <span class="mq-cell mq-cell-actions">
+              <form method="post" action="<%= basePath %>/users/<%= user.id %>/recover" data-confirm-message="Recover this archived user?">
+                <button class="mq-icon" type="submit" title="Recover user" aria-label="Recover user"><%- icon('restore') %></button>
+              </form>
+            </span>
+          </div>
+        <% }) %>
       </div>
     </div>
   </div>
 
-
   <% if (currentUser.role === 'admin') { %>
-  <div class="global-modal" id="archived-assistant-modal">
-    <div class="global-modal-card wide">
-      <button type="button" class="modal-close" data-close-modal>&times;</button>
-      <h3>Archived Assistant Accounts</h3>
-      <div class="table-wrap max-modal-table">
-        <table>
-          <thead><tr><th>Assistant Admin Name</th><th>Email</th><th>Branch</th><th>View</th><th>Recover</th></tr></thead>
-          <tbody>
-            <% if (!(archivedAssistantAccounts || []).length) { %>
-              <tr><td colspan="5">No archived assistant accounts.</td></tr>
-            <% } %>
-            <% (archivedAssistantAccounts || []).forEach((assistant) => { %>
-              <tr>
-                <td><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></td>
-                <td><%= assistant.email %></td>
-                <td><%= assistant.branch_name || '-' %></td>
-                <td><a class="btn btn-secondary btn-sm" href="<%= basePath %>/profile/<%= assistant.id %>">View</a></td>
-                <td>
-                  <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/recover" data-confirm-message="Recover this archived assistant account?">
-                    <button class="btn btn-primary btn-sm" type="submit">Recover</button>
-                  </form>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  <% } %>
-
-  <% if (currentUser.role === 'admin') { %>
-  <div class="global-modal" id="assistant-modal">
-    <div class="global-modal-card small">
-      <button type="button" class="modal-close" data-close-modal>&times;</button>
-      <h3>Create Branch Admin Assistant Account</h3>
-      <form method="post" action="<%= basePath %>/assistant-accounts" class="stack-form">
-        <label>Branch
-          <select name="branch_id" required>
-            <% ((typeof availableAssistantBranches !== 'undefined' && availableAssistantBranches.length ? availableAssistantBranches : branches) || []).forEach((branch) => { %>
-              <option value="<%= branch.id %>"><%= branch.name %></option>
-            <% }) %>
-          </select>
-        </label>
-        <label>Assistant Admin Name
-          <input type="text" name="assistant_name" required />
-        </label>
-        <label>Email
-          <input type="email" name="email" required />
-        </label>
-        <label>Password
-          <input type="password" name="password" required />
-        </label>
-        <button class="btn btn-primary" type="submit">Save Account</button>
-      </form>
-    </div>
-  </div>
-  <% } %>
-
-</section>
-
-<section>
-  <% if (currentUser.role === 'admin') { %>
-  <section class="panel-card scroll-panel small-scroll">
-    <div class="panel-card-head"><h2>Branch Assistant Accounts</h2></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Assistant Admin Name</th><th>Email</th><th>Password</th><th>Branch</th><th>Date</th><th>Action</th></tr></thead>
-        <tbody>
-          <% if (!assistantAccounts.length) { %>
-            <tr><td colspan="6">No assistant accounts yet.</td></tr>
+    <div class="global-modal" id="archived-assistant-modal">
+      <div class="global-modal-card wide">
+        <button type="button" class="modal-close" data-close-modal>&times;</button>
+        <h3>Archived assistant accounts</h3>
+        <div class="mq-table" style="--mq-cols: minmax(150px,2fr) minmax(150px,2fr) 1fr 96px;">
+          <div class="mq-head">
+            <span>Assistant</span><span>Email</span><span>Branch</span><span style="text-align:right;">Recover</span>
+          </div>
+          <% if (!(archivedAssistantAccounts || []).length) { %>
+            <div class="mq-empty">No archived assistant accounts.</div>
           <% } %>
-          <% assistantAccounts.forEach((assistant) => { %>
-            <tr>
-              <td><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></td>
-              <td><%= assistant.email %></td>
-              <td><%= '******' %></td>
-              <td><%= assistant.branch_name %></td>
-              <td><%= formatDate(assistant.created_at) %></td>
-              <td><div class="row-actions"><a class="btn btn-secondary btn-sm" href="<%= basePath %>/profile/<%= assistant.id %>">View</a><form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/archive" data-confirm-message="Archive this assistant account?"><button class="btn btn-secondary btn-sm" type="submit">Archive</button></form></div></td>
-            </tr>
+          <% (archivedAssistantAccounts || []).forEach((assistant) => { %>
+            <div class="mq-row">
+              <span class="mq-cell mq-name" data-label="Assistant"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></span>
+              <span class="mq-cell mq-sub" data-label="Email"><%= assistant.email %></span>
+              <span class="mq-cell" data-label="Branch"><%= assistant.branch_name || '—' %></span>
+              <span class="mq-cell mq-cell-actions">
+                <a class="mq-icon" href="<%= basePath %>/profile/<%= assistant.id %>" title="View account" aria-label="View account"><%- icon('view') %></a>
+                <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/recover" data-confirm-message="Recover this archived assistant account?">
+                  <button class="mq-icon" type="submit" title="Recover account" aria-label="Recover account"><%- icon('restore') %></button>
+                </form>
+              </span>
+            </div>
           <% }) %>
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
-  </section>
+
+    <div class="global-modal" id="assistant-modal">
+      <div class="global-modal-card small">
+        <button type="button" class="modal-close" data-close-modal>&times;</button>
+        <h3>Create branch assistant account</h3>
+        <form method="post" action="<%= basePath %>/assistant-accounts" class="mq-form">
+          <label>Branch
+            <select name="branch_id" required>
+              <% ((typeof availableAssistantBranches !== 'undefined' && availableAssistantBranches.length ? availableAssistantBranches : branches) || []).forEach((branch) => { %>
+                <option value="<%= branch.id %>"><%= branch.name %></option>
+              <% }) %>
+            </select>
+          </label>
+          <label>Assistant name<input type="text" name="assistant_name" required /></label>
+          <label>Email<input type="email" name="email" required /></label>
+          <label>Password<input type="password" name="password" required /></label>
+          <div class="mq-form-foot">
+            <button class="mq-btn mq-btn-primary" type="submit">Save account</button>
+          </div>
+        </form>
+      </div>
+    </div>
   <% } %>
+
 </section>

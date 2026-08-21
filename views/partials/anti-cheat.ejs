@@ -1,0 +1,34 @@
+<%#
+  File: views/partials/anti-cheat.ejs
+  Purpose: Arm the anti-cheating watcher for one assessment sitting.
+
+  Included by every page where a student answers questions. It renders the
+  notice — so the rules are stated BEFORE the first violation — plus the mount
+  element the script reads its configuration from, and the script itself.
+
+  The matching `<input type="hidden" name="session_key">` goes INSIDE each page's
+  form, next to started_at: the HTML `form=""` attribute would work but ties this
+  partial to the form's id, and a mismatch there fails silently.
+
+  Locals: antiCheat { endpoint, sessionKey, limit, startCount }, formSelector
+%>
+<% if (typeof antiCheat !== 'undefined' && antiCheat) { %>
+  <div class="mq-ac-status">
+    <span aria-hidden="true">⚠️</span>
+    <span>
+      <strong>Stay on this page.</strong>
+      Switching tabs, leaving this window, copying the questions or opening browser tools
+      is recorded. After <strong><%= antiCheat.limit %> violations</strong> your assessment is
+      submitted automatically with the answers you have completed.
+    </span>
+  </div>
+
+  <div id="mq-anti-cheat"
+       data-endpoint="<%= antiCheat.endpoint %>"
+       data-session="<%= antiCheat.sessionKey %>"
+       data-form="<%= typeof formSelector !== 'undefined' ? formSelector : '#assessment-form' %>"
+       data-limit="<%= antiCheat.limit %>"
+       data-start-count="<%= antiCheat.startCount || 0 %>"></div>
+
+  <script src="/js/anti-cheat.js" defer></script>
+<% } %>

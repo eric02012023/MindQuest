@@ -86,8 +86,6 @@ const {
   recoverSubjectResource,
   getAdminSubjectResourcesWithArchived,
   getStudentAnalytics,
-  // Phase 3: Analytics imports
-  getAllStudentsForAnalytics,
   // Legacy pre/post assessment listing (read-only after Phase 1)
   getSubjectAssessments,
   // Module -> Handout system (overhaul Phase 3)
@@ -111,7 +109,34 @@ const {
   getModuleTargetOptions,
   deleteModule,
   getAllTutorAssessmentsAdmin,
-  getStudentResultsAdmin
+  getStudentResultsAdmin,
+  // --- Management upgrade -------------------------------------------------
+  getUsersPaged,
+  // Billing ledger: Billing (1) -> (many) PaymentEntries, append-only
+  PAYMENT_METHODS,
+  PAYMENT_PURPOSES,
+  attachPaymentLedgers,
+  getBillingLedger,
+  addPaymentEntry,
+  getPaymentLedger,
+  summarisePaymentLedger,
+  // Student cash payment requests
+  getPaymentRequests,
+  getPaymentRequestById,
+  countPendingPaymentRequests,
+  completePaymentRequest,
+  cancelPaymentRequest,
+  // In-app notifications
+  getAppNotifications,
+  markAppNotificationRead,
+  markAppNotificationReferenceRead,
+  archiveAppNotification,
+  // Analytics & Reports (RBAC-scoped at the query level)
+  getAnalyticsDashboard,
+  getFocusHandouts,
+  getFocusHandoutById,
+  resolveScope,
+  canActOnBranch
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { query } = require('../config/db');
@@ -220,10 +245,19 @@ function createAdminRouter(role) {
 
   async function buildShellData(req, extra = {}) {
     const scopeBranchId = getScopeBranchId(req);
-    const [branches, inboxNotifications] = await Promise.all([
+    const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+
+    // The bell now counts two streams: the registration/enrolment inbox it always
+    // showed, plus the payment requests students submit. A pending cash payment
+    // that nobody notices is the failure this whole flow exists to avoid, so it
+    // is counted in the same badge rather than hidden on its own page.
+    const [branches, inboxNotifications, pendingPayments, alerts] = await Promise.all([
       getBranches(),
-      getAdminInboxNotifications(scopeBranchId)
+      getAdminInboxNotifications(scopeBranchId),
+      countPendingPaymentRequests(scope).catch(() => 0),
+      getAppNotifications(req.session.user, { unreadOnly: true }).catch(() => [])
     ]);
+
     return {
       pageTitle: extra.pageTitle || 'Dashboard',
       roleName: req.session.user.role === 'admin' ? 'Admin' : 'Admin Assistant',
@@ -233,8 +267,10 @@ function createAdminRouter(role) {
       currentUser: req.session.user,
       branches,
       effectiveBranchId: scopeBranchId,
-      notificationCount: inboxNotifications.length,
+      notificationCount: inboxNotifications.length + alerts.length,
       inboxNotifications,
+      alerts,
+      pendingPaymentCount: pendingPayments,
       availableAssistantBranches: [],
       ...extra
     };
@@ -403,23 +439,40 @@ function createAdminRouter(role) {
       const scopeBranchId = getScopeBranchId(req);
       const selectedRole = req.query.role || 'all';
       const search = req.query.search || '';
-      const [users, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches] = await Promise.all([
-        getUsers({ scopeBranchId, role: selectedRole, archived: false, search }),
+      const status = req.query.status || 'all';
+
+      // Paged, not "render everything": the page has to stay usable at two
+      // thousand users, and the browser cannot lay out two thousand rows quickly.
+      // The archive stays unpaged — it is a lookup, opened from a modal.
+      const [page, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches] = await Promise.all([
+        getUsersPaged({
+          scopeBranchId,
+          role: selectedRole,
+          archived: false,
+          search,
+          status,
+          page: req.query.page,
+          pageSize: req.query.page_size
+        }),
         getUsers({ scopeBranchId, role: selectedRole, archived: true, search }),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, false) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, true) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAvailableAssistantBranches() : Promise.resolve([])
       ]);
+
       const shell = await buildShellData(req, {
         pageTitle: 'User Management',
         section: 'users',
         contentView: '../content/admin-users',
-        users,
+        users: page.rows,
+        pager: page,
+        query: req.query,
         archivedUsers,
         assistantAccounts,
         archivedAssistantAccounts,
         availableAssistantBranches,
         selectedRole,
+        selectedStatus: status,
         search
       });
       res.render('shells/dashboard', shell);
@@ -427,6 +480,79 @@ function createAdminRouter(role) {
       next(error);
     }
   });
+
+  /**
+   * Student Profiles and Tutor Profiles.
+   *
+   * Both are the same row list over the same query with the role pinned, so they
+   * share one view rather than being two templates that drift. Each row carries
+   * only what identifies the person; the full profile is one click away.
+   */
+  async function renderProfileList(req, res, next, listRole) {
+    try {
+      const scopeBranchId = getScopeBranchId(req);
+      const search = req.query.search || '';
+      const yearLevel = req.query.year_level || 'all';
+
+      const [page, archivedUsers, subjects] = await Promise.all([
+        getUsersPaged({
+          scopeBranchId,
+          role: listRole,
+          archived: false,
+          search,
+          yearLevel,
+          page: req.query.page,
+          pageSize: req.query.page_size
+        }),
+        getUsers({ scopeBranchId, role: listRole, archived: true, search }),
+        getSubjects(false)
+      ]);
+
+      // The assignment counts are what make the row worth reading: a tutor with
+      // no students, or a student with no tutor, is the thing an admin looks for.
+      const ids = page.rows.map((row) => Number(row.id)).filter(Boolean);
+      let assignmentCounts = new Map();
+      if (ids.length) {
+        const column = listRole === 'tutor' ? 'tutor_id' : 'student_id';
+        const counts = await query(
+          `SELECT ${column} AS owner_id, COUNT(DISTINCT subject_id) AS subject_count,
+                  COUNT(DISTINCT ${listRole === 'tutor' ? 'student_id' : 'tutor_id'}) AS partner_count
+           FROM user_subject_assignments
+           WHERE is_archived = 0 AND ${column} IN (${ids.map(() => '?').join(',')})
+           GROUP BY ${column}`,
+          ids
+        );
+        assignmentCounts = new Map(counts.map((row) => [Number(row.owner_id), row]));
+      }
+
+      const rows = page.rows.map((row) => ({
+        ...row,
+        subject_count: Number(assignmentCounts.get(Number(row.id))?.subject_count || 0),
+        partner_count: Number(assignmentCounts.get(Number(row.id))?.partner_count || 0)
+      }));
+
+      const shell = await buildShellData(req, {
+        pageTitle: listRole === 'tutor' ? 'Tutor Profiles' : 'Student Profiles',
+        section: listRole === 'tutor' ? 'tutors' : 'students',
+        contentView: '../content/admin-profile-list',
+        listRole,
+        users: rows,
+        pager: page,
+        query: req.query,
+        archivedUsers,
+        subjects,
+        yearLevelOptions: YEAR_LEVEL_OPTIONS,
+        selectedYearLevel: yearLevel,
+        search
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  router.get('/students', (req, res, next) => renderProfileList(req, res, next, 'student'));
+  router.get('/tutors', (req, res, next) => renderProfileList(req, res, next, 'tutor'));
 
   // Route handler: GET request
 
@@ -824,24 +950,63 @@ function createAdminRouter(role) {
 
   // Purpose: Processes this endpoint and returns the correct view or action result.
 
+  /**
+   * Student Billing — row-based, one row per student, with the full payment
+   * ledger attached to each row.
+   *
+   * `edit` and `info` in the query string still work: they open the header form
+   * or the SOA panel for that student, which is what the old links pointed at.
+   */
   router.get('/billing', async (req, res, next) => {
     try {
       const scopeBranchId = getScopeBranchId(req);
-      const [billingRows, paymentHistory] = await Promise.all([
-        getBillingRows(scopeBranchId, false),
-        getPaymentHistory(scopeBranchId)
-      ]);
+      const search = String(req.query.search || '').trim();
+      const status = req.query.status || 'all';
+
+      const rawRows = await getBillingRows(scopeBranchId, 'all', { search, status });
+
+      // Page BEFORE attaching ledgers: each row carries its full payment history
+      // and renders three dialogs, so building that for every student in the
+      // branch would be the slowest thing on the page and none of it would show.
+      const pageSize = Math.min(100, Math.max(10, Number(req.query.page_size) || 25));
+      const pageCount = Math.max(1, Math.ceil(rawRows.length / pageSize));
+      const page = Math.min(pageCount, Math.max(1, Number(req.query.page) || 1));
+      const pageRows = rawRows.slice((page - 1) * pageSize, page * pageSize);
+
+      const billingRows = await attachPaymentLedgers(pageRows);
+      const paymentHistory = await getPaymentHistory(scopeBranchId);
+
       const billingStudentIds = new Set(billingRows.map((row) => String(row.student_id)));
       const openEditStudentId = billingStudentIds.has(String(req.query.edit || '')) ? String(req.query.edit) : '';
       const openInfoStudentId = billingStudentIds.has(String(req.query.info || '')) ? String(req.query.info) : '';
+      const openPayStudentId = billingStudentIds.has(String(req.query.pay || '')) ? String(req.query.pay) : '';
+
+      // The summary describes the whole filtered set, not just this page — a
+      // total that changed when you turned the page would be worse than useless.
+      const totals = rawRows.reduce((acc, row) => {
+        acc.billed += Number(row.full_bill || 0);
+        acc.paid += Number(row.partial_payment || 0);
+        acc.remaining += Number(row.for_settlement || 0);
+        if (row.payment_status === 'paid') acc.settled += 1;
+        return acc;
+      }, { billed: 0, paid: 0, remaining: 0, settled: 0, accounts: rawRows.length });
+
       const shell = await buildShellData(req, {
         pageTitle: 'Student Billing',
         section: 'billing',
         contentView: '../content/admin-billing',
         billingRows,
         paymentHistory,
+        billingTotals: totals,
+        paymentMethods: PAYMENT_METHODS,
+        paymentPurposes: PAYMENT_PURPOSES,
+        pager: { page, pageCount, total: rawRows.length, pageSize },
+        search,
+        selectedStatus: status,
+        query: req.query,
         openEditStudentId,
-        openInfoStudentId
+        openInfoStudentId,
+        openPayStudentId
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -849,24 +1014,98 @@ function createAdminRouter(role) {
     }
   });
 
-  // Income Report route
+  /**
+   * Append one payment to a student's ledger — the "+" button's endpoint.
+   *
+   * There is no counterpart that edits or deletes an entry, which is the point:
+   * a later payment can never overwrite an earlier one because no code path
+   * exists that would let it.
+   */
+  router.post('/billing/:studentId/payments', async (req, res, next) => {
+    const backTo = `${basePath}/billing`;
+    try {
+      const studentId = await resolveExistingBillingStudentId(req);
+      if (!studentId) {
+        setFlash(req, 'error', 'Invalid student billing record.');
+        return res.redirect(backTo);
+      }
+
+      // An assistant may only touch accounts in their own branch. The billing
+      // list is already branch-scoped, but the POST is a separate request and
+      // has to be checked on its own.
+      const student = await getUserById(studentId);
+      if (!canActOnBranch(req.session.user, student?.branch_id)) {
+        setFlash(req, 'error', 'You can only record payments for students in your branch.');
+        return res.redirect(backTo);
+      }
+
+      const result = await addPaymentEntry({
+        studentId: Number(studentId),
+        amount: req.body.amount,
+        paymentMethod: req.body.payment_method,
+        purpose: req.body.purpose,
+        referenceNo: req.body.reference_no,
+        notes: req.body.notes,
+        paidAt: req.body.paid_at || null,
+        actor: req.session.user,
+        source: 'admin'
+      });
+
+      setFlash(
+        req,
+        'success',
+        `Payment #${result.sequenceNo} recorded. Total paid ₱${result.totals.paid.toFixed(2)}, `
+        + `remaining balance ₱${result.totals.settlement.toFixed(2)}.`
+      );
+      res.redirect(`${backTo}?info=${studentId}`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not record that payment.');
+      res.redirect(backTo);
+    }
+  });
+
+  /**
+   * Income Report — one row per transaction, with search, date range, branch,
+   * method and purpose filters, and a compact summary bar on top.
+   */
   router.get('/income-report', async (req, res, next) => {
     try {
-      const scopeBranchId = getScopeBranchId(req);
-      const [billingRows, paidBills, paymentHistoryData, branches] = await Promise.all([
-        getBillingRows(scopeBranchId, false),
-        getBillingRows(scopeBranchId, true),
-        getPaymentHistory(scopeBranchId),
-        getBranches()
-      ]);
-      const allBillingRows = [...billingRows, ...paidBills];
+      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+      const filters = {
+        search: String(req.query.search || '').trim(),
+        from: req.query.from || '',
+        to: req.query.to || '',
+        method: req.query.method || 'all',
+        purpose: req.query.purpose || 'all',
+        branchId: req.query.branch_id || 'all'
+      };
+
+      const rows = await getPaymentLedger(scope, filters);
+      const summary = summarisePaymentLedger(rows);
+
+      // Outstanding is a property of the accounts, not of the transactions, so it
+      // is read from billing rather than derived from the rows above.
+      const outstandingRows = await getBillingRows(getScopeBranchId(req), false);
+      const outstanding = outstandingRows.reduce((sum, row) => sum + Number(row.for_settlement || 0), 0);
+
+      const pageSize = Math.min(200, Math.max(10, Number(req.query.page_size) || 50));
+      const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+      const page = Math.min(pageCount, Math.max(1, Number(req.query.page) || 1));
+      const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+
       const shell = await buildShellData(req, {
         pageTitle: 'Income Report',
         section: 'income',
         contentView: '../content/admin-income-report',
-        billingRows: allBillingRows,
-        paymentHistory: paymentHistoryData,
-        branches: req.session.user.role === 'admin' ? branches : [],
+        rows: pageRows,
+        allRows: rows,
+        summary: { ...summary, outstanding: Math.round(outstanding * 100) / 100 },
+        pager: { page, pageCount, total: rows.length, pageSize },
+        query: req.query,
+        filters,
+        paymentMethods: PAYMENT_METHODS,
+        paymentPurposes: PAYMENT_PURPOSES,
+        branches: req.session.user.role === 'admin' ? await getBranches() : [],
         selectedBranch: req.query.branch_id || 'all'
       });
       res.render('shells/dashboard', shell);
@@ -1042,6 +1281,147 @@ function createAdminRouter(role) {
     } catch (error) {
       next(error);
     }
+  });
+
+  // ==========================================================================
+  // Notifications & payment requests
+  //
+  // One page, two lists: the cash payment requests students have submitted, and
+  // the system alerts addressed to this role. Both are searchable because both
+  // can grow without limit.
+  //
+  // Neither list is filtered by "who it was sent to" beyond the role scope — the
+  // brief's rule is that either Admin or Assistant Admin, whoever sees it first,
+  // opens and processes it.
+  // ==========================================================================
+
+  router.get('/notifications', async (req, res, next) => {
+    try {
+      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+      const search = String(req.query.search || '').trim();
+      const status = req.query.status || 'all';
+
+      const [allRequests, allAlerts] = await Promise.all([
+        getPaymentRequests(scope, { status, search }),
+        getAppNotifications(req.session.user, { search })
+      ]);
+
+      // Both lists are paged: a busy branch produces a payment request per
+      // student per month, and the page renders a dialog per request.
+      const pageSize = Math.min(100, Math.max(10, Number(req.query.page_size) || 20));
+      const pageCount = Math.max(1, Math.ceil(allRequests.length / pageSize));
+      const page = Math.min(pageCount, Math.max(1, Number(req.query.page) || 1));
+      const requests = allRequests.slice((page - 1) * pageSize, page * pageSize);
+
+      const alertPageCount = Math.max(1, Math.ceil(allAlerts.length / pageSize));
+      const alertPage = Math.min(alertPageCount, Math.max(1, Number(req.query.alert_page) || 1));
+      const alerts = allAlerts.slice((alertPage - 1) * pageSize, alertPage * pageSize);
+
+      // A request opened straight from a notification link may be on any page,
+      // so it is added to this page rather than the link landing on nothing.
+      const openRequestId = req.query.request ? String(req.query.request) : '';
+      if (openRequestId && !requests.some((r) => String(r.id) === openRequestId)) {
+        const wanted = allRequests.find((r) => String(r.id) === openRequestId);
+        if (wanted) requests.unshift(wanted);
+      }
+
+      const shell = await buildShellData(req, {
+        pageTitle: 'Notifications',
+        section: 'notifications',
+        contentView: '../content/admin-notifications',
+        requests,
+        alerts,
+        requestPager: { page, pageCount, total: allRequests.length, pageSize },
+        alertPager: { page: alertPage, pageCount: alertPageCount, total: allAlerts.length, pageSize },
+        search,
+        selectedStatus: status,
+        query: req.query,
+        openRequestId,
+        summary: {
+          pending: allRequests.filter((r) => r.status === 'pending').length,
+          completed: allRequests.filter((r) => r.status === 'completed').length,
+          unreadAlerts: allAlerts.filter((a) => !a.is_read).length
+        }
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /** Confirm the cash arrived: status Pending -> Completed, ledger entry appended. */
+  router.post('/payment-requests/:id/complete', async (req, res, next) => {
+    const backTo = `${basePath}/notifications`;
+    try {
+      const request = await getPaymentRequestById(Number(req.params.id));
+      if (!request) {
+        setFlash(req, 'error', 'Payment request not found.');
+        return res.redirect(backTo);
+      }
+      if (!canActOnBranch(req.session.user, request.branch_id)) {
+        setFlash(req, 'error', 'You can only process payment requests from your branch.');
+        return res.redirect(backTo);
+      }
+
+      const { request: updated, entry } = await completePaymentRequest(
+        Number(req.params.id),
+        req.session.user,
+        { amount: req.body.amount, note: req.body.note }
+      );
+
+      await markAppNotificationReferenceRead('payment_request', Number(req.params.id), req.session.user)
+        .catch((error) => console.error('[notifications] could not mark read:', error.message));
+
+      setFlash(
+        req,
+        'success',
+        `Marked completed. ₱${Number(updated.recorded_amount || 0).toFixed(2)} added to `
+        + `${updated.first_name} ${updated.last_name}'s ledger as payment #${entry.sequenceNo}.`
+      );
+      res.redirect(backTo);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not process that payment request.');
+      res.redirect(backTo);
+    }
+  });
+
+  /** Turn a request down. Nothing touches the ledger. */
+  router.post('/payment-requests/:id/cancel', async (req, res, next) => {
+    const backTo = `${basePath}/notifications`;
+    try {
+      const request = await getPaymentRequestById(Number(req.params.id));
+      if (!request) {
+        setFlash(req, 'error', 'Payment request not found.');
+        return res.redirect(backTo);
+      }
+      if (!canActOnBranch(req.session.user, request.branch_id)) {
+        setFlash(req, 'error', 'You can only process payment requests from your branch.');
+        return res.redirect(backTo);
+      }
+      await cancelPaymentRequest(Number(req.params.id), req.session.user, req.body.note);
+      await markAppNotificationReferenceRead('payment_request', Number(req.params.id), req.session.user)
+        .catch((error) => console.error('[notifications] could not mark read:', error.message));
+      setFlash(req, 'success', 'Payment request cancelled.');
+      res.redirect(backTo);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not cancel that payment request.');
+      res.redirect(backTo);
+    }
+  });
+
+  router.post('/alerts/:id/read', async (req, res, next) => {
+    try {
+      await markAppNotificationRead(Number(req.params.id), req.session.user);
+      res.redirect(req.get('Referer') || `${basePath}/notifications`);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/alerts/:id/archive', async (req, res, next) => {
+    try {
+      await archiveAppNotification(Number(req.params.id));
+      setFlash(req, 'success', 'Notification archived.');
+      res.redirect(`${basePath}/notifications`);
+    } catch (error) { next(error); }
   });
 
   // Route handler: GET request
@@ -1849,25 +2229,64 @@ function createAdminRouter(role) {
   });
 
 
-  // Analytics & Reports page
+  /**
+   * Analytics & Reports.
+   *
+   * The scope is decided inside getAnalyticsDashboard from the session user, not
+   * from anything in the request: an assistant who appends ?branch_id=3 still
+   * gets their own branch, because resolveScope only honours that parameter for
+   * an admin. That is the "enforced at the query level, not hidden in the UI"
+   * requirement — the rows for other branches are never fetched.
+   */
   router.get('/analytics', async (req, res, next) => {
     try {
-      const search = String(req.query.search || '').trim();
-      const scopeBranchId = role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null;
-      const students = await getAllStudentsForAnalytics(scopeBranchId, search);
+      const filters = {
+        search: String(req.query.search || '').trim(),
+        subjectId: req.query.subject_id || 'all',
+        kind: req.query.kind || 'all',
+        from: req.query.from || '',
+        to: req.query.to || '',
+        branchId: req.query.branch_id || 'all'
+      };
 
-      const totalStudents = students.length;
-      const inProgress = students.filter((s) => s.progress_status === 'In Progress').length;
-      const advanced = students.filter((s) => s.progress_status === 'Advanced').length;
-      const notStarted = students.filter((s) => s.progress_status === 'Not Started').length;
+      const data = await getAnalyticsDashboard(req.session.user, filters);
+      const focus = await getFocusHandouts(data.scope, { search: filters.search }).catch(() => []);
 
       const shell = await buildShellData(req, {
         pageTitle: 'Analytics & Reports',
         section: 'analytics',
-        contentView: '../content/admin-analytics',
-        students,
-        search,
-        summary: { totalStudents, inProgress, advanced, notStarted }
+        contentView: '../content/analytics-dashboard',
+        analytics: data,
+        focusHandouts: focus,
+        filters,
+        query: req.query,
+        viewerRole: req.session.user.role
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /** One student's auto-generated focus material, opened from Analytics. */
+  router.get('/focus-handouts/:id', async (req, res, next) => {
+    try {
+      const handout = await getFocusHandoutById(Number(req.params.id));
+      if (!handout) {
+        setFlash(req, 'error', 'Focus handout not found.');
+        return res.redirect(`${basePath}/analytics`);
+      }
+      if (!canActOnBranch(req.session.user, handout.branch_id) && req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'That record belongs to another branch.');
+        return res.redirect(`${basePath}/analytics`);
+      }
+      const shell = await buildShellData(req, {
+        pageTitle: handout.title,
+        section: 'analytics',
+        contentView: '../content/focus-handout-detail',
+        handout,
+        viewerRole: req.session.user.role,
+        backUrl: `${basePath}/analytics`
       });
       res.render('shells/dashboard', shell);
     } catch (error) {

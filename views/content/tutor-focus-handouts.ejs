@@ -1,0 +1,85 @@
+<%# File: views/content/tutor-focus-handouts.ejs
+    Purpose: Focus Areas — the weak-topic material generated for this tutor.
+
+    One row per learner per Pre-Assessment. Rows the tutor has not opened yet are
+    listed first and marked NEW, because the value of this page is entirely in
+    being read before the next session rather than after it.
+
+    Locals: handouts, search, query %>
+<%
+  const nameOf = (row) => `${titleCaseName(row.first_name)} ${titleCaseName(row.last_name || '')}`.trim();
+  const unopened = handouts.filter((h) => !h.tutor_viewed_at).length;
+%>
+<section class="mq-page">
+
+  <div class="mq-summary">
+    <div class="mq-summary-item is-negative">
+      <span>Not yet opened</span><strong><%= unopened %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Total focus areas</span><strong><%= handouts.length %></strong>
+    </div>
+  </div>
+
+  <form class="mq-toolbar" method="get" action="/tutor/focus-handouts">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= search || '' %>" placeholder="Learner name or subject" />
+      </label>
+      <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
+    </div>
+    <div class="mq-toolbar-actions">
+      <a class="mq-btn" href="/tutor/analytics"><%- icon('chart') %> Analytics &amp; Reports</a>
+    </div>
+  </form>
+
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Focus areas</h2>
+        <p>Generated automatically from each learner's Pre-Assessment. Teach these topics first.</p>
+      </div>
+      <span class="mq-count"><%= handouts.length %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: minmax(160px, 2fr) minmax(140px, 1.4fr) minmax(200px, 3fr) 90px 110px 96px;">
+      <div class="mq-head">
+        <span>Learner</span><span>Subject</span><span>Weak topics</span>
+        <span class="mq-num">Pre %</span><span>Status</span><span style="text-align:right;">Open</span>
+      </div>
+
+      <% if (!handouts.length) { %>
+        <div class="mq-empty">
+          <strong>Nothing here yet</strong>
+          When one of your learners finishes a Pre-Assessment, their focus areas appear here automatically.
+        </div>
+      <% } %>
+
+      <% handouts.forEach((handout) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-cell-primary" data-label="Learner">
+            <a class="mq-name" href="/tutor/focus-handouts/<%= handout.id %>"><%= nameOf(handout) %></a>
+            <span class="mq-sub"><%= handout.student_code %> · <%= formatDate(handout.created_at) %></span>
+          </span>
+          <span class="mq-cell mq-sub" data-label="Subject"><%= handout.subject_name %></span>
+          <span class="mq-cell mq-sub" data-label="Weak topics">
+            <%= (handout.weak_topics || []).map((t) => t.topic).join(' · ') || 'No topic below the weak threshold' %>
+          </span>
+          <span class="mq-cell mq-num" data-label="Pre %"><%= Number(handout.overall_percentage || 0).toFixed(0) %>%</span>
+          <span class="mq-cell" data-label="Status">
+            <% if (handout.tutor_viewed_at) { %>
+              <span class="mq-status mq-status-completed">opened</span>
+            <% } else { %>
+              <span class="mq-status mq-status-pending">new</span>
+            <% } %>
+          </span>
+          <span class="mq-cell mq-cell-actions">
+            <a class="mq-icon" href="/tutor/focus-handouts/<%= handout.id %>" title="Open focus material" aria-label="Open focus material"><%- icon('book') %></a>
+          </span>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+
+</section>

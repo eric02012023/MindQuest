@@ -7,10 +7,12 @@
 <%
   const f = form || {};
   const draft = draftQuestions || null;
+  // The three types a module assessment may use. Essay is gone: it needed an AI
+  // grader, which made a tutor's own quiz depend on a network call.
   const typeLabels = {
     multiple_choice: 'Multiple Choice',
-    true_false: 'True or False',
-    essay: 'Essay'
+    fill_blank: 'Fill in the Blank',
+    true_false: 'True or False'
   };
 %>
 <section class="page-stack">
@@ -49,8 +51,8 @@
             <select name="question_type">
               <option value="mixed" <%= f.question_type === 'mixed' || !f.question_type ? 'selected' : '' %>>Mixed (all three)</option>
               <option value="multiple_choice" <%= f.question_type === 'multiple_choice' ? 'selected' : '' %>>Multiple Choice</option>
+              <option value="fill_blank" <%= f.question_type === 'fill_blank' ? 'selected' : '' %>>Fill in the Blank</option>
               <option value="true_false" <%= f.question_type === 'true_false' ? 'selected' : '' %>>True or False</option>
-              <option value="essay" <%= f.question_type === 'essay' ? 'selected' : '' %>>Essay</option>
             </select>
           </label>
           <label>Number of items
@@ -76,8 +78,8 @@
           <select name="question_type">
             <option value="mixed" <%= f.question_type === 'mixed' || !f.question_type ? 'selected' : '' %>>Mixed</option>
             <option value="multiple_choice" <%= f.question_type === 'multiple_choice' ? 'selected' : '' %>>Multiple Choice</option>
+            <option value="fill_blank" <%= f.question_type === 'fill_blank' ? 'selected' : '' %>>Fill in the Blank</option>
             <option value="true_false" <%= f.question_type === 'true_false' ? 'selected' : '' %>>True or False</option>
-            <option value="essay" <%= f.question_type === 'essay' ? 'selected' : '' %>>Essay</option>
           </select>
         </label>
       </div>
@@ -93,8 +95,8 @@
 
       <div class="add-question-row">
         <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('multiple_choice')">+ Multiple Choice</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('fill_blank')">+ Fill in the Blank</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('true_false')">+ True or False</button>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="addQuestion('essay')">+ Essay</button>
       </div>
 
       <input type="hidden" name="questions" id="questions-json" />
@@ -116,8 +118,8 @@
 
   const TYPE_LABELS = {
     multiple_choice: 'Multiple Choice',
-    true_false: 'True or False',
-    essay: 'Essay'
+    fill_blank: 'Fill in the Blank',
+    true_false: 'True or False'
   };
 
   function escapeHtml(value) {
@@ -192,12 +194,17 @@
         </div>
       `;
     } else {
-      // essay: the rubric IS the answer key — it is what the AI grader marks against.
+      // fill_blank. Marking compares the student's text with this answer key,
+      // ignoring letter casing only — "Mitochondria", "mitochondria" and
+      // "MITOCHONDRIA" all count as correct, a misspelling does not. Keeping the
+      // key to a few words is what makes that rule fair.
       html += `
         <div class="form-group">
-          <label>Grading rubric <span class="field-hint">the key points a correct answer must mention</span></label>
-          <textarea class="q-rubric" rows="2" placeholder="e.g. Defines photosynthesis; mentions sunlight; mentions chlorophyll" required>${escapeHtml(q.answer_rubric || q.correct_answer)}</textarea>
+          <label>Answer key <span class="field-hint">marked without regard to capitalisation — spelling must match</span></label>
+          <input type="text" class="q-answer" maxlength="120"
+                 placeholder="e.g. mitochondria" value="${escapeHtml(q.correct_answer)}" required />
         </div>
+        <p class="field-hint">Write the blank in the question as underscores, e.g. "The powerhouse of the cell is the ____."</p>
       `;
     }
 
@@ -241,15 +248,9 @@
         source_handout_id: Number(card.querySelector('.q-source-handout').value) || null
       };
 
-      if (type === 'essay') {
-        // Stored in both: answer_rubric is what the AI grader reads, and
-        // correct_answer is NOT NULL in the schema.
-        const rubric = card.querySelector('.q-rubric').value.trim();
-        q.answer_rubric = rubric;
-        q.correct_answer = rubric;
-      } else {
-        q.correct_answer = card.querySelector('.q-answer').value.trim();
-      }
+      // Every remaining type keeps its answer key in .q-answer: a letter for
+      // multiple choice, "true"/"false", or the word that fills the blank.
+      q.correct_answer = card.querySelector('.q-answer').value.trim();
 
       if (type === 'multiple_choice') {
         q.options = [

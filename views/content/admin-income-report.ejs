@@ -1,338 +1,255 @@
-<%# Income Report View for Admin and Assistant Admin — Modern Dashboard Design %>
-<section class="page-stack">
+<%# File: views/content/admin-income-report.ejs
+    Purpose: Income Report — one row per transaction.
 
-  <div class="toolbar-card split">
-    <div>
-      <h2 style="margin:0;">Income Report</h2>
-      <p style="margin:4px 0 0;color:var(--text-muted);font-size:0.85rem;">Financial overview and payment analytics</p>
+    Rebuilt from four large gradient cards and a chart-first layout into the
+    shared row system: a compact summary bar, a filter toolbar (search, date
+    range, branch, method, purpose), the transaction rows, and the trend chart
+    underneath rather than above — the numbers are what this page is for.
+
+    Every row is one payment_entries record, so the report and a student's ledger
+    can never disagree: they are the same rows.
+
+    Locals: rows (this page), allRows (the whole filtered set, for the chart),
+            summary, pager, filters, paymentMethods, paymentPurposes %>
+<%
+  const pagerState = typeof pager === 'undefined' ? null : pager;
+  const currentQuery = typeof query === 'undefined' ? {} : query;
+  const everyRow = allRows || [];
+
+  // Chart series are built from the whole filtered set, not the visible page.
+  const monthly = {};
+  everyRow.forEach((row) => {
+    const date = new Date(row.paid_at);
+    if (Number.isNaN(date.getTime())) return;
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    if (!monthly[key]) monthly[key] = { income: 0, count: 0 };
+    monthly[key].income += Number(row.amount || 0);
+    monthly[key].count += 1;
+  });
+  const monthKeys = Object.keys(monthly).sort().slice(-12);
+  const monthLabels = monthKeys.map((key) => {
+    const [year, month] = key.split('-');
+    return new Date(Number(year), Number(month) - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+  });
+  const monthValues = monthKeys.map((key) => Number(monthly[key].income.toFixed(2)));
+  const monthCounts = monthKeys.map((key) => monthly[key].count);
+
+  const byBranch = {};
+  everyRow.forEach((row) => {
+    const name = row.branch_name || 'Unassigned';
+    byBranch[name] = (byBranch[name] || 0) + Number(row.amount || 0);
+  });
+  const branchLabels = Object.keys(byBranch);
+  const branchValues = branchLabels.map((key) => Number(byBranch[key].toFixed(2)));
+%>
+<section class="mq-page">
+
+  <div class="mq-summary">
+    <div class="mq-summary-item is-positive">
+      <span>Total income</span><strong><%= money(summary.totalIncome) %></strong>
     </div>
-    <div class="row-actions wrap-row-actions" style="gap:8px;">
+    <div class="mq-summary-item">
+      <span>Transactions</span><strong><%= summary.transactionCount %></strong>
+    </div>
+    <div class="mq-summary-item is-accent">
+      <span>This month</span><strong><%= money(summary.monthIncome) %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Paying students</span><strong><%= summary.payingStudents %></strong>
+    </div>
+    <div class="mq-summary-item is-negative">
+      <span>Outstanding</span><strong><%= money(summary.outstanding) %></strong>
+    </div>
+  </div>
+
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/income-report">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= filters.search || '' %>" placeholder="Student, ID or reference" />
+      </label>
+      <label class="mq-field">
+        <span>From</span>
+        <input type="date" name="from" value="<%= filters.from || '' %>" />
+      </label>
+      <label class="mq-field">
+        <span>To</span>
+        <input type="date" name="to" value="<%= filters.to || '' %>" />
+      </label>
       <% if (currentUser.role === 'admin' && (branches || []).length) { %>
-        <select id="branch-filter" onchange="filterByBranch(this.value)" class="form-select" style="min-width:160px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-1);font-size:0.85rem;">
-          <option value="all">All Branches</option>
-          <% (branches || []).forEach((b) => { %>
-            <option value="<%= b.id %>" <%= String(selectedBranch) === String(b.id) ? 'selected' : '' %>><%= b.name %></option>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id">
+            <option value="all">All branches</option>
+            <% (branches || []).forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= String(selectedBranch) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <label class="mq-field">
+        <span>Method</span>
+        <select name="method">
+          <option value="all">All methods</option>
+          <% (paymentMethods || []).forEach((method) => { %>
+            <option value="<%= method.value %>" <%= filters.method === method.value ? 'selected' : '' %>><%= method.value %></option>
           <% }) %>
         </select>
+      </label>
+      <label class="mq-field">
+        <span>Purpose</span>
+        <select name="purpose">
+          <option value="all">All purposes</option>
+          <% (paymentPurposes || []).forEach((purpose) => { %>
+            <option value="<%= purpose %>" <%= filters.purpose === purpose ? 'selected' : '' %>><%= purpose %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+      <a class="mq-btn" href="<%= basePath %>/income-report">Clear</a>
+    </div>
+
+    <div class="mq-toolbar-actions">
+      <button type="button" class="mq-btn" onclick="window.print()"><%- icon('print') %> Print</button>
+    </div>
+  </form>
+
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Transactions</h2>
+        <p>One row per payment received. Figures come straight from the student ledgers.</p>
+      </div>
+      <span class="mq-count"><%= summary.transactionCount %> record<%= summary.transactionCount === 1 ? '' : 's' %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: 150px minmax(170px, 2fr) 1fr 110px 110px 110px minmax(120px, 1fr);">
+      <div class="mq-head">
+        <span>Date &amp; time</span>
+        <span>Student</span>
+        <span>Branch</span>
+        <span class="mq-num">Amount</span>
+        <span>Method</span>
+        <span>Purpose</span>
+        <span>Recorded by</span>
+      </div>
+
+      <% if (!rows.length) { %>
+        <div class="mq-empty">
+          <strong>No transactions in this range</strong>
+          Widen the date range, or clear the filters above.
+        </div>
       <% } %>
-    </div>
-  </div>
 
-  <%
-    const allBills = billingRows || [];
-    const allPayments = paymentHistory || [];
+      <% rows.forEach((row) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-sub" data-label="Date"><%= formatDateTime(row.paid_at) %></span>
 
-    let totalCollected = 0;
-    let totalOutstanding = 0;
-    let totalPaid = 0;
-    let totalPending = 0;
+          <span class="mq-cell mq-cell-primary" data-label="Student">
+            <a class="mq-name" href="<%= basePath %>/billing?info=<%= row.student_id %>"><%= titleCaseName(row.first_name) %> <%= titleCaseName(row.last_name) %></a>
+            <span class="mq-sub"><%= row.user_id %><%= row.reference_no ? ` · ${row.reference_no}` : '' %></span>
+          </span>
 
-    allBills.forEach((bill) => {
-      totalOutstanding += Number(bill.for_settlement || 0);
-      if (bill.payment_status === 'paid') totalPaid++;
-      else totalPending++;
-    });
+          <span class="mq-cell" data-label="Branch"><%= row.branch_name || '—' %></span>
+          <span class="mq-cell mq-money mq-money-paid" data-label="Amount"><%= money(row.amount) %></span>
+          <span class="mq-cell" data-label="Method"><span class="mq-chip"><%= row.payment_method || 'Cash' %></span></span>
+          <span class="mq-cell mq-sub" data-label="Purpose"><%= row.purpose || 'Tuition' %></span>
+          <span class="mq-cell mq-sub" data-label="Recorded by">
+            <%= row.recorded_by_name
+                || (row.recorder_first_name ? `${row.recorder_first_name} ${row.recorder_last_name || ''}` : 'System') %>
+          </span>
+        </div>
+      <% }) %>
 
-    allPayments.forEach((ph) => {
-      totalCollected += Number(ph.amount || 0);
-    });
-
-    // Current month income
-    const now = new Date();
-    let monthlyIncome = 0;
-    allPayments.forEach((ph) => {
-      const d = new Date(ph.paid_at);
-      if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
-        monthlyIncome += Number(ph.amount || 0);
-      }
-    });
-
-    // Group payments by month for chart
-    const monthlyData = {};
-    allPayments.forEach((ph) => {
-      const d = new Date(ph.paid_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!monthlyData[key]) monthlyData[key] = { income: 0, count: 0 };
-      monthlyData[key].income += Number(ph.amount || 0);
-      monthlyData[key].count += 1;
-    });
-    const monthKeys = Object.keys(monthlyData).sort().slice(-12);
-    const monthLabels = monthKeys.map(k => {
-      const [y, m] = k.split('-');
-      return new Date(y, m - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
-    });
-    const monthValues = monthKeys.map(k => monthlyData[k].income);
-    const monthCounts = monthKeys.map(k => monthlyData[k].count);
-
-    // Group by branch for chart
-    const branchData = {};
-    allPayments.forEach((ph) => {
-      const bName = ph.branch_name || 'Unknown';
-      if (!branchData[bName]) branchData[bName] = 0;
-      branchData[bName] += Number(ph.amount || 0);
-    });
-    const branchLabels = Object.keys(branchData);
-    const branchValues = branchLabels.map(k => branchData[k]);
-  %>
-
-  <!-- Summary Cards -->
-  <div class="income-summary-grid">
-    <div class="income-card income-card-primary">
-      <div class="income-card-icon">💰</div>
-      <div class="income-card-body">
-        <span class="income-card-label">Total Collections</span>
-        <strong class="income-card-value"><%= money(totalCollected) %></strong>
-      </div>
-    </div>
-    <div class="income-card income-card-success">
-      <div class="income-card-icon">📅</div>
-      <div class="income-card-body">
-        <span class="income-card-label">This Month</span>
-        <strong class="income-card-value"><%= money(monthlyIncome) %></strong>
-      </div>
-    </div>
-    <div class="income-card income-card-warning">
-      <div class="income-card-icon">⏳</div>
-      <div class="income-card-body">
-        <span class="income-card-label">Outstanding Balance</span>
-        <strong class="income-card-value"><%= money(totalOutstanding) %></strong>
-      </div>
-    </div>
-    <div class="income-card income-card-info">
-      <div class="income-card-icon">📊</div>
-      <div class="income-card-body">
-        <span class="income-card-label">Paid / Pending</span>
-        <strong class="income-card-value"><%= totalPaid %> / <%= totalPending %></strong>
-      </div>
-    </div>
-  </div>
-
-  <!-- Charts Row -->
-  <div class="income-charts-grid">
-    <section class="panel-card" style="flex:2;min-width:0;">
-      <div class="panel-card-head"><h3>Monthly Income Trend</h3></div>
-      <div style="padding:16px;">
-        <% if (!monthKeys.length) { %>
-          <div class="empty-state" style="padding:40px 0;text-align:center;">
-            <p style="color:var(--text-muted);font-size:0.95rem;">📊 No payment data available yet.</p>
-          </div>
-        <% } else { %>
-          <canvas id="incomeChart" height="280"></canvas>
-        <% } %>
-      </div>
-    </section>
-
-    <% if (currentUser.role === 'admin' && branchLabels.length > 0) { %>
-    <section class="panel-card" style="flex:1;min-width:260px;">
-      <div class="panel-card-head"><h3>Income per Branch</h3></div>
-      <div style="padding:16px;">
-        <canvas id="branchChart" height="280"></canvas>
-      </div>
-    </section>
-    <% } %>
-  </div>
-
-  <!-- Payment History Table -->
-  <section class="panel-card">
-    <div class="panel-card-head between-line">
-      <h3>Recent Payments</h3>
-      <span style="color:var(--text-muted);font-size:0.8rem;"><%= allPayments.length %> record<%= allPayments.length !== 1 ? 's' : '' %></span>
-    </div>
-    <div class="table-wrap scroll-table-box">
-      <table>
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Branch</th>
-            <th>Amount</th>
-            <th>Date Paid</th>
-            <th>Method</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% if (!allPayments.length) { %>
-            <tr><td colspan="6" class="empty-table-state">No payment records found.</td></tr>
-          <% } else { %>
-            <% allPayments.slice(0, 100).forEach((ph) => { %>
-            <tr>
-              <td>
-                <div style="font-weight:500;"><%= ph.first_name %> <%= ph.middle_name || '' %> <%= ph.last_name %></div>
-                <div style="font-size:0.75rem;color:var(--text-muted);"><%= ph.user_id || '' %></div>
-              </td>
-              <td><span class="badge badge-info" style="font-size:0.7rem;"><%= ph.branch_name || '-' %></span></td>
-              <td style="font-weight:600;color:var(--primary);"><%= money(ph.amount) %></td>
-              <td><%= formatDateTime(ph.paid_at) %></td>
-              <td><%= ph.payment_method || 'Cash' %></td>
-              <td><span class="pill paid" style="font-size:0.7rem;">Paid</span></td>
-            </tr>
-            <% }) %>
-          <% } %>
-        </tbody>
-      </table>
+      <% if (pagerState) { %>
+        <%- include('../partials/mq-pager', { pager: pagerState, baseUrl: `${basePath}/income-report`, params: currentQuery, noun: 'transaction' }) %>
+      <% } %>
     </div>
   </section>
 
+  <% if (monthKeys.length) { %>
+    <div class="mq-chart-grid">
+      <section class="mq-panel">
+        <div class="mq-panel-head"><h3>Monthly income</h3></div>
+        <div class="mq-chart-box"><canvas id="incomeChart"></canvas></div>
+      </section>
+
+      <% if (currentUser.role === 'admin' && branchLabels.length > 1) { %>
+        <section class="mq-panel">
+          <div class="mq-panel-head"><h3>Income per branch</h3></div>
+          <div class="mq-chart-box"><canvas id="branchChart"></canvas></div>
+        </section>
+      <% } %>
+    </div>
+  <% } %>
+
 </section>
 
-<style>
-  .income-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 20px;
-  }
-  .income-card {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 20px;
-    border-radius: 12px;
-    background: var(--bg-1);
-    border: 1px solid var(--border);
-    transition: transform 0.15s, box-shadow 0.15s;
-  }
-  .income-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-  }
-  .income-card-icon {
-    font-size: 2rem;
-    width: 52px;
-    height: 52px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 12px;
-    flex-shrink: 0;
-  }
-  .income-card-primary .income-card-icon { background: rgba(26, 86, 50, 0.12); }
-  .income-card-success .income-card-icon { background: rgba(39, 174, 96, 0.12); }
-  .income-card-warning .income-card-icon { background: rgba(230, 168, 23, 0.12); }
-  .income-card-info .income-card-icon { background: rgba(41, 128, 185, 0.12); }
-  .income-card-body { min-width: 0; }
-  .income-card-label {
-    display: block;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-bottom: 2px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .income-card-value {
-    display: block;
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: var(--text-1);
-  }
-  .income-charts-grid {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-  }
-  .empty-table-state {
-    text-align: center;
-    padding: 2.5rem 1rem !important;
-    color: var(--text-muted);
-    font-style: italic;
-  }
-  @media (max-width: 768px) {
-    .income-summary-grid { grid-template-columns: repeat(2, 1fr); }
-    .income-charts-grid { flex-direction: column; }
-    .income-card-value { font-size: 1.1rem; }
-  }
-  @media (max-width: 480px) {
-    .income-summary-grid { grid-template-columns: 1fr; }
-  }
-</style>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/js/vendor/chart.umd.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-  // Monthly income chart
-  var monthCtx = document.getElementById('incomeChart');
-  if (monthCtx) {
-    new Chart(monthCtx.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: <%- JSON.stringify(monthLabels) %>,
-        datasets: [{
-          label: 'Income (₱)',
-          data: <%- JSON.stringify(monthValues) %>,
-          backgroundColor: 'rgba(26, 86, 50, 0.75)',
-          borderColor: 'rgba(26, 86, 50, 1)',
-          borderWidth: 1,
-          borderRadius: 6,
-          borderSkipped: false
-        }, {
-          label: 'Transactions',
-          data: <%- JSON.stringify(monthCounts) %>,
-          type: 'line',
-          borderColor: 'rgba(230, 168, 23, 1)',
-          backgroundColor: 'rgba(230, 168, 23, 0.1)',
-          borderWidth: 2,
-          pointRadius: 4,
-          pointBackgroundColor: 'rgba(230, 168, 23, 1)',
-          yAxisID: 'y1',
-          tension: 0.3
-        }]
-      },
-      options: {
-        responsive: true,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 12 } } }
+  document.addEventListener('DOMContentLoaded', function () {
+    if (typeof Chart === 'undefined') return;
+
+    var monthCanvas = document.getElementById('incomeChart');
+    if (monthCanvas) {
+      new Chart(monthCanvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: <%- JSON.stringify(monthLabels) %>,
+          datasets: [
+            {
+              label: 'Income',
+              data: <%- JSON.stringify(monthValues) %>,
+              backgroundColor: 'rgba(22, 168, 200, 0.75)',
+              borderRadius: 4,
+              borderSkipped: false
+            },
+            {
+              label: 'Transactions',
+              type: 'line',
+              data: <%- JSON.stringify(monthCounts) %>,
+              borderColor: '#d28a1f',
+              backgroundColor: 'rgba(210, 138, 31, 0.12)',
+              borderWidth: 2,
+              pointRadius: 3,
+              tension: 0.3,
+              yAxisID: 'y1'
+            }
+          ]
         },
-        scales: {
-          y: {
-            beginAtZero: true,
-            position: 'left',
-            ticks: { callback: function(v) { return '₱' + v.toLocaleString(); } },
-            grid: { color: 'rgba(0,0,0,0.04)' }
-          },
-          y1: {
-            beginAtZero: true,
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            ticks: { stepSize: 1 }
-          },
-          x: { grid: { display: false } }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11 } } } },
+          scales: {
+            y: { beginAtZero: true, ticks: { callback: function (v) { return '₱' + v.toLocaleString(); }, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
+            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { precision: 0, font: { size: 11 } } },
+            x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+          }
         }
-      }
-    });
-  }
+      });
+    }
 
-  // Branch comparison chart (admin only)
-  var branchCtx = document.getElementById('branchChart');
-  if (branchCtx) {
-    var colors = ['#1a5632','#2d8a4e','#e6a817','#c0392b','#2980b9','#8e44ad','#d35400','#1abc9c','#34495e','#7f8c8d'];
-    new Chart(branchCtx.getContext('2d'), {
-      type: 'doughnut',
-      data: {
-        labels: <%- JSON.stringify(branchLabels) %>,
-        datasets: [{
-          data: <%- JSON.stringify(branchValues) %>,
-          backgroundColor: colors.slice(0, <%- branchLabels.length %>),
-          borderWidth: 2,
-          borderColor: 'var(--bg-1)'
-        }]
-      },
-      options: {
-        responsive: true,
-        cutout: '60%',
-        plugins: {
-          legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, font: { size: 11 } } }
+    var branchCanvas = document.getElementById('branchChart');
+    if (branchCanvas) {
+      new Chart(branchCanvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: <%- JSON.stringify(branchLabels) %>,
+          datasets: [{
+            data: <%- JSON.stringify(branchValues) %>,
+            backgroundColor: ['#16a8c8', '#0f7ea0', '#32a65a', '#d28a1f', '#8e6bd5', '#d54c4c', '#5f7084', '#0b3b53'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '62%',
+          plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 10, font: { size: 11 } } } }
         }
-      }
-    });
-  }
-});
-
-function filterByBranch(val) {
-  var url = new URL(window.location.href);
-  if (val === 'all') url.searchParams.delete('branch_id');
-  else url.searchParams.set('branch_id', val);
-  window.location.href = url.toString();
-}
+      });
+    }
+  });
 </script>

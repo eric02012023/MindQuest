@@ -1,0 +1,94 @@
+<%# File: views/content/focus-handout-detail.ejs
+    Purpose: One auto-generated focus handout, in full.
+
+    The label at the top is the one the brief asks for, verbatim in substance:
+    "This is the focus area for <student> — identified as a weak point from the
+    Pre-Assessment", followed by the pointer to Analytics & Reports for the
+    detailed results.
+
+    Locals: handout, viewerRole, backUrl %>
+<%
+  const studentName = `${titleCaseName(handout.first_name)} ${titleCaseName(handout.last_name || '')}`.trim();
+  const topics = handout.weak_topics || [];
+  const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
+%>
+<section class="mq-page">
+
+  <div class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Focus area for <%= studentName %></h2>
+        <p>Identified as a weak point from the <%= handout.subject_name %> Pre-Assessment.</p>
+      </div>
+      <div class="mq-panel-head-actions">
+        <a class="mq-btn" href="<%= backUrl %>">Back</a>
+        <a class="mq-btn mq-btn-primary" href="<%= basePath %>/analytics?search=<%= encodeURIComponent(studentName) %>">
+          <%- icon('chart') %> Detailed results
+        </a>
+      </div>
+    </div>
+
+    <div class="mq-detail">
+      <div class="mq-detail-item"><span>Learner</span><strong><%= studentName %> (<%= handout.student_code %>)</strong></div>
+      <div class="mq-detail-item"><span>Subject</span><strong><%= handout.subject_name %></strong></div>
+      <div class="mq-detail-item"><span>Level</span><strong><%= handout.grade_level || handout.year_level || '—' %></strong></div>
+      <div class="mq-detail-item"><span>Pre-Assessment result</span><strong><%= Number(handout.overall_percentage || 0).toFixed(1) %>%</strong></div>
+      <div class="mq-detail-item"><span>Assigned tutor</span><strong><%= handout.tutor_first_name ? `${handout.tutor_first_name} ${handout.tutor_last_name || ''}` : 'Not assigned' %></strong></div>
+      <div class="mq-detail-item"><span>Generated</span><strong><%= formatDateTime(handout.created_at) %> <%= handout.generated_by === 'ai' ? '(AI)' : '(system)' %></strong></div>
+    </div>
+  </div>
+
+  <% if (topics.length) { %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <h3>Weak topics, worst first</h3>
+        <span class="mq-count"><%= topics.length %></span>
+      </div>
+      <div class="mq-table" style="--mq-cols: minmax(220px, 3fr) 90px 90px minmax(120px, 1fr);">
+        <div class="mq-head">
+          <span>Topic</span><span class="mq-num">Correct</span><span class="mq-num">Score</span><span>Mastery</span>
+        </div>
+        <% topics.forEach((topic) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-cell-primary" data-label="Topic">
+              <span class="mq-name"><%= topic.topic %></span>
+              <span class="mq-sub"><%= topic.wrong %> item<%= topic.wrong === 1 ? '' : 's' %> missed</span>
+            </span>
+            <span class="mq-cell mq-num" data-label="Correct"><%= topic.correct %>/<%= topic.total %></span>
+            <span class="mq-cell mq-num" data-label="Score"><%= topic.percentage %>%</span>
+            <span class="mq-cell" data-label="Mastery">
+              <span class="mq-meter <%= meterClass(topic.percentage) %>"><i style="width: <%= Math.max(2, Math.min(100, topic.percentage)) %>%"></i></span>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
+
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Focus material</h3>
+        <p>Teach from this in the next session.</p>
+      </div>
+      <button type="button" class="mq-btn" onclick="window.print()"><%- icon('print') %> Print</button>
+    </div>
+    <pre class="mq-focus-body"><%= handout.content_text || handout.summary || 'No material was generated.' %></pre>
+  </section>
+
+</section>
+
+<style>
+  /* Plain text, preserved as written — the generator lays the handout out in
+     lines, and a <p> wrapper would collapse that into one paragraph. */
+  .mq-focus-body {
+    margin: 0;
+    padding: 20px 24px;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text, #102033);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+</style>

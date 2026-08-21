@@ -1,0 +1,90 @@
+<%#
+  File: views/partials/mq-pager.ejs
+  Purpose: The one pager every long list uses.
+
+  Locals:
+    pager   { page, pageCount, total, pageSize }
+    baseUrl the path to link to, e.g. "/admin/users"
+    params  the current query object (req.query) — every key except this pager's
+            own is carried through, so paging never silently drops the search or
+            filters the user typed.
+    noun    what is being counted, e.g. "user" (optional, defaults to "record")
+    pageParam  the query key this pager owns (optional, defaults to "page").
+            A page with two independent lists gives the second one its own key,
+            so turning a page in one does not reset the other.
+%>
+<%
+  const pagerState = pager || { page: 1, pageCount: 1, total: 0, pageSize: 25 };
+  const currentPage = Number(pagerState.page) || 1;
+  const pageCount = Math.max(1, Number(pagerState.pageCount) || 1);
+  const total = Number(pagerState.total) || 0;
+  const pageSize = Number(pagerState.pageSize) || 25;
+  const label = typeof noun === 'undefined' ? 'record' : noun;
+  const pageKey = typeof pageParam === 'undefined' ? 'page' : pageParam;
+
+  const carried = { ...(params || {}) };
+  delete carried[pageKey];
+  const linkTo = (page) => {
+    const search = new URLSearchParams();
+    Object.keys(carried).forEach((key) => {
+      const value = carried[key];
+      if (value === undefined || value === null || value === '') return;
+      search.set(key, Array.isArray(value) ? value[0] : value);
+    });
+    search.set(pageKey, String(page));
+    return `${baseUrl}?${search.toString()}`;
+  };
+
+  // A window of five around the current page, with the first and last always
+  // reachable — a 300-page list must not render 300 links.
+  const windowSize = 5;
+  let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+  let end = Math.min(pageCount, start + windowSize - 1);
+  start = Math.max(1, Math.min(start, end - windowSize + 1));
+
+  const firstRow = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const lastRow = Math.min(total, currentPage * pageSize);
+%>
+<div class="mq-pager">
+  <span>
+    <% if (total === 0) { %>
+      No <%= label %>s found
+    <% } else { %>
+      Showing <strong><%= firstRow %>–<%= lastRow %></strong> of <strong><%= total %></strong> <%= label %><%= total === 1 ? '' : 's' %>
+    <% } %>
+  </span>
+
+  <% if (pageCount > 1) { %>
+    <nav class="mq-pager-links" aria-label="Pagination">
+      <% if (currentPage > 1) { %>
+        <a href="<%= linkTo(currentPage - 1) %>" aria-label="Previous page">‹</a>
+      <% } else { %>
+        <span class="is-disabled" aria-hidden="true">‹</span>
+      <% } %>
+
+      <% if (start > 1) { %>
+        <a href="<%= linkTo(1) %>">1</a>
+        <% if (start > 2) { %><span class="is-gap">…</span><% } %>
+      <% } %>
+
+      <% for (let p = start; p <= end; p++) { %>
+        <% if (p === currentPage) { %>
+          <span class="is-current" aria-current="page"><%= p %></span>
+        <% } else { %>
+          <a href="<%= linkTo(p) %>"><%= p %></a>
+        <% } %>
+      <% } %>
+
+      <% if (end < pageCount) { %>
+        <% if (end < pageCount - 1) { %><span class="is-gap">…</span><% } %>
+        <a href="<%= linkTo(pageCount) %>"><%= pageCount %></a>
+      <% } %>
+
+      <% if (currentPage < pageCount) { %>
+        <a href="<%= linkTo(currentPage + 1) %>" aria-label="Next page">›</a>
+      <% } else { %>
+        <span class="is-disabled" aria-hidden="true">›</span>
+      <% } %>
+    </nav>
+  <% } %>
+</div>

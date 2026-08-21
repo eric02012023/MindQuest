@@ -1,0 +1,1049 @@
+/* =============================================================================
+   MindQuest — shared data-surface system
+   -----------------------------------------------------------------------------
+   Loaded by views/partials/head.ejs AFTER ui-polish.css, so this is the last word
+   on the components it defines.
+
+   WHY THIS FILE
+   Every list in the app used to be built out of whatever the page happened to
+   have: some were <table>, some were large spaced-out cards, and the same
+   "student row" looked different in three sections. This file defines ONE row
+   system and one set of tokens, and every list view in the upgrade uses it —
+   User Management, Student Profiles, Tutor Profiles, Billing, Income Report,
+   Notifications and Analytics.
+
+   HOW A LIST IS BUILT
+   A list is a grid, not a table, so the same markup can re-flow on a phone:
+
+     <div class="mq-table" style="--mq-cols: 130px 2fr 1fr 120px 96px">
+       <div class="mq-head"> <span>User ID</span> ... </div>
+       <a class="mq-row" href="...">
+         <span class="mq-cell" data-label="User ID">STU-0001</span>
+         ...
+         <span class="mq-cell mq-cell-actions"> <button class="mq-icon"> </span>
+       </a>
+     </div>
+
+   --mq-cols is the ONLY per-list decision. Row height, alignment, borders,
+   hover, spacing and the mobile fallback are all decided here, which is what
+   keeps two different pages from drifting apart.
+
+   Everything is written against the theme variables each page already declares
+   (--primary-500, --border, --text, --surface ...) with a fallback, so Admin
+   stays teal, Tutor stays green, and no page-specific selector belongs here.
+   ========================================================================== */
+
+:root {
+  /* One spacing scale. Nothing in this file uses a number outside it. */
+  --mq-1: 4px;
+  --mq-2: 8px;
+  --mq-3: 12px;
+  --mq-4: 16px;
+  --mq-5: 24px;
+  --mq-6: 32px;
+
+  --mq-row-height: 52px;
+  --mq-radius: 12px;
+  --mq-radius-sm: 8px;
+
+  --mq-font-sm: 12px;
+  --mq-font: 13.5px;
+  --mq-font-lg: 15px;
+
+  --mq-line: var(--border, #d7e2ea);
+  --mq-surface: var(--surface, #ffffff);
+  --mq-surface-soft: var(--surface-soft, #f7fafc);
+  --mq-text: var(--text, #102033);
+  --mq-text-soft: var(--text-soft, #5f7084);
+  --mq-accent: var(--primary-500, #16a8c8);
+  --mq-accent-deep: var(--primary-700, #0f7ea0);
+}
+
+/* -------------------------------------------------------------------------
+   1. Page frame
+   ---------------------------------------------------------------------- */
+
+.mq-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mq-4);
+}
+
+.mq-panel {
+  background: var(--mq-surface);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius);
+  overflow: hidden;
+}
+
+.mq-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mq-3);
+  padding: var(--mq-3) var(--mq-4);
+  border-bottom: 1px solid var(--mq-line);
+  background: var(--mq-surface-soft);
+}
+
+.mq-panel-head h2,
+.mq-panel-head h3 {
+  margin: 0;
+  font-size: var(--mq-font-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mq-panel-head p {
+  margin: 2px 0 0;
+  font-size: var(--mq-font-sm);
+  color: var(--mq-text-soft);
+}
+
+.mq-panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mq-2);
+  flex-wrap: wrap;
+}
+
+.mq-count {
+  font-size: var(--mq-font-sm);
+  color: var(--mq-text-soft);
+  white-space: nowrap;
+}
+
+/* A count beside a sidebar link — pending payment requests, unopened focus
+   areas. Sits inside the existing .sidebar-nav a, so it inherits its layout. */
+.sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger, #d54c4c);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* -------------------------------------------------------------------------
+   2. Toolbar — search first, then filters, then actions
+   Every list that can grow has one. Same order everywhere, so the search box
+   is always in the same place.
+   ---------------------------------------------------------------------- */
+
+.mq-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--mq-3);
+  flex-wrap: wrap;
+  padding: var(--mq-3) var(--mq-4);
+  background: var(--mq-surface);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius);
+}
+
+.mq-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--mq-2);
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.mq-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mq-1);
+  min-width: 0;
+}
+
+.mq-field > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mq-text-soft);
+}
+
+.mq-field input,
+.mq-field select {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 var(--mq-3);
+  font-size: var(--mq-font);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius-sm);
+  background: var(--mq-surface);
+  color: var(--mq-text);
+}
+
+.mq-field input:focus,
+.mq-field select:focus {
+  outline: none;
+  border-color: var(--mq-accent);
+  box-shadow: 0 0 0 3px rgba(22, 168, 200, 0.18);
+}
+
+.mq-field-search input {
+  min-width: 240px;
+  padding-left: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f7084' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 10px center;
+  background-size: 16px 16px;
+}
+
+.mq-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mq-2);
+  flex-wrap: wrap;
+}
+
+.mq-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 var(--mq-4);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius-sm);
+  background: var(--mq-surface);
+  color: var(--mq-text);
+  font-size: var(--mq-font);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background .15s, border-color .15s, color .15s;
+}
+
+.mq-btn:hover {
+  border-color: var(--mq-accent);
+  color: var(--mq-accent-deep);
+}
+
+.mq-btn-primary {
+  background: var(--mq-accent);
+  border-color: var(--mq-accent);
+  color: #fff;
+}
+
+.mq-btn-primary:hover {
+  background: var(--mq-accent-deep);
+  border-color: var(--mq-accent-deep);
+  color: #fff;
+}
+
+.mq-btn-danger {
+  border-color: rgba(213, 76, 76, .4);
+  color: var(--danger, #d54c4c);
+}
+
+.mq-btn-danger:hover {
+  background: rgba(213, 76, 76, .08);
+  border-color: var(--danger, #d54c4c);
+  color: var(--danger, #d54c4c);
+}
+
+.mq-btn[disabled],
+.mq-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.mq-btn-sm {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 var(--mq-3);
+  font-size: var(--mq-font-sm);
+}
+
+/* -------------------------------------------------------------------------
+   3. The row list
+   ---------------------------------------------------------------------- */
+
+.mq-table {
+  --mq-cols: 1fr;
+  display: block;
+  width: 100%;
+  background: var(--mq-surface);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius);
+  overflow: hidden;
+}
+
+/* A list inside a panel already has the panel's frame. */
+.mq-panel > .mq-table {
+  border: 0;
+  border-radius: 0;
+}
+
+.mq-head,
+.mq-row {
+  display: grid;
+  grid-template-columns: var(--mq-cols);
+  align-items: center;
+  gap: var(--mq-3);
+  padding: 0 var(--mq-4);
+}
+
+.mq-head {
+  min-height: 40px;
+  background: var(--mq-surface-soft);
+  border-bottom: 1px solid var(--mq-line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mq-text-soft);
+}
+
+.mq-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mq-row {
+  min-height: var(--mq-row-height);
+  padding-top: var(--mq-2);
+  padding-bottom: var(--mq-2);
+  border-bottom: 1px solid var(--mq-line);
+  font-size: var(--mq-font);
+  color: var(--mq-text);
+  text-decoration: none;
+  transition: background .12s;
+}
+
+.mq-row:last-child {
+  border-bottom: 0;
+}
+
+.mq-row:hover {
+  background: var(--mq-surface-soft);
+}
+
+a.mq-row {
+  color: inherit;
+}
+
+.mq-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The identity cell: a strong name over a quiet secondary line. */
+.mq-cell-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.35;
+}
+
+.mq-cell-primary strong,
+.mq-name {
+  font-weight: 650;
+  font-size: var(--mq-font);
+  color: var(--mq-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mq-sub {
+  font-size: var(--mq-font-sm);
+  color: var(--mq-text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mq-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.mq-head .mq-num {
+  text-align: right;
+}
+
+.mq-money {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-align: right;
+}
+
+.mq-money-due {
+  color: var(--danger, #d54c4c);
+}
+
+.mq-money-paid {
+  color: var(--success, #32a65a);
+}
+
+.mq-cell-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mq-1);
+}
+
+.mq-cell-actions form {
+  margin: 0;
+  display: inline-flex;
+}
+
+/* -------------------------------------------------------------------------
+   4. Icon buttons — the row action vocabulary
+   ---------------------------------------------------------------------- */
+
+.mq-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--mq-radius-sm);
+  background: transparent;
+  color: var(--mq-text-soft);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .12s, color .12s, border-color .12s;
+}
+
+.mq-icon:hover {
+  background: rgba(22, 168, 200, .1);
+  border-color: rgba(22, 168, 200, .28);
+  color: var(--mq-accent-deep);
+}
+
+.mq-icon-danger:hover {
+  background: rgba(213, 76, 76, .1);
+  border-color: rgba(213, 76, 76, .3);
+  color: var(--danger, #d54c4c);
+}
+
+.mq-icon-add {
+  color: var(--success, #32a65a);
+  border-color: rgba(50, 166, 90, .3);
+  background: rgba(50, 166, 90, .08);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.mq-icon-add:hover {
+  background: rgba(50, 166, 90, .18);
+  border-color: var(--success, #32a65a);
+  color: var(--success, #32a65a);
+}
+
+.mq-icon[disabled] {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------------------------
+   5. Status pills and chips
+   ---------------------------------------------------------------------- */
+
+.mq-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.mq-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.mq-status-paid,
+.mq-status-completed,
+.mq-status-approved,
+.mq-status-active {
+  background: rgba(50, 166, 90, .12);
+  border-color: rgba(50, 166, 90, .3);
+  color: #1f7a44;
+}
+
+.mq-status-partial,
+.mq-status-pending {
+  background: rgba(210, 138, 31, .13);
+  border-color: rgba(210, 138, 31, .32);
+  color: #97620f;
+}
+
+.mq-status-unpaid,
+.mq-status-cancelled,
+.mq-status-rejected,
+.mq-status-flagged {
+  background: rgba(213, 76, 76, .11);
+  border-color: rgba(213, 76, 76, .3);
+  color: #a83232;
+}
+
+.mq-status-info,
+.mq-status-locked {
+  background: rgba(22, 168, 200, .11);
+  border-color: rgba(22, 168, 200, .3);
+  color: var(--mq-accent-deep);
+}
+
+.mq-chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--mq-surface-soft);
+  border: 1px solid var(--mq-line);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--mq-text-soft);
+  white-space: nowrap;
+}
+
+.mq-chip-role {
+  text-transform: capitalize;
+}
+
+/* -------------------------------------------------------------------------
+   6. Compact summary bar and KPI strip
+   Small by requirement — the brief asks for a summary bar, "not bulky cards".
+   ---------------------------------------------------------------------- */
+
+.mq-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  background: var(--mq-surface);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius);
+  overflow: hidden;
+}
+
+.mq-summary-item {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: var(--mq-3) var(--mq-4);
+  border-right: 1px solid var(--mq-line);
+}
+
+.mq-summary-item:last-child {
+  border-right: 0;
+}
+
+.mq-summary-item span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--mq-text-soft);
+  margin-bottom: 2px;
+}
+
+.mq-summary-item strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--mq-text);
+  line-height: 1.2;
+}
+
+.mq-summary-item.is-positive strong { color: #1f7a44; }
+.mq-summary-item.is-negative strong { color: #a83232; }
+.mq-summary-item.is-accent strong { color: var(--mq-accent-deep); }
+
+.mq-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--mq-3);
+}
+
+.mq-kpi {
+  padding: var(--mq-3) var(--mq-4);
+  background: var(--mq-surface);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius);
+}
+
+.mq-kpi span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--mq-text-soft);
+  margin-bottom: 3px;
+}
+
+.mq-kpi strong {
+  display: block;
+  font-size: 20px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.mq-kpi small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--mq-text-soft);
+}
+
+/* -------------------------------------------------------------------------
+   7. Pagination
+   ---------------------------------------------------------------------- */
+
+.mq-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mq-3);
+  flex-wrap: wrap;
+  padding: var(--mq-3) var(--mq-4);
+  border-top: 1px solid var(--mq-line);
+  background: var(--mq-surface-soft);
+  font-size: var(--mq-font-sm);
+  color: var(--mq-text-soft);
+}
+
+.mq-pager-links {
+  display: flex;
+  align-items: center;
+  gap: var(--mq-1);
+  flex-wrap: wrap;
+}
+
+.mq-pager-links a,
+.mq-pager-links span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--mq-2);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius-sm);
+  background: var(--mq-surface);
+  color: var(--mq-text);
+  font-size: var(--mq-font-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mq-pager-links a:hover {
+  border-color: var(--mq-accent);
+  color: var(--mq-accent-deep);
+}
+
+.mq-pager-links .is-current {
+  background: var(--mq-accent);
+  border-color: var(--mq-accent);
+  color: #fff;
+}
+
+.mq-pager-links .is-disabled {
+  opacity: .45;
+}
+
+.mq-pager-links .is-gap {
+  border: 0;
+  background: transparent;
+}
+
+/* -------------------------------------------------------------------------
+   8. Empty state
+   ---------------------------------------------------------------------- */
+
+.mq-empty {
+  padding: var(--mq-6) var(--mq-4);
+  text-align: center;
+  color: var(--mq-text-soft);
+  font-size: var(--mq-font);
+}
+
+.mq-empty strong {
+  display: block;
+  margin-bottom: var(--mq-1);
+  font-size: var(--mq-font-lg);
+  color: var(--mq-text);
+}
+
+/* -------------------------------------------------------------------------
+   9. Detail grids inside modals and drawers
+   ---------------------------------------------------------------------- */
+
+.mq-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--mq-3);
+  padding: var(--mq-4);
+}
+
+.mq-detail-item span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--mq-text-soft);
+  margin-bottom: 2px;
+}
+
+.mq-detail-item strong {
+  font-size: var(--mq-font);
+  font-weight: 600;
+  color: var(--mq-text);
+  word-break: break-word;
+}
+
+.mq-detail-item.is-wide {
+  grid-column: 1 / -1;
+}
+
+/* -------------------------------------------------------------------------
+   10. Forms inside the new panels
+   ---------------------------------------------------------------------- */
+
+.mq-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--mq-3);
+  padding: var(--mq-4);
+}
+
+.mq-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mq-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--mq-text-soft);
+  min-width: 0;
+}
+
+.mq-form input,
+.mq-form select,
+.mq-form textarea {
+  height: 40px;
+  padding: 0 var(--mq-3);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius-sm);
+  background: var(--mq-surface);
+  color: var(--mq-text);
+  font-size: var(--mq-font);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.mq-form textarea {
+  height: auto;
+  min-height: 76px;
+  padding: var(--mq-2) var(--mq-3);
+  resize: vertical;
+}
+
+.mq-form input:focus,
+.mq-form select:focus,
+.mq-form textarea:focus {
+  outline: none;
+  border-color: var(--mq-accent);
+  box-shadow: 0 0 0 3px rgba(22, 168, 200, .18);
+}
+
+.mq-form input[readonly] {
+  background: var(--mq-surface-soft);
+  color: var(--mq-text-soft);
+}
+
+.mq-form .is-wide {
+  grid-column: 1 / -1;
+}
+
+.mq-form-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mq-2);
+  flex-wrap: wrap;
+}
+
+.mq-form-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--mq-font-sm);
+  color: var(--mq-text-soft);
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------------------------------
+   11. Charts
+   Given an explicit box so a canvas cannot grow without bound on resize.
+   ---------------------------------------------------------------------- */
+
+.mq-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--mq-4);
+}
+
+.mq-chart-box {
+  position: relative;
+  height: 260px;
+  padding: var(--mq-3);
+}
+
+.mq-chart-box canvas {
+  max-height: 100%;
+}
+
+/* Bare-CSS bar meter — used where a full chart would be overkill. */
+.mq-meter {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--mq-surface-soft);
+  border: 1px solid var(--mq-line);
+  overflow: hidden;
+}
+
+.mq-meter i {
+  display: block;
+  height: 100%;
+  background: var(--mq-accent);
+}
+
+.mq-meter-low i { background: #d54c4c; }
+.mq-meter-mid i { background: #d28a1f; }
+.mq-meter-high i { background: #32a65a; }
+
+/* -------------------------------------------------------------------------
+   12. Mobile — rows become stacked records with their column name inline
+   ---------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .mq-head {
+    display: none;
+  }
+
+  .mq-row {
+    grid-template-columns: 1fr;
+    gap: var(--mq-1);
+    padding: var(--mq-3) var(--mq-4);
+    align-items: start;
+  }
+
+  .mq-cell[data-label]::before {
+    content: attr(data-label) ": ";
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--mq-text-soft);
+  }
+
+  .mq-cell-primary[data-label]::before {
+    content: none;
+  }
+
+  .mq-cell,
+  .mq-num,
+  .mq-money {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .mq-cell-actions {
+    justify-content: flex-start;
+    margin-top: var(--mq-2);
+  }
+
+  .mq-toolbar,
+  .mq-filters,
+  .mq-toolbar-actions {
+    width: 100%;
+  }
+
+  .mq-field-search input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mq-field {
+    flex: 1 1 140px;
+  }
+
+  .mq-summary-item {
+    flex-basis: 50%;
+    border-bottom: 1px solid var(--mq-line);
+  }
+}
+
+@media print {
+  .mq-toolbar,
+  .mq-pager,
+  .mq-cell-actions,
+  .mq-panel-head-actions {
+    display: none !important;
+  }
+
+  .mq-table,
+  .mq-panel {
+    border-color: #ccc;
+  }
+}
+
+/* =============================================================================
+   Anti-cheating warning dialogs
+   -----------------------------------------------------------------------------
+   Blocking by design. The brief requires modal dialogs that must be
+   acknowledged, not toasts: a warning a student can miss is a warning that will
+   be disputed later. The overlay covers the page and swallows pointer events, so
+   the assessment underneath cannot be answered while a warning stands.
+   ========================================================================== */
+
+.mq-ac-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(11, 22, 34, .72);
+  backdrop-filter: blur(3px);
+}
+
+.mq-ac-overlay.is-open {
+  display: flex;
+}
+
+.mq-ac-card {
+  width: min(460px, 100%);
+  padding: 28px 26px 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .35);
+  text-align: center;
+  animation: mqAcPop .18s ease-out;
+}
+
+@keyframes mqAcPop {
+  from { transform: scale(.94); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.mq-ac-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(210, 138, 31, .15);
+  color: #b8791a;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.mq-ac-overlay.is-final .mq-ac-icon {
+  background: rgba(213, 76, 76, .15);
+  color: #c03a3a;
+}
+
+.mq-ac-title {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 750;
+  color: #102033;
+}
+
+.mq-ac-body {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #45586d;
+}
+
+.mq-ac-count {
+  margin: 0 0 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #b8791a;
+}
+
+.mq-ac-overlay.is-final .mq-ac-count {
+  color: #c03a3a;
+}
+
+.mq-ac-btn {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: #16a8c8;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mq-ac-btn:hover { background: #0f7ea0; }
+
+.mq-ac-overlay.is-final .mq-ac-btn { background: #c03a3a; }
+.mq-ac-overlay.is-final .mq-ac-btn:hover { background: #a83232; }
+
+/* A running strike count on the assessment page itself, so a student always
+   knows where they stand without waiting for the next dialog. */
+.mq-ac-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(210, 138, 31, .35);
+  border-radius: var(--mq-radius);
+  background: rgba(210, 138, 31, .08);
+  color: #8a5c12;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mq-ac-status strong { font-weight: 700; }

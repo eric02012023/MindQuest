@@ -33,9 +33,17 @@
     </p>
   </section>
 
-  <form method="post" action="/student/subjects/<%= subjectId %>/<%= isPost ? 'post-assessment' : 'pre-assessment' %>" class="pa-form" data-confirm-message="Submit your <%= heading %>? You cannot change your answers afterwards.">
+  <%- include('../partials/anti-cheat', {
+    antiCheat: typeof antiCheat === 'undefined' ? null : antiCheat,
+    formSelector: '#assessment-form'
+  }) %>
+
+  <form id="assessment-form" method="post" action="/student/subjects/<%= subjectId %>/<%= isPost ? 'post-assessment' : 'pre-assessment' %>" class="pa-form" data-confirm-message="Submit your <%= heading %>? You cannot change your answers afterwards.">
     <input type="hidden" name="assessment_id" value="<%= assessment.id %>" />
     <input type="hidden" name="started_at" value="<%= startedAt %>" />
+    <% if (typeof antiCheat !== 'undefined' && antiCheat) { %>
+      <input type="hidden" name="session_key" value="<%= antiCheat.sessionKey %>" />
+    <% } %>
 
     <% assessment.questions.forEach((q, i) => { %>
       <article class="pa-question">

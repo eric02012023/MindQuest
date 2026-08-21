@@ -1092,3 +1092,327 @@ BEGIN
   );
 END;
 
+
+-- ============================================================================
+-- MANAGEMENT UPGRADE
+--
+--   33  payment_requests       student-submitted cash payment requests
+--   34  payment_entries        Billing (1) -> (many) payments, append-only
+--   35  backfill               existing payment_history rows -> payment_entries
+--   36  app_notifications      staff/tutor in-app notifications (not tied to a
+--                              registration submission, which the older
+--                              `notifications` table requires)
+--   37  assessment_violations  anti-cheat log against the LIVE assessment tables
+--   38  focus_handouts         auto-generated weak-topic material for a tutor
+-- ============================================================================
+
+-- 33. NEW TABLE: payment_requests
+--
+-- A student says "I will pay ₱X in cash at this branch on this date". Admin or
+-- Assistant Admin confirms it in person and marks it Completed, which is the
+-- moment a payment_entries row is written. Keeping the request separate from the
+-- entry is what lets a request be pending without touching the ledger.
+IF OBJECT_ID('dbo.payment_requests', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.payment_requests (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    student_id INT NOT NULL,
+    billing_id INT NULL,
+    branch_id INT NULL,
+    student_name NVARCHAR(200) NOT NULL DEFAULT '',
+    amount DECIMAL(10,2) NOT NULL,
+    payment_method NVARCHAR(40) NOT NULL DEFAULT 'cash',
+    purpose NVARCHAR(60) NULL,
+    preferred_at DATETIME2 NULL,
+    reference_note NVARCHAR(MAX) NULL,
+    status NVARCHAR(20) NOT NULL DEFAULT 'pending'
+      CONSTRAINT ck_payment_requests_status CHECK (status IN ('pending','completed','cancelled')),
+    processed_by INT NULL,
+    processed_by_name NVARCHAR(200) NULL,
+    processed_by_role NVARCHAR(30) NULL,
+    processed_at DATETIME2 NULL,
+    processed_note NVARCHAR(MAX) NULL,
+    recorded_amount DECIMAL(10,2) NULL,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_preq_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_preq_billing FOREIGN KEY (billing_id) REFERENCES dbo.billing(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_preq_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_preq_processor FOREIGN KEY (processed_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_payment_requests_status' AND object_id = OBJECT_ID('dbo.payment_requests'))
+  CREATE INDEX IX_payment_requests_status ON dbo.payment_requests(status, created_at DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_payment_requests_student' AND object_id = OBJECT_ID('dbo.payment_requests'))
+  CREATE INDEX IX_payment_requests_student ON dbo.payment_requests(student_id, status);
+
+
+-- 34. NEW TABLE: payment_entries
+--
+-- The billing model the spec asks for: Billing (1) ---- (many) PaymentEntries.
+-- Rows are APPEND-ONLY. There is no update or delete path anywhere in the app —
+-- "Edit" is gone and replaced by "+ Add Payment", so a later payment can never
+-- overwrite an earlier one. `sequence_no` = 1 carries is_locked = 1, which is the
+-- spec's "the first payment record is locked".
+--
+-- billing.partial_payment / for_settlement / payment_status are still maintained,
+-- but they are now DERIVED from SUM(payment_entries.amount) rather than typed in.
+IF OBJECT_ID('dbo.payment_entries', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.payment_entries (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    billing_id INT NOT NULL,
+    student_id INT NOT NULL,
+    sequence_no INT NOT NULL DEFAULT 1,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_method NVARCHAR(50) NOT NULL DEFAULT 'Cash',
+    purpose NVARCHAR(60) NULL,
+    reference_no NVARCHAR(120) NULL,
+    notes NVARCHAR(MAX) NULL,
+    paid_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    recorded_by INT NULL,
+    recorded_by_name NVARCHAR(200) NULL,
+    recorded_by_role NVARCHAR(30) NULL,
+    balance_after DECIMAL(10,2) NULL,
+    is_locked BIT NOT NULL DEFAULT 0,
+    entry_source NVARCHAR(30) NOT NULL DEFAULT 'admin',
+    payment_request_id INT NULL,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_pentry_billing FOREIGN KEY (billing_id) REFERENCES dbo.billing(id) ON DELETE CASCADE,
+    CONSTRAINT fk_pentry_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_pentry_recorder FOREIGN KEY (recorded_by) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_pentry_request FOREIGN KEY (payment_request_id) REFERENCES dbo.payment_requests(id) ON DELETE NO ACTION
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_payment_entries_billing' AND object_id = OBJECT_ID('dbo.payment_entries'))
+  CREATE INDEX IX_payment_entries_billing ON dbo.payment_entries(billing_id, sequence_no);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_payment_entries_student' AND object_id = OBJECT_ID('dbo.payment_entries'))
+  CREATE INDEX IX_payment_entries_student ON dbo.payment_entries(student_id, paid_at DESC);
+
+
+-- 35. Backfill: existing payment_history -> payment_entries.
+--
+-- Money already collected must survive the model change, or every student's
+-- Total Paid would reset to zero on the day this ships. Only rows carrying an
+-- actual amount are carried over: payment_history also holds "billing updated"
+-- audit rows worth 0.00, which are not payments.
+--
+-- Guarded on the destination being empty, so it runs exactly once, and executed
+-- through sp_executesql so the whole batch still compiles on the very first run
+-- when payment_entries does not exist yet.
+--
+-- Every join here is an INNER JOIN on purpose. A payment_history row whose
+-- student or billing record has since been deleted cannot satisfy the ledger's
+-- foreign keys, and one such orphan would abort the entire INSERT — turning a
+-- single stale row into "no payment history migrated at all". They have no
+-- account left to hang off, so they are left behind in payment_history, which
+-- stays as the pre-upgrade audit trail. `recorded_by` is joined loosely and
+-- falls back to NULL: who typed it in is worth losing, the payment is not.
+IF OBJECT_ID('dbo.payment_entries','U') IS NOT NULL
+   AND OBJECT_ID('dbo.payment_history','U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM dbo.payment_entries)
+BEGIN
+  DECLARE @backfill_entries NVARCHAR(MAX) = N'
+    INSERT INTO dbo.payment_entries
+      (billing_id, student_id, sequence_no, amount, payment_method, purpose,
+       reference_no, notes, paid_at, recorded_by, recorded_by_role,
+       balance_after, is_locked, entry_source)
+    SELECT ph.billing_id,
+           ph.student_id,
+           ROW_NUMBER() OVER (PARTITION BY ph.billing_id ORDER BY ph.paid_at ASC, ph.id ASC),
+           ph.amount,
+           COALESCE(NULLIF(LTRIM(RTRIM(ph.payment_method)), ''''), ''Cash''),
+           ''Tuition'',
+           ph.provider_reference,
+           ph.remarks,
+           ph.paid_at,
+           rec.id,
+           rec.role,
+           ph.balance_after,
+           CASE WHEN ROW_NUMBER() OVER (PARTITION BY ph.billing_id ORDER BY ph.paid_at ASC, ph.id ASC) = 1 THEN 1 ELSE 0 END,
+           ''migrated''
+      FROM dbo.payment_history ph
+      INNER JOIN dbo.users u   ON u.id = ph.student_id
+      INNER JOIN dbo.billing b ON b.id = ph.billing_id
+      LEFT  JOIN dbo.users rec ON rec.id = ph.recorded_by
+     WHERE ph.amount > 0;';
+  BEGIN TRY EXEC sp_executesql @backfill_entries; END TRY BEGIN CATCH
+    PRINT 'Warning: payment_history -> payment_entries backfill skipped: ' + ERROR_MESSAGE();
+  END CATCH
+END;
+
+-- Re-derive every billing summary from the ledger that now backs it.
+--
+-- Without this the migrated accounts would keep whatever partial_payment the old
+-- mutable field happened to hold, which is precisely the number this upgrade
+-- stopped trusting. Runs whenever a billing row disagrees with its entries, so it
+-- is both the migration step and a self-heal if anything ever writes around the
+-- ledger.
+IF OBJECT_ID('dbo.payment_entries','U') IS NOT NULL AND OBJECT_ID('dbo.billing','U') IS NOT NULL
+BEGIN
+  DECLARE @resync_billing NVARCHAR(MAX) = N'
+    UPDATE b
+       SET partial_payment = t.paid,
+           for_settlement  = CASE WHEN b.full_bill - t.paid < 0 THEN 0 ELSE b.full_bill - t.paid END,
+           payment_status  = CASE
+                               WHEN b.full_bill > 0 AND b.full_bill - t.paid <= 0 THEN ''paid''
+                               WHEN t.paid > 0 THEN ''partial''
+                               ELSE ''unpaid''
+                             END,
+           last_paid_at    = t.last_paid_at,
+           updated_at      = DATEADD(hour, 8, GETUTCDATE())
+      FROM dbo.billing b
+      CROSS APPLY (
+        SELECT COALESCE(SUM(pe.amount), 0) AS paid, MAX(pe.paid_at) AS last_paid_at
+        FROM dbo.payment_entries pe WHERE pe.billing_id = b.id
+      ) t
+     WHERE b.partial_payment <> t.paid;';
+  BEGIN TRY EXEC sp_executesql @resync_billing; END TRY BEGIN CATCH
+    PRINT 'Warning: billing re-sync from payment_entries skipped: ' + ERROR_MESSAGE();
+  END CATCH
+END;
+
+
+-- 36. NEW TABLE: app_notifications
+--
+-- The older `notifications` table has submission_id INT NOT NULL with an FK to
+-- registration submissions, so it cannot carry anything else. This one addresses
+-- a ROLE (every admin + every assistant of a branch) or a single user, which is
+-- what "either Admin or Assistant Admin, whoever sees it first" needs.
+IF OBJECT_ID('dbo.app_notifications', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.app_notifications (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    notification_type NVARCHAR(50) NOT NULL,
+    title NVARCHAR(200) NOT NULL,
+    message NVARCHAR(MAX) NULL,
+    link_url NVARCHAR(300) NULL,
+    ref_type NVARCHAR(50) NULL,
+    ref_id INT NULL,
+    recipient_role NVARCHAR(30) NULL,
+    recipient_user_id INT NULL,
+    branch_id INT NULL,
+    severity NVARCHAR(20) NOT NULL DEFAULT 'info',
+    is_read BIT NOT NULL DEFAULT 0,
+    read_at DATETIME2 NULL,
+    read_by INT NULL,
+    is_archived BIT NOT NULL DEFAULT 0,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_appnotif_user FOREIGN KEY (recipient_user_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_appnotif_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_appnotif_reader FOREIGN KEY (read_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_app_notifications_role' AND object_id = OBJECT_ID('dbo.app_notifications'))
+  CREATE INDEX IX_app_notifications_role ON dbo.app_notifications(recipient_role, is_archived, created_at DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_app_notifications_user' AND object_id = OBJECT_ID('dbo.app_notifications'))
+  CREATE INDEX IX_app_notifications_user ON dbo.app_notifications(recipient_user_id, is_archived, created_at DESC);
+
+
+-- 37. NEW TABLE: assessment_violations
+--
+-- assessment_anti_cheat_logs (section 10) points at the legacy `assessments`
+-- table. Every assessment a student actually sits now lives in
+-- `tutor_assessments`, so that FK makes the old table unusable for the live flow.
+-- This one is keyed to the tables in use, and to the submission when the sitting
+-- ends, so Analytics can show violations beside the score they belong to.
+IF OBJECT_ID('dbo.assessment_violations', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.assessment_violations (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    assessment_id INT NOT NULL,
+    student_id INT NOT NULL,
+    submission_id INT NULL,
+    session_key NVARCHAR(80) NULL,
+    violation_type NVARCHAR(50) NOT NULL,
+    violation_detail NVARCHAR(500) NULL,
+    violation_number INT NOT NULL DEFAULT 1,
+    occurred_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_aviol_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.tutor_assessments(id) ON DELETE CASCADE,
+    CONSTRAINT fk_aviol_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_aviol_submission FOREIGN KEY (submission_id) REFERENCES dbo.tutor_assessment_submissions(id) ON DELETE NO ACTION
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_assessment_violations_student' AND object_id = OBJECT_ID('dbo.assessment_violations'))
+  CREATE INDEX IX_assessment_violations_student ON dbo.assessment_violations(student_id, assessment_id, occurred_at DESC);
+
+-- The sitting an auto-submit belongs to, so a tutor can tell a normal submission
+-- from one the system ended on the third violation.
+IF OBJECT_ID('dbo.tutor_assessment_submissions','U') IS NOT NULL
+   AND COL_LENGTH('dbo.tutor_assessment_submissions','is_auto_submitted') IS NULL
+  ALTER TABLE dbo.tutor_assessment_submissions
+    ADD is_auto_submitted BIT NOT NULL CONSTRAINT df_tas_auto_submitted DEFAULT 0;
+
+IF OBJECT_ID('dbo.tutor_assessment_submissions','U') IS NOT NULL
+   AND COL_LENGTH('dbo.tutor_assessment_submissions','auto_submit_reason') IS NULL
+  ALTER TABLE dbo.tutor_assessment_submissions ADD auto_submit_reason NVARCHAR(120) NULL;
+
+IF OBJECT_ID('dbo.tutor_assessment_submissions','U') IS NOT NULL
+   AND COL_LENGTH('dbo.tutor_assessment_submissions','violation_count') IS NULL
+  ALTER TABLE dbo.tutor_assessment_submissions
+    ADD violation_count INT NOT NULL CONSTRAINT df_tas_violation_count DEFAULT 0;
+
+
+-- 38. NEW TABLE: focus_handouts
+--
+-- Written automatically when a student finishes a Pre-Assessment: the topics they
+-- scored weakest on, turned into focus material and flagged for their assigned
+-- tutor. It is not a `module_handouts` row because there is no uploaded file —
+-- the content is generated text, and it belongs to ONE student, not to a module.
+IF OBJECT_ID('dbo.focus_handouts', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.focus_handouts (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    student_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    tutor_id INT NULL,
+    submission_id INT NULL,
+    assessment_id INT NULL,
+    title NVARCHAR(250) NOT NULL,
+    summary NVARCHAR(MAX) NULL,
+    content_text NVARCHAR(MAX) NULL,
+    weak_topics_json NVARCHAR(MAX) NULL,
+    overall_percentage DECIMAL(5,2) NULL,
+    source NVARCHAR(30) NOT NULL DEFAULT 'pre_assessment',
+    generated_by NVARCHAR(30) NOT NULL DEFAULT 'system',
+    status NVARCHAR(20) NOT NULL DEFAULT 'active',
+    tutor_viewed_at DATETIME2 NULL,
+    is_archived BIT NOT NULL DEFAULT 0,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_focus_student FOREIGN KEY (student_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_focus_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_focus_tutor FOREIGN KEY (tutor_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_focus_submission FOREIGN KEY (submission_id) REFERENCES dbo.tutor_assessment_submissions(id) ON DELETE NO ACTION
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_focus_handouts_tutor' AND object_id = OBJECT_ID('dbo.focus_handouts'))
+  CREATE INDEX IX_focus_handouts_tutor ON dbo.focus_handouts(tutor_id, is_archived, created_at DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_focus_handouts_student' AND object_id = OBJECT_ID('dbo.focus_handouts'))
+  CREATE INDEX IX_focus_handouts_student ON dbo.focus_handouts(student_id, subject_id);
+
+-- One live focus handout per student per Pre-Assessment sitting: re-running the
+-- generator must update the existing one rather than stack duplicates in the
+-- tutor's list.
+IF OBJECT_ID('dbo.focus_handouts','U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'uq_focus_submission' AND object_id = OBJECT_ID('dbo.focus_handouts'))
+BEGIN
+  BEGIN TRY
+    CREATE UNIQUE INDEX uq_focus_submission ON dbo.focus_handouts(submission_id) WHERE submission_id IS NOT NULL;
+  END TRY
+  BEGIN CATCH
+    PRINT 'Warning: could not create uq_focus_submission — possible existing duplicates.';
+  END CATCH
+END;
+

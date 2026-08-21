@@ -340,48 +340,74 @@ Make questions perfectly appropriate for the student's education level.`;
 // ============================================================================
 
 /**
- * The types an assessment may be written in, as stored in
- * tutor_assessment_questions.
+ * The question types each kind of assessment may use.
  *
- * Fill in the blank was dropped: it is graded by exact string match, so a correct
- * answer phrased differently — or spelled differently — is marked wrong, and the
- * generator kept producing open questions with no blank in them. Existing
- * fill_blank rows already in the database still render and still grade; nothing
- * new is written in that type.
+ * These are a REQUIREMENT, not a preference, and they differ per assessment kind:
+ *
+ *   Pre-Assessment / Post-Assessment  Multiple Choice only.
+ *       Both are marked automatically and the Post reuses the Pre's exact items
+ *       to measure improvement, so every item has to be gradeable the same way
+ *       twice with no judgement involved.
+ *
+ *   Module assessment (written by a tutor)  Multiple Choice, Fill in the Blank,
+ *       True or False. Essay is deliberately NOT here: it needs an AI grader,
+ *       which makes a tutor's own quiz depend on a network call and a model's
+ *       opinion.
+ *
+ * Fill in the blank is back, and it is graded case-insensitively — see
+ * gradeObjectiveAnswer in lib/data.js. Spelling still has to match; only letter
+ * casing is ignored, which is what the brief asks for.
  */
-const SPEC_QUESTION_TYPES = ['multiple_choice', 'true_false', 'essay'];
+const PRE_POST_QUESTION_TYPES = ['multiple_choice'];
+const MODULE_QUESTION_TYPES = ['multiple_choice', 'fill_blank', 'true_false'];
+
+/**
+ * Kept as the module-assessment set under its old name: every existing caller
+ * that imports SPEC_QUESTION_TYPES is a tutor-side path.
+ */
+const SPEC_QUESTION_TYPES = MODULE_QUESTION_TYPES;
+
 const { PRE_ASSESSMENT_ITEM_COUNT } = require('../config/assessmentDefaults');
 
 /**
  * How many of each type to ask for, given a total item count.
- * A mixed assessment contains all three, so every type gets at least one slot
- * once there is room for it.
+ *
+ * @param {number} itemCount
+ * @param {string} [requestedType='mixed']  one allowed type, or 'mixed'
+ * @param {string[]} [allowedTypes]         the types this assessment may use
  */
-function planQuestionMix(itemCount, requestedType = 'mixed') {
+function planQuestionMix(itemCount, requestedType = 'mixed', allowedTypes = MODULE_QUESTION_TYPES) {
   const total = Math.max(1, Number(itemCount) || 10);
+  const types = (allowedTypes && allowedTypes.length) ? allowedTypes : MODULE_QUESTION_TYPES;
 
-  if (requestedType && requestedType !== 'mixed' && SPEC_QUESTION_TYPES.includes(requestedType)) {
+  // A single-type assessment (a Pre-Assessment, say) needs no mixing at all.
+  if (types.length === 1) return { [types[0]]: total };
+
+  if (requestedType && requestedType !== 'mixed' && types.includes(requestedType)) {
     return { [requestedType]: total };
   }
 
-  if (total < SPEC_QUESTION_TYPES.length) {
+  if (total < types.length) {
     // Not enough room for all of them; lead with the most gradeable types.
     const mix = {};
     for (let i = 0; i < total; i++) {
-      const type = SPEC_QUESTION_TYPES[i];
+      const type = types[i];
       mix[type] = (mix[type] || 0) + 1;
     }
     return mix;
   }
 
-  const mix = {
-    multiple_choice: Math.max(1, Math.round(total * 0.5)),
-    true_false: Math.max(1, Math.round(total * 0.25)),
-    essay: Math.max(1, Math.round(total * 0.25))
-  };
-  // Rounding can overshoot or undershoot; settle the difference on MC.
+  // Multiple choice carries half; the rest is split evenly over the others.
+  const mix = {};
+  const primary = types[0];
+  mix[primary] = Math.max(1, Math.round(total * 0.5));
+  const rest = types.slice(1);
+  const share = Math.max(1, Math.floor((total - mix[primary]) / rest.length));
+  rest.forEach((type) => { mix[type] = share; });
+
+  // Rounding can overshoot or undershoot; settle the difference on the primary.
   const diff = total - Object.values(mix).reduce((a, b) => a + b, 0);
-  mix.multiple_choice = Math.max(1, mix.multiple_choice + diff);
+  mix[primary] = Math.max(1, mix[primary] + diff);
   return mix;
 }
 
@@ -390,13 +416,16 @@ function planQuestionMix(itemCount, requestedType = 'mixed') {
  * Returns null when the question cannot be trusted, so bad items are dropped
  * rather than stored and shown to a student.
  */
-function validateGeneratedQuestion(raw, allowedHandouts) {
+function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_QUESTION_TYPES) {
   if (!raw || typeof raw !== 'object') return null;
 
   const questionText = String(raw.question_text || '').trim();
   if (questionText.length < 5) return null;
 
-  const type = SPEC_QUESTION_TYPES.includes(raw.question_type) ? raw.question_type : null;
+  // A type the assessment is not allowed to use is dropped, not converted: a
+  // Pre-Assessment that quietly accepted a True/False item because the model
+  // felt like writing one would break the Post-Assessment comparison later.
+  const type = allowedTypes.includes(raw.question_type) ? raw.question_type : null;
   if (!type) return null;
 
   // The model must attribute each question to a real handout, otherwise weak-area
@@ -468,11 +497,27 @@ function validateGeneratedQuestion(raw, allowedHandouts) {
     return base;
   }
 
-  // fill_blank is no longer generated (see SPEC_QUESTION_TYPES). If a model
-  // returns one anyway, drop it rather than storing a type nothing offers.
-  if (type === 'fill_blank') return null;
+  if (type === 'fill_blank') {
+    // The answer must be SHORT to be gradeable by comparison. A model asked for
+    // a fill-in-the-blank will sometimes return an open question with a sentence
+    // for an answer; that item is unmarkable, so it is dropped here rather than
+    // shown to a student who then loses a mark for phrasing.
+    const answer = String(raw.correct_answer || '').trim();
+    if (!answer || answer.length > 60) return null;
+    const words = answer.split(/\s+/).filter(Boolean);
+    if (words.length > 4) return null;
 
-  // essay
+    // Prefer an actual blank in the sentence. An identification-style question
+    // with a one-to-four word answer grades identically, so it is accepted too.
+    const hasBlank = /_{2,}/.test(questionText);
+    const looksLikeIdentification = /\?$/.test(questionText) || /:$/.test(questionText);
+    if (!hasBlank && !looksLikeIdentification) return null;
+
+    base.correct_answer = answer;
+    return base;
+  }
+
+  // essay — only reachable when the caller allows it
   const rubric = String(raw.answer_rubric || raw.expected_answer || '').trim();
   if (rubric.length < 10) return null;
   base.answer_rubric = rubric;
@@ -498,7 +543,10 @@ function validateGeneratedQuestion(raw, allowedHandouts) {
  */
 async function generateAssessmentFromHandouts(options = {}) {
   const {
-    handouts = [], subject, yearLevel, itemCount = PRE_ASSESSMENT_ITEM_COUNT, questionType = 'mixed'
+    handouts = [], subject, yearLevel, itemCount = PRE_ASSESSMENT_ITEM_COUNT, questionType = 'mixed',
+    // Which types this assessment may contain. Defaults to the module set;
+    // the Pre/Post generator passes PRE_POST_QUESTION_TYPES.
+    allowedTypes = MODULE_QUESTION_TYPES
   } = options;
 
   const usable = handouts.filter((h) => String(h.extracted_text || '').trim().length > 50);
@@ -531,7 +579,7 @@ async function generateAssessmentFromHandouts(options = {}) {
 
   const absorb = (rawQuestions, into) => {
     for (const raw of Array.isArray(rawQuestions) ? rawQuestions : []) {
-      const validated = validateGeneratedQuestion(raw, allowed);
+      const validated = validateGeneratedQuestion(raw, allowed, allowedTypes);
       if (!validated) continue;
       // Duplicates are checked across the whole exam, not per handout: two
       // handouts covering the same ground do produce the same question.
@@ -551,7 +599,7 @@ async function generateAssessmentFromHandouts(options = {}) {
   await runWithConcurrency(perHandout.filter((slot) => slot.wanted > 0), 4, async (slot) => {
     const batch = slot.wanted + 2;
     const prompts = buildHandoutPrompts({
-      handout: slot.handout, wanted: batch, questionType, subject, yearLevel
+      handout: slot.handout, wanted: batch, questionType, subject, yearLevel, allowedTypes
     });
     try {
       const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: tokenBudget(batch) });
@@ -572,7 +620,7 @@ async function generateAssessmentFromHandouts(options = {}) {
     await runWithConcurrency(short, 4, async (slot) => {
       const batch = Math.max(4, (slot.wanted - slot.questions.length) + 3);
       const prompts = buildHandoutPrompts({
-        handout: slot.handout, wanted: batch, questionType, subject, yearLevel,
+        handout: slot.handout, wanted: batch, questionType, subject, yearLevel, allowedTypes,
         avoidTexts: slot.questions.map((q) => q.question_text)
       });
       try {
@@ -592,7 +640,9 @@ async function generateAssessmentFromHandouts(options = {}) {
     throw new Error('The AI did not return any usable questions. Please try again.');
   }
 
-  const questions = selectBalancedQuestions(candidates, itemCount, planQuestionMix(itemCount, questionType), usable);
+  const questions = selectBalancedQuestions(
+    candidates, itemCount, planQuestionMix(itemCount, questionType, allowedTypes), usable
+  );
 
   return {
     questions,
@@ -691,10 +741,39 @@ function normalizeQuestionKey(text) {
  * cannot cite a handout it was never shown. Split out from the caller so the
  * top-up pass reuses the identical rules — two copies of this prompt would drift.
  */
-function buildHandoutPrompts({ handout, wanted, questionType, subject, yearLevel, avoidTexts = [] }) {
+function buildHandoutPrompts({
+  handout, wanted, questionType, subject, yearLevel,
+  allowedTypes = MODULE_QUESTION_TYPES, avoidTexts = []
+}) {
   const itemCount = wanted;
-  const mix = planQuestionMix(itemCount, questionType);
+  const mix = planQuestionMix(itemCount, questionType, allowedTypes);
   const mixText = Object.entries(mix).map(([type, n]) => `${n} x ${type}`).join(', ');
+
+  // The answer-key rules are stated only for the types this assessment may
+  // contain. Describing "essay" to a Pre-Assessment generator is an invitation
+  // to produce one, and every essay it produced would be validated away — paid
+  // for, then thrown out.
+  const answerRules = {
+    multiple_choice: '    * multiple_choice -> the letter of the correct choice ("A", "B", "C" or "D")',
+    true_false: '    * true_false      -> exactly "true" or "false"',
+    fill_blank: '    * fill_blank      -> the missing word or short phrase, at most 4 words',
+    essay: '    * essay           -> a concise model answer'
+  };
+  const typeList = allowedTypes.map((type) => `"${type}"`).join(', ');
+  const answerLines = allowedTypes.map((type) => answerRules[type]).filter(Boolean).join('\n');
+
+  const extraRules = [];
+  if (allowedTypes.includes('fill_blank')) {
+    extraRules.push('- A fill_blank question_text MUST contain the blank written as at least two underscores (e.g. "The powerhouse of the cell is the ____.").');
+    extraRules.push('- A fill_blank answer must be one to four words, and must be spelled exactly as it appears in the handout.');
+  } else {
+    extraRules.push('- Never write a fill-in-the-blank question. Ask it as multiple_choice instead.');
+  }
+  if (allowedTypes.includes('essay')) {
+    extraRules.push('- "answer_rubric": for essay ONLY, the key points a correct answer must mention, so it can be graded automatically.');
+  } else {
+    extraRules.push('- Never write an essay or open-ended question. Every item must have one exact answer.');
+  }
 
   const systemPrompt = `You write assessment questions for a tutorial centre, using ONLY the handout text provided.
 
@@ -703,19 +782,16 @@ Produce this mix of question types: ${mixText}.
 
 Every question object must have:
 - "question_text": the question, answerable purely from the handout
-- "question_type": one of "multiple_choice", "true_false", "essay"
+- "question_type": one of ${typeList}. Use NO other value.
 - "source_handout_id": always the integer ${handout.handout_id}
 - "correct_answer":
-    * multiple_choice -> the letter of the correct choice ("A", "B", "C" or "D")
-    * true_false      -> exactly "true" or "false"
-    * essay           -> a concise model answer
+${answerLines}
 - "choices": for multiple_choice ONLY, an array of 4 distinct answer strings in A,B,C,D order. Omit for other types.
-- "answer_rubric": for essay ONLY, the key points a correct answer must mention, so it can be graded automatically.
 - "explanation": one short sentence on why the answer is correct.
 
 Rules:
 - Base every question on the handout content. Never invent facts that are not in the text.
-- Never write a fill-in-the-blank question. Ask it as multiple_choice instead.
+${extraRules.join('\n')}
 - Make the difficulty appropriate for a ${yearLevel || 'general'} student.
 - Keep the choices out of "question_text": no "A) ... B) ..." list, no answer letter.
 - In "choices", give the answer text ONLY. Do not prefix it with "A.", "B)" or any label.
@@ -805,8 +881,12 @@ module.exports = {
   gradeEssayAnswers,
   transcribeImage,
   generateAssessmentFromHandouts,
+  generateFocusMaterial,
   planQuestionMix,
+  validateGeneratedQuestion,
   SPEC_QUESTION_TYPES,
+  PRE_POST_QUESTION_TYPES,
+  MODULE_QUESTION_TYPES,
   isOpenAIConfigured,
   getAiStatus
 };
@@ -868,4 +948,91 @@ Return a JSON object with a "results" array. Each result must have:
       feedback: isCorrect ? 'Your answer captures the key ideas.' : 'Your answer does not sufficiently match the expected answer.'
     };
   });
+}
+
+// ============================================================================
+// Weak-topic focus material (upgrade Section 6.3)
+// ============================================================================
+
+/**
+ * Write focus material for one student's weak topics, from the handouts those
+ * topics came from.
+ *
+ * Called after a Pre-Assessment is graded. It is allowed to fail: the caller
+ * (lib/focusHandouts.js) falls back to a template built from the same measured
+ * data, so a missing API key costs polish, not the handout.
+ *
+ * The prompt is deliberately narrow — it is given ONLY the handout text behind
+ * the topics the student actually got wrong, so it cannot wander off into
+ * material the student has not been taught.
+ *
+ * @param {object} options
+ * @param {string} options.studentName
+ * @param {string} options.subject
+ * @param {string} [options.yearLevel]
+ * @param {number} options.percentage      the Pre-Assessment result
+ * @param {Array<{topic:string, correct:number, total:number, percentage:number}>} options.topics
+ * @param {Array<{module_title:string, file_original_name:string, extracted_text:string}>} options.sources
+ * @returns {Promise<string|null>} plain-text handout, or null when unavailable
+ */
+async function generateFocusMaterial(options = {}) {
+  const { studentName, subject, yearLevel, percentage, topics = [], sources = [] } = options;
+  if (!isOpenAIConfigured() || !topics.length) return null;
+
+  const topicList = topics
+    .map((t, i) => `${i + 1}. ${t.topic} — scored ${t.correct}/${t.total} (${t.percentage}%)`)
+    .join('\n');
+
+  // Cap the source text. A whole subject's handouts would blow the context
+  // window, and the first few thousand characters of the RIGHT handout is what
+  // matters here, not completeness.
+  const sourceText = sources
+    .slice(0, 4)
+    .map((source) => `### ${source.module_title}${source.file_original_name ? ` — ${source.file_original_name}` : ''}\n`
+      + String(source.extracted_text || '').trim().slice(0, 4000))
+    .join('\n\n');
+
+  const systemPrompt = `You write short, practical focus material for a one-to-one tutor at a tutorial centre.
+
+The student has just sat a Pre-Assessment and these are the topics they were weakest in.
+Write material the TUTOR will teach from in the next session, using ONLY the handout text provided.
+
+Return a JSON object with one key, "handout", whose value is plain text laid out as:
+
+FOCUS AREAS FOR <STUDENT NAME>
+Subject: <subject>   Pre-Assessment result: <percentage>%
+
+Then, for EACH weak topic, in order:
+  <n>. <topic name>  (scored x/y)
+     What they are missing: one or two sentences naming the specific idea, drawn from the handout.
+     Teach it like this: two or three concrete steps or an analogy the tutor can use.
+     Check they have it: one question the tutor can ask, with its answer.
+
+End with a single line: "Full per-question results are in Analytics & Reports."
+
+Rules:
+- Use ONLY facts present in the handout text. Never invent content.
+- Write for the tutor, not the student: say what to teach and how.
+- Keep it under 500 words. A page a tutor will actually read beats a chapter.
+- Plain text only. No markdown, no bullet characters other than a leading dash.`;
+
+  const userPrompt = `Student: ${studentName}
+Subject: ${subject || 'General'}
+Level: ${yearLevel || 'General'}
+Pre-Assessment result: ${Number(percentage || 0).toFixed(1)}%
+
+WEAK TOPICS
+${topicList}
+
+HANDOUT SOURCE TEXT
+${sourceText}`;
+
+  try {
+    const { result } = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 1600 });
+    const text = String(result.handout || '').trim();
+    return text.length > 40 ? text : null;
+  } catch (error) {
+    console.error('[aiService] focus material generation failed:', error.message);
+    return null;
+  }
 }

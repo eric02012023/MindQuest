@@ -68,7 +68,18 @@ const {
   getPostAssessment,
   getSubjectPrePostComparison,
   getSubjectPostReadiness,
-  createPostAssessmentFromPre
+  createPostAssessmentFromPre,
+  // --- Management upgrade -------------------------------------------------
+  // Auto weak-topic focus material, flagged for this tutor
+  getFocusHandoutsForTutor,
+  getFocusHandoutById,
+  markFocusHandoutViewed,
+  countUnviewedFocusHandouts,
+  // Analytics & Reports, scoped to this tutor's own learners
+  getAnalyticsDashboard,
+  // In-app notifications addressed to this tutor
+  getAppNotifications,
+  markAppNotificationReferenceRead
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
@@ -98,7 +109,17 @@ async function buildShell(req, extra = {}) {
   // schedule notifications. With the request/approve loop retired there is
   // nothing to act on, and a badge counting rows no page can respond to is worse
   // than no badge.
-  const allNotifications = await getTutorScheduleNotifications(req.session.user.id);
+  //
+  // The bell now also counts the alerts addressed to this tutor — chiefly the
+  // "focus area ready for <student>" notice written when one of their learners
+  // finishes a Pre-Assessment. That notice is the whole point of the weak-topic
+  // flow: material nobody is told about is material nobody teaches from.
+  const [allNotifications, alerts, focusHandoutCount] = await Promise.all([
+    getTutorScheduleNotifications(req.session.user.id),
+    getAppNotifications(req.session.user, { unreadOnly: true }).catch(() => []),
+    countUnviewedFocusHandouts(req.session.user.id).catch(() => 0)
+  ]);
+
   return {
     pageTitle: extra.pageTitle || 'Tutor Dashboard',
     roleName: 'Tutor',
@@ -106,8 +127,10 @@ async function buildShell(req, extra = {}) {
     section: extra.section || 'dashboard',
     contentView: extra.contentView,
     currentUser: req.session.user,
-    notificationCount: allNotifications.length,
+    notificationCount: allNotifications.length + alerts.length,
     inboxNotifications: allNotifications,
+    alerts,
+    focusHandoutCount,
     ...extra
   };
 }
@@ -875,7 +898,92 @@ router.get('/students/:studentId/analytics', async (req, res, next) => {
 // Analytics & Reports used to be its own page. It listed the tutor's students
 // and how they were doing — the same question Student Results answers, off the
 // same submissions — so the two are one page now and this stays as a URL only.
-router.get('/analytics', (req, res) => res.redirect('/tutor/student-results'));
+/**
+ * Analytics & Reports for a tutor.
+ *
+ * Scoped to "only the students they personally handle" — and scoped in the SQL,
+ * not the template: getAnalyticsDashboard derives the scope from the session
+ * user, so a tutor who edits the query string still gets only their own
+ * learners' rows back.
+ */
+router.get('/analytics', async (req, res, next) => {
+  try {
+    const filters = {
+      search: String(req.query.search || '').trim(),
+      subjectId: req.query.subject_id || 'all',
+      kind: req.query.kind || 'all',
+      from: req.query.from || '',
+      to: req.query.to || ''
+    };
+
+    const data = await getAnalyticsDashboard(req.session.user, filters);
+    const focus = await getFocusHandoutsForTutor(req.session.user.id, { search: filters.search }).catch(() => []);
+
+    const shell = await buildShell(req, {
+      pageTitle: 'Analytics & Reports',
+      section: 'analytics',
+      contentView: '../content/analytics-dashboard',
+      analytics: data,
+      focusHandouts: focus,
+      filters,
+      query: req.query,
+      viewerRole: 'tutor'
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// ==========================================================================
+// Focus Areas — the auto-generated weak-topic handouts (upgrade Section 6.3)
+// ==========================================================================
+
+router.get('/focus-handouts', async (req, res, next) => {
+  try {
+    const search = String(req.query.search || '').trim();
+    const handouts = await getFocusHandoutsForTutor(req.session.user.id, { search });
+    const shell = await buildShell(req, {
+      pageTitle: 'Focus Areas',
+      section: 'focus',
+      contentView: '../content/tutor-focus-handouts',
+      handouts,
+      search,
+      query: req.query
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.get('/focus-handouts/:id', async (req, res, next) => {
+  try {
+    const handout = await getFocusHandoutById(Number(req.params.id));
+    if (!handout) {
+      setFlash(req, 'error', 'That focus handout was not found.');
+      return res.redirect('/tutor/focus-handouts');
+    }
+    // A tutor may only open material flagged for them.
+    if (Number(handout.tutor_id) !== Number(req.session.user.id)) {
+      setFlash(req, 'error', 'That focus handout belongs to another tutor.');
+      return res.redirect('/tutor/focus-handouts');
+    }
+
+    // Opening the material settles both trackers: the badge on the sidebar (a
+    // handout the tutor has not looked at) and the bell alert that pointed here.
+    await markFocusHandoutViewed(handout.id, req.session.user.id)
+      .catch((error) => console.error('[focus] could not mark viewed:', error.message));
+    await markAppNotificationReferenceRead('focus_handout', handout.id, req.session.user)
+      .catch((error) => console.error('[focus] could not mark the alert read:', error.message));
+
+    const shell = await buildShell(req, {
+      pageTitle: handout.title,
+      section: 'focus',
+      contentView: '../content/focus-handout-detail',
+      handout,
+      viewerRole: 'tutor',
+      backUrl: '/tutor/focus-handouts'
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
 
 // Phase 9: POST /assessment-requests/:id/accept and .../decline were removed.
 //

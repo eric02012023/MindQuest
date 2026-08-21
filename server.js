@@ -23,6 +23,7 @@ const assistantRoutes = require('./routes/assistant');
 const studentRoutes = require('./routes/student');
 const tutorRoutes = require('./routes/tutor');
 const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName } = require('./lib/utils');
+const { icon } = require('./lib/icons');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
 const { getFile, usingSupabase, describeBackend } = require('./lib/storage');
 
@@ -41,6 +42,8 @@ app.locals.toInputDate = toInputDate;
 app.locals.safeJsonArray = safeJsonArray;
 app.locals.branchAddress = branchAddress;
 app.locals.titleCaseName = titleCaseName;
+// One icon set for every row action in the app. Print it with <%- %>.
+app.locals.icon = icon;
 
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 

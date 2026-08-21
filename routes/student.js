@@ -13,7 +13,6 @@ const {
   getStudentAssignments,
   getStudentSubjectsOverview,
   createSubjectEnrollmentRequest,
-  getStudentBillingView,
   getAllowedContacts,
   getConversation,
   saveMessage,
@@ -67,7 +66,26 @@ const {
   getStudentSubjectCompletion,
   getPostAssessment,
   getSubjectPrePostComparison,
-  moduleTargetsStudent
+  moduleTargetsStudent,
+  // --- Management upgrade -------------------------------------------------
+  // Merged "Billing Data" (SOA + payment history in one) and the cash Pay flow
+  getStudentBillingData,
+  STUDENT_PAYMENT_METHODS,
+  PAYMENT_PURPOSES,
+  createPaymentRequest,
+  notifyAdminRoles,
+  getBranches,
+  // Analytics & Reports, scoped to this student at the query level
+  getAnalyticsDashboard,
+  getFocusHandoutsForStudent,
+  // Anti-cheating
+  recordViolation,
+  attachViolationsToSubmission,
+  markSubmissionAutoSubmitted,
+  getViolationSessionCount,
+  MAX_VIOLATIONS,
+  // Auto weak-topic handout after a Pre-Assessment
+  runPreAssessmentFollowUp
 } = require('../lib/data');
 const { determineLevel } = require('../config/levelThresholds');
 const { normalizeArray } = require('../lib/utils');
@@ -285,18 +303,87 @@ router.post('/notifications/:id/read', async (req, res, next) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
+/**
+ * Billing Data — the merged section.
+ *
+ * "Posted SOA / Billing" and "Payment History" were two panels answering halves
+ * of the same question ("what do I owe, and what have I paid?"), and a student
+ * had to add them up themselves. They are now one view built from one call, so
+ * the balance shown and the payments listed cannot disagree.
+ */
 router.get('/billing', async (req, res, next) => {
   try {
-    const billingView = await getStudentBillingView(req.session.user.id);
+    const [billingData, branches] = await Promise.all([
+      getStudentBillingData(req.session.user.id),
+      getBranches()
+    ]);
+
     const shell = await buildShell(req, {
-      pageTitle: 'My Billing',
+      pageTitle: 'Billing Data',
       section: 'billing',
       contentView: '../content/student-billing',
-      billingView
+      billingData,
+      branches,
+      paymentMethods: STUDENT_PAYMENT_METHODS,
+      paymentPurposes: PAYMENT_PURPOSES,
+      openPay: req.query.pay === '1'
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
     next(error);
+  }
+});
+
+/**
+ * Reserve a cash payment.
+ *
+ * Creates a Pending PaymentRequest and notifies BOTH admin roles. Nothing is
+ * added to the ledger here: the money has not changed hands yet, and a balance
+ * that dropped the moment a student clicked a button would be a lie the office
+ * would have to unpick later.
+ */
+router.post('/billing/pay-request', async (req, res, next) => {
+  try {
+    const student = await getUserById(req.session.user.id);
+
+    // A student may only file against their own account, and only for a branch
+    // they actually belong to — the branch field is a convenience, not a choice.
+    const branchId = Number(student.branch_id) || Number(req.body.branch_id) || null;
+
+    const request = await createPaymentRequest({
+      student,
+      amount: req.body.amount,
+      paymentMethod: req.body.payment_method || 'cash',
+      purpose: req.body.purpose,
+      preferredAt: req.body.preferred_at || null,
+      referenceNote: req.body.reference_note || null,
+      branchId
+    });
+
+    const studentName = [student.first_name, student.last_name].filter(Boolean).join(' ');
+    const branchName = student.branch_name || 'Unassigned branch';
+    await notifyAdminRoles({
+      type: 'payment_request',
+      title: `Cash payment request — ${studentName}`,
+      message: `${studentName} (${student.user_id}) wants to pay ₱${request.amount.toFixed(2)} in cash at ${branchName}`
+        + `${req.body.preferred_at ? ` on ${new Date(req.body.preferred_at).toLocaleString()}` : ''}. Status: Pending.`,
+      linkPath: `/notifications?request=${request.id}`,
+      refType: 'payment_request',
+      refId: request.id,
+      branchId,
+      severity: 'warning'
+    }).catch((error) => console.error('[payment-request] could not notify staff:', error.message));
+
+    setFlash(
+      req,
+      'success',
+      `Payment request submitted for ₱${request.amount.toFixed(2)}. `
+      + 'The office has been notified — pay at the branch and they will confirm it here.'
+    );
+    res.redirect('/student/billing');
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not submit that payment request.');
+    res.redirect('/student/billing');
   }
 });
 
@@ -549,6 +636,54 @@ router.post('/assessments/:id/anti-cheat', express.json(), async (req, res) => {
   }
 });
 
+/**
+ * The live anti-cheat endpoint (upgrade Section 8).
+ *
+ * `:id` is a tutor_assessments id — the table every assessment a student
+ * actually sits lives in. The older route above writes to
+ * assessment_anti_cheat_logs, whose foreign key points at the legacy
+ * `assessments` table; it stays for the legacy pages that still call it.
+ *
+ * The response is what drives the warning modals: the client reports an event
+ * and is TOLD which strike it was and whether the sitting is over. Counting on
+ * the client would put the number a student sees under their own control.
+ */
+router.post('/assessments/:id/violation', express.json(), async (req, res) => {
+  try {
+    const assessmentId = Number(req.params.id);
+
+    // A student may only log violations against an assessment in a subject they
+    // are enrolled in — otherwise this endpoint would write rows for any id.
+    const assessment = await getTutorAssessmentById(assessmentId);
+    if (!assessment) return res.status(404).json({ ok: false, error: 'Assessment not found.' });
+
+    const assignments = await getStudentAssignments(req.session.user.id);
+    if (!assignments.some((a) => Number(a.subject_id) === Number(assessment.subject_id))) {
+      return res.status(403).json({ ok: false, error: 'Not enrolled in this subject.' });
+    }
+
+    const result = await recordViolation({
+      assessmentId,
+      studentId: req.session.user.id,
+      type: req.body.type,
+      detail: req.body.detail,
+      sessionKey: req.body.session_key
+    });
+
+    res.json({
+      ok: true,
+      count: result.sessionCount,
+      total: result.totalCount,
+      limit: result.limit,
+      autoSubmit: result.shouldAutoSubmit,
+      label: result.label
+    });
+  } catch (error) {
+    console.error('[anti-cheat]', error.message);
+    res.status(500).json({ ok: false, error: 'Could not record that event.' });
+  }
+});
+
 // Pay online (supports PayMongo or Mock)
 router.post('/billing/pay-online', async (req, res, next) => {
   try {
@@ -579,10 +714,44 @@ router.post('/billing/pay-online', async (req, res, next) => {
   }
 });
 
-// Analytics & Reports used to be its own page. It answered the same question as
-// My Progress — "how am I doing in this subject?" — from the same tables, so the
-// two are one page now and this stays only as a working URL.
-router.get('/analytics', (req, res) => res.redirect('/student/progress'));
+/**
+ * Analytics & Reports for a student.
+ *
+ * Required for all four roles, scoped per role. For a student the scope is
+ * themselves — and it is applied in the SQL (lib/rbac.js -> studentScopeClause),
+ * so there is no request they can craft that returns another learner's rows.
+ *
+ * This is the scored view: trends over time, weak topics, module completion.
+ * My Progress remains the per-subject checklist of what to do next.
+ */
+router.get('/analytics', async (req, res, next) => {
+  try {
+    const filters = {
+      search: String(req.query.search || '').trim(),
+      subjectId: req.query.subject_id || 'all',
+      kind: req.query.kind || 'all',
+      from: req.query.from || '',
+      to: req.query.to || ''
+    };
+
+    const [data, focus] = await Promise.all([
+      getAnalyticsDashboard(req.session.user, filters),
+      getFocusHandoutsForStudent(req.session.user.id).catch(() => [])
+    ]);
+
+    const shell = await buildShell(req, {
+      pageTitle: 'Analytics & Reports',
+      section: 'analytics',
+      contentView: '../content/analytics-dashboard',
+      analytics: data,
+      focusHandouts: focus,
+      filters,
+      query: req.query,
+      viewerRole: 'student'
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
 
 // ==========================================================================
 // Phase 6: Module Level System — Pre-Assessment, Module View, Assessment
@@ -602,6 +771,35 @@ router.get('/analytics', (req, res) => res.redirect('/student/progress'));
 async function requireEnrolment(req, subjectId) {
   const assignments = await getStudentAssignments(req.session.user.id);
   return assignments.find((a) => Number(a.subject_id) === Number(subjectId)) || null;
+}
+
+/** A random key identifying one sitting, for grouping its anti-cheat strikes. */
+function newSittingKey() {
+  return `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Close the anti-cheat record for a sitting: attach its violations to the
+ * submission they belong to, and mark the submission if the system ended it.
+ *
+ * Never throws — a logging failure must not turn a graded submission into an
+ * error page for the student.
+ */
+async function finaliseSitting(req, { assessmentId, submissionId }) {
+  const sessionKey = req.body.session_key || null;
+  try {
+    await attachViolationsToSubmission({
+      assessmentId,
+      studentId: req.session.user.id,
+      submissionId,
+      sessionKey
+    });
+    if (req.body.auto_submitted) {
+      await markSubmissionAutoSubmitted(submissionId, String(req.body.auto_submitted));
+    }
+  } catch (error) {
+    console.error('[anti-cheat] could not finalise the sitting:', error.message);
+  }
 }
 
 router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
@@ -632,6 +830,10 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       return res.redirect(`/student/subjects/${subjectId}`);
     }
 
+    // One key per sitting, so a reload resumes the same strike count instead of
+    // starting again from zero — and yesterday's violations do not carry into
+    // today's attempt.
+    const sessionKey = newSittingKey();
     const shell = await buildShell(req, {
       pageTitle: `Pre-Assessment — ${assignment.subject_name}`,
       section: 'subjects',
@@ -639,7 +841,13 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       assessment,
       assignment,
       subjectId,
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
+      antiCheat: {
+        endpoint: `/student/assessments/${assessment.id}/violation`,
+        sessionKey,
+        limit: MAX_VIOLATIONS,
+        startCount: 0
+      }
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -675,6 +883,8 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       started_at: req.body.started_at || null
     });
 
+    await finaliseSitting(req, { assessmentId, submissionId: result.submissionId });
+
     // Record the classification against the subject so tutors see it at a glance.
     await setStudentSubjectLevel({
       student_id: req.session.user.id,
@@ -686,7 +896,27 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       percentage: result.percentage
     }).catch((error) => console.error('[pre-assessment] could not save subject level:', error.message));
 
-    setFlash(req, 'success', `Pre-Assessment submitted. Your level: ${result.level} (${result.percentage}%). Your modules are now unlocked.`);
+    // Weak-topic follow-up (upgrade Section 6.3): analyse the topics this student
+    // scored lowest on, generate focus material for them, flag it for their
+    // assigned tutor and notify that tutor.
+    //
+    // Awaited rather than fired and forgotten so the tutor's notification is
+    // already there when they look, and so a failure is logged against this
+    // request. runPreAssessmentFollowUp never throws — the student's result is
+    // already saved and must not be put at risk by a slow AI provider.
+    const focus = await runPreAssessmentFollowUp({
+      submissionId: result.submissionId,
+      studentId: req.session.user.id,
+      subjectId,
+      assessmentId
+    });
+
+    setFlash(
+      req,
+      'success',
+      `Pre-Assessment submitted. Your level: ${result.level} (${result.percentage}%). Your modules are now unlocked.`
+      + (focus && focus.tutor_id ? ' Your tutor has been sent your focus areas.' : '')
+    );
     res.redirect(`/student/results/${result.submissionId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not submit the Pre-Assessment.');
@@ -744,7 +974,13 @@ router.get('/subjects/:subjectId/post-assessment', async (req, res, next) => {
       assignment: gate.assignment,
       subjectId,
       kind: 'post',
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
+      antiCheat: {
+        endpoint: `/student/assessments/${gate.assessment.id}/violation`,
+        sessionKey: newSittingKey(),
+        limit: MAX_VIOLATIONS,
+        startCount: 0
+      }
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -769,6 +1005,8 @@ router.post('/subjects/:subjectId/post-assessment', async (req, res, next) => {
       answers,
       started_at: req.body.started_at || null
     });
+
+    await finaliseSitting(req, { assessmentId: gate.assessment.id, submissionId: result.submissionId });
 
     // The classification on record follows the latest measurement, which is the
     // point of sitting the same questions again.
@@ -944,7 +1182,14 @@ router.get('/tutor-assessments/:id', async (req, res, next) => {
       assessment,
       subjectId: assessment.subject_id,
       subjectName: assignment.subject_name,
-      isPre: false
+      isPre: false,
+      startedAt: new Date().toISOString(),
+      antiCheat: {
+        endpoint: `/student/assessments/${assessment.id}/violation`,
+        sessionKey: newSittingKey(),
+        limit: MAX_VIOLATIONS,
+        startCount: 0
+      }
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -984,7 +1229,16 @@ router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
       started_at: req.body.started_at || null
     });
 
-    setFlash(req, 'success', `Assessment submitted! Score: ${result.score}/${result.totalPoints} (${Number(result.percentage).toFixed(1)}%)`);
+    await finaliseSitting(req, { assessmentId, submissionId: result.submissionId });
+
+    setFlash(
+      req,
+      req.body.auto_submitted ? 'warning' : 'success',
+      req.body.auto_submitted
+        ? `Your assessment was submitted automatically after 3 violations. `
+          + `Score: ${result.score}/${result.totalPoints} (${Number(result.percentage).toFixed(1)}%)`
+        : `Assessment submitted! Score: ${result.score}/${result.totalPoints} (${Number(result.percentage).toFixed(1)}%)`
+    );
     res.redirect(`/student/results/${result.submissionId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not submit assessment.');

@@ -3,12 +3,24 @@
 <html lang="en">
 <%
   const roleFolder = basePath === '/assistant' ? 'assistant-admin' : String(basePath || '').replace(/^\//, '') || 'public';
+  // Each page's stylesheet also carries the base layout (the former global.css),
+  // so a section with no sheet of its own would 404 and lose the whole shell.
+  // New sections are therefore mapped onto a sheet that EXISTS FOR THAT ROLE —
+  // the folders differ, so the map has to be per role, not shared. The new
+  // sections' own look comes from the shared /css/mq-data.css.
   const sectionMap = {
     archive_notifications: 'notification-archives',
     notification_history: 'notification-history',
     payment_history: 'payment-history',
     income: 'dashboard'
   };
+  const roleSectionMap = {
+    admin: { notifications: 'notification-history' },
+    'assistant-admin': { notifications: 'notification-history', students: 'users', tutors: 'users' },
+    tutor: { focus: 'modules' },
+    student: {}
+  };
+  Object.assign(sectionMap, roleSectionMap[roleFolder] || {});
   const sectionSlug = sectionMap[section] || String(section || 'dashboard').replace(/_/g, '-');
   const roleThemeCss = `/css/${roleFolder}/theme.css`;
   const shellPageCss = `/css/${roleFolder}/${sectionSlug}.css`;
@@ -18,10 +30,22 @@
 <%- include('../partials/head', { pageTitle, pageCss: shellStyles }) %>
 <body class="dashboard-body <%= shellPageClass %>">
   <div class="dashboard-shell">
-    <%- include('../partials/sidebar', { basePath, section, roleName, currentUser }) %>
+    <%# pendingPaymentCount / focusHandoutCount are passed explicitly: an include
+        gets only the locals handed to it, so a badge that reads an undefined
+        local would throw rather than simply not render. %>
+    <%- include('../partials/sidebar', {
+      basePath, section, roleName, currentUser,
+      pendingPaymentCount: typeof pendingPaymentCount === 'undefined' ? 0 : pendingPaymentCount,
+      focusHandoutCount: typeof focusHandoutCount === 'undefined' ? 0 : focusHandoutCount
+    }) %>
     <div class="sidebar-overlay" data-sidebar-overlay></div>
     <div class="dashboard-main">
-      <%- include('../partials/dashboard-topbar', { basePath, pageTitle, currentUser, notificationCount: typeof notificationCount === 'undefined' ? 0 : notificationCount, inboxNotifications: typeof inboxNotifications === 'undefined' ? [] : inboxNotifications }) %>
+      <%- include('../partials/dashboard-topbar', {
+        basePath, pageTitle, currentUser,
+        notificationCount: typeof notificationCount === 'undefined' ? 0 : notificationCount,
+        inboxNotifications: typeof inboxNotifications === 'undefined' ? [] : inboxNotifications,
+        alerts: typeof alerts === 'undefined' ? [] : alerts
+      }) %>
       <main class="dashboard-content">
         <div class="page-wrapper <%= shellPageClass %>-wrapper">
           <%- include(contentView) %>

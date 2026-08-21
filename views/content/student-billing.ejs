@@ -1,70 +1,266 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-billing.ejs | Purpose: UI template/view used by the system. %>
-<section class="page-stack">
-  <section class="panel-card">
-    <div class="panel-card-head"><h2>My Billing</h2></div>
-    <% if (billingView.bill) { %>
-      <div class="billing-summary-grid">
-        <article class="stat-card"><h3>Full Bill</h3><strong><%= money(billingView.bill.full_bill) %></strong></article>
-        <article class="stat-card"><h3>Partial Payment</h3><strong><%= money(billingView.bill.partial_payment) %></strong></article>
-        <article class="stat-card gradient"><h3>For Settlement</h3><strong><%= money(billingView.bill.for_settlement) %></strong></article>
-        <article class="stat-card"><h3>Payment Due</h3><strong><%= formatDate(billingView.bill.payment_due) %></strong></article>
+<%# File: views/content/student-billing.ejs
+    Purpose: Billing Data — one section, not three.
+
+    "Posted SOA / Billing" and "Payment History" used to be separate panels, and
+    the current balance was a fourth set of numbers above them. A student had to
+    read all three and add up. This page is one story, top to bottom:
+
+      what you owe  ->  how to pay it  ->  every payment you have made
+                                        ->  the statements the office posted
+
+    The Pay action is a method PICKER rather than a single button, so adding an
+    online option later is a new entry in STUDENT_PAYMENT_METHODS (lib/billing.js)
+    and nothing else. Methods that are not switched on are shown disabled instead
+    of hidden, so a student can see what is coming.
+
+    Locals: billingData { bill, entries, totals, statements, requests,
+            pendingRequest }, paymentMethods, paymentPurposes, branches %>
+<%
+  const data = billingData;
+  const totals = data.totals;
+  const bill = data.bill;
+  const pending = data.pendingRequest;
+  const studentName = `${titleCaseName(currentUser.first_name)} ${titleCaseName(currentUser.last_name || '')}`.trim();
+  const cashMethod = (paymentMethods || []).find((m) => m.value === 'cash');
+%>
+<section class="mq-page">
+
+  <div class="mq-summary">
+    <div class="mq-summary-item">
+      <span>Total billed</span><strong><%= money(totals.totalBilled) %></strong>
+    </div>
+    <div class="mq-summary-item is-positive">
+      <span>Total paid</span><strong><%= money(totals.totalPaid) %></strong>
+    </div>
+    <div class="mq-summary-item is-negative">
+      <span>Remaining balance</span><strong><%= money(totals.remaining) %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Payment due</span><strong><%= bill && bill.payment_due ? formatDate(bill.payment_due) : '—' %></strong>
+    </div>
+  </div>
+
+  <% if (!bill) { %>
+    <div class="mq-panel">
+      <div class="mq-empty">
+        <strong>No billing record yet</strong>
+        Your account has not been billed. The office will post a statement here once it is ready.
       </div>
-      <% if (Number(billingView.bill.for_settlement || 0) > 0) { %>
-        <div style="margin-top:16px;padding:16px;background:var(--bg-2);border-radius:8px;">
-          <h4 style="margin:0 0 12px;">💳 Pay Online</h4>
-          <form method="post" action="/student/billing/pay-online" class="stack-form" data-confirm-message="Proceed with online payment?">
-            <label>Amount to Pay (min ₱500)
-              <input type="number" name="amount" min="500" max="<%= billingView.bill.for_settlement %>" step="0.01" required placeholder="Enter amount (minimum ₱500)" />
-            </label>
-            <button type="submit" class="btn btn-primary">Pay Now</button>
-            <p class="empty-state" style="margin-top:8px;">Secure payment via PayMongo (GCash, GrabPay, Card, Maya) or MindQuest Mock Pay.</p>
-          </form>
+    </div>
+  <% } else { %>
+
+    <%# --------------------------------------------------------- Pay action %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h2>Make a payment</h2>
+          <p>Reserve the amount here, then pay at the branch. The office confirms it and your balance updates.</p>
         </div>
+        <% if (totals.remaining > 0) { %>
+          <span class="mq-status mq-status-unpaid"><%= money(totals.remaining) %> outstanding</span>
+        <% } else { %>
+          <span class="mq-status mq-status-paid">Fully settled</span>
+        <% } %>
+      </div>
+
+      <% if (pending) { %>
+        <div class="mq-detail">
+          <div class="mq-detail-item is-wide">
+            <span>Request waiting</span>
+            <strong>
+              You have a pending request for <%= money(pending.amount) %>
+              submitted <%= formatDateTime(pending.created_at) %>.
+              Pay at <%= pending.branch_name || 'your branch' %> and the office will confirm it.
+              You can submit a new request once this one is processed.
+            </strong>
+          </div>
+        </div>
+      <% } else if (totals.remaining <= 0) { %>
+        <div class="mq-empty">Nothing to pay right now. Your account is fully settled.</div>
+      <% } else { %>
+        <div class="mq-form">
+          <label class="is-wide">Payment method
+            <select id="pay-method" onchange="selectPaymentMethod(this.value)">
+              <% (paymentMethods || []).forEach((method) => { %>
+                <option value="<%= method.value %>" <%= method.enabled ? '' : 'disabled' %>>
+                  <%= method.label %><%= method.enabled ? '' : ' — not available yet' %>
+                </option>
+              <% }) %>
+            </select>
+          </label>
+          <p class="mq-form-note" id="pay-method-note"><%= cashMethod ? cashMethod.description : '' %></p>
+        </div>
+
+        <%# The cash form. Each method gets its own panel keyed by data-method, so
+            a second method is a second panel and not a rewrite of this one. %>
+        <form class="mq-form" method="post" action="/student/billing/pay-request"
+              data-method="cash" id="pay-form-cash"
+              data-confirm-message="Submit this cash payment request? The office will be notified.">
+          <input type="hidden" name="payment_method" value="cash" />
+
+          <label>Student name<input type="text" value="<%= studentName %>" readonly /></label>
+
+          <label>Branch
+            <% if (currentUser.branch_id) { %>
+              <input type="text" value="<%= (branches || []).find((b) => Number(b.id) === Number(currentUser.branch_id))?.name || 'Your branch' %>" readonly />
+              <input type="hidden" name="branch_id" value="<%= currentUser.branch_id %>" />
+            <% } else { %>
+              <select name="branch_id" required>
+                <option value="">Choose a branch</option>
+                <% (branches || []).forEach((branch) => { %>
+                  <option value="<%= branch.id %>"><%= branch.name %></option>
+                <% }) %>
+              </select>
+            <% } %>
+          </label>
+
+          <label>Amount to pay
+            <input type="number" name="amount" step="0.01" min="0.01" max="<%= totals.remaining %>"
+                   value="<%= totals.remaining.toFixed(2) %>" required />
+          </label>
+
+          <label>Purpose of payment
+            <select name="purpose">
+              <% (paymentPurposes || []).forEach((purpose) => { %>
+                <option value="<%= purpose %>"><%= purpose %></option>
+              <% }) %>
+            </select>
+          </label>
+
+          <label>Preferred date &amp; time
+            <input type="datetime-local" name="preferred_at" />
+          </label>
+
+          <label class="is-wide">Notes for the office (optional)
+            <input type="text" name="reference_note" placeholder="e.g. paying with my guardian on Saturday morning" />
+          </label>
+
+          <p class="mq-form-note">
+            This records your <strong>intention</strong> to pay — it does not take any money.
+            Admin and Assistant Admin are notified immediately with your name, the amount,
+            your branch and the date and time you submitted it. Your balance changes only
+            once they confirm the cash was received.
+          </p>
+
+          <div class="mq-form-foot">
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('money') %> Submit payment request</button>
+          </div>
+        </form>
       <% } %>
-    <% } else { %>
-      <p class="empty-state">No current unpaid bill. Paid bills are moved to Payment History.</p>
+    </section>
+
+    <%# ------------------------------------------------------ Payment history %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h2>Payment history</h2>
+          <p>Every payment recorded against your account, oldest first.</p>
+        </div>
+        <span class="mq-count"><%= totals.paymentCount %> payment<%= totals.paymentCount === 1 ? '' : 's' %></span>
+      </div>
+
+      <div class="mq-table" style="--mq-cols: 48px 160px 110px 120px 130px 110px;">
+        <div class="mq-head">
+          <span>#</span><span>Date &amp; time</span><span class="mq-num">Amount</span>
+          <span>Method</span><span>Purpose</span><span class="mq-num">Balance after</span>
+        </div>
+
+        <% if (!data.entries.length) { %>
+          <div class="mq-empty">
+            <strong>No payments yet</strong>
+            Payments appear here as soon as the office records them.
+          </div>
+        <% } %>
+
+        <% data.entries.forEach((entry) => { %>
+          <div class="mq-row">
+            <span class="mq-cell" data-label="#">
+              <%= entry.sequence_no %>
+              <% if (Number(entry.is_locked) === 1) { %>
+                <span title="First payment — locked" style="color:var(--mq-text-soft);"><%- icon('lock', 12) %></span>
+              <% } %>
+            </span>
+            <span class="mq-cell mq-sub" data-label="Date"><%= formatDateTime(entry.paid_at) %></span>
+            <span class="mq-cell mq-money mq-money-paid" data-label="Amount"><%= money(entry.amount) %></span>
+            <span class="mq-cell" data-label="Method"><span class="mq-chip"><%= entry.payment_method || 'Cash' %></span></span>
+            <span class="mq-cell mq-sub" data-label="Purpose"><%= entry.purpose || 'Tuition' %></span>
+            <span class="mq-cell mq-num mq-sub" data-label="Balance after"><%= money(entry.balance_after) %></span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+
+    <%# ---------------------------------------------------- Payment requests %>
+    <% if ((data.requests || []).length) { %>
+      <section class="mq-panel">
+        <div class="mq-panel-head">
+          <h2>Your payment requests</h2>
+          <span class="mq-count"><%= data.requests.length %></span>
+        </div>
+        <div class="mq-table" style="--mq-cols: 160px 110px 1fr 130px 110px;">
+          <div class="mq-head">
+            <span>Submitted</span><span class="mq-num">Amount</span><span>Branch</span><span>Preferred</span><span>Status</span>
+          </div>
+          <% data.requests.forEach((request) => { %>
+            <div class="mq-row">
+              <span class="mq-cell mq-sub" data-label="Submitted"><%= formatDateTime(request.created_at) %></span>
+              <span class="mq-cell mq-money" data-label="Amount"><%= money(request.amount) %></span>
+              <span class="mq-cell" data-label="Branch"><%= request.branch_name || '—' %></span>
+              <span class="mq-cell mq-sub" data-label="Preferred"><%= request.preferred_at ? formatDateTime(request.preferred_at) : 'Any time' %></span>
+              <span class="mq-cell" data-label="Status">
+                <span class="mq-status mq-status-<%= request.status %>"><%= request.status %></span>
+              </span>
+            </div>
+          <% }) %>
+        </div>
+      </section>
     <% } %>
 
-  </section>
+    <%# ---------------------------------------------------- Posted statements %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h2>Statements posted by the office</h2>
+          <p>Each is a snapshot of your account on the day it was issued.</p>
+        </div>
+        <span class="mq-count"><%= data.statements.length %></span>
+      </div>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h2>Posted SOA / Billing Data</h2></div>
-    <div class="list-stack">
-      <% if (!billingView.statements.length) { %>
-        <p class="empty-state">No posted SOA yet.</p>
-      <% } %>
-      <% billingView.statements.forEach((item) => { %>
-        <article class="list-card">
-          <div>
-            <strong><%= item.student_full_name %></strong>
-            <p>SOA Type: <%= item.soa_type || 'Regular SOA' %></p><p>Statement Date: <%= formatDateTime(item.statement_date) %></p>
-            <p>Full Bill: <%= money(item.full_bill) %> | Partial: <%= money(item.partial_payment) %> | Settlement: <%= money(item.for_settlement) %></p>
-            <p>Payment Due: <%= formatDate(item.payment_due) %></p>
+      <div class="mq-table" style="--mq-cols: 160px 140px 110px 110px 110px 120px;">
+        <div class="mq-head">
+          <span>Statement date</span><span>Type</span><span class="mq-num">Billed</span>
+          <span class="mq-num">Paid</span><span class="mq-num">Balance</span><span>Due</span>
+        </div>
+        <% if (!data.statements.length) { %>
+          <div class="mq-empty">No statement of account has been posted yet.</div>
+        <% } %>
+        <% data.statements.forEach((statement) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-sub" data-label="Statement date"><%= formatDateTime(statement.statement_date) %></span>
+            <span class="mq-cell" data-label="Type"><span class="mq-chip"><%= statement.soa_type || 'Regular SOA' %></span></span>
+            <span class="mq-cell mq-money" data-label="Billed"><%= money(statement.full_bill) %></span>
+            <span class="mq-cell mq-money mq-money-paid" data-label="Paid"><%= money(statement.partial_payment) %></span>
+            <span class="mq-cell mq-money <%= Number(statement.for_settlement) > 0 ? 'mq-money-due' : '' %>" data-label="Balance"><%= money(statement.for_settlement) %></span>
+            <span class="mq-cell mq-sub" data-label="Due"><%= statement.payment_due ? formatDate(statement.payment_due) : '—' %></span>
           </div>
-        </article>
-      <% }) %>
-    </div>
-  </section>
-
-  <section class="panel-card">
-    <div class="panel-card-head"><h2>Payment History</h2></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Amount</th><th>Status</th><th>Date & Time</th></tr></thead>
-        <tbody>
-          <% if (!billingView.paymentHistory.length) { %>
-            <tr><td colspan="3">No payment history yet.</td></tr>
-          <% } %>
-          <% billingView.paymentHistory.forEach((item) => { %>
-            <tr>
-              <td><%= money(item.amount) %></td>
-              <td><%= item.payment_status || '-' %></td>
-              <td><%= formatDateTime(item.paid_at) %></td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    </div>
-  </section>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
 
 </section>
+
+<script>
+  // The method picker shows the panel for the chosen method and hides the rest.
+  // With one method live this is a no-op; it is here so adding the second one
+  // needs no change to this script.
+  var PAY_METHOD_NOTES = <%- JSON.stringify(Object.fromEntries((paymentMethods || []).map((m) => [m.value, m.description]))) %>;
+
+  function selectPaymentMethod(value) {
+    document.querySelectorAll('[data-method]').forEach(function (panel) {
+      panel.style.display = panel.getAttribute('data-method') === value ? '' : 'none';
+    });
+    var note = document.getElementById('pay-method-note');
+    if (note) note.textContent = PAY_METHOD_NOTES[value] || '';
+  }
+</script>

@@ -29,8 +29,17 @@
       </div>
     <% } %>
 
+    <%- include('../partials/anti-cheat', {
+      antiCheat: typeof antiCheat === 'undefined' ? null : antiCheat,
+      formSelector: '#assessment-form'
+    }) %>
+
     <form method="post" action="<%= isPre ? `/student/subjects/${subjectId}/pre-assessment` : `/student/tutor-assessments/${assessment.id}/submit` %>" id="assessment-form">
       <input type="hidden" name="assessment_id" value="<%= assessment.id %>" />
+      <input type="hidden" name="started_at" value="<%= typeof startedAt === 'undefined' ? '' : startedAt %>" />
+      <% if (typeof antiCheat !== 'undefined' && antiCheat) { %>
+        <input type="hidden" name="session_key" value="<%= antiCheat.sessionKey %>" />
+      <% } %>
 
       <div class="questions-list">
         <% (assessment.questions || []).forEach((q, i) => { %>
@@ -68,15 +77,18 @@
                 </label>
               </div>
             <% } else if (q.question_type === 'essay') { %>
-              <%# A tutor can now write essay items (Phase 7), and they are graded
-                  by AI against the question's rubric. A one-line input would have
-                  invited a one-word answer. %>
+              <%# Essay is no longer an option a tutor can choose, but assessments
+                  written before that change still hold essay items, so they must
+                  still render and still submit. %>
               <div class="fill-blank-input">
                 <textarea name="answer_<%= q.id %>" rows="5" placeholder="Write your answer in a few sentences..." required></textarea>
               </div>
             <% } else { %>
+              <%# fill_blank. Marked by comparing text, ignoring capitalisation
+                  only — so the placeholder tells the student spelling matters. %>
               <div class="fill-blank-input">
-                <input type="text" name="answer_<%= q.id %>" placeholder="Type your answer here..." required />
+                <input type="text" name="answer_<%= q.id %>" placeholder="Type the missing word or phrase" autocomplete="off" required />
+                <p class="fill-blank-hint">Capital letters do not matter, but spelling does.</p>
               </div>
             <% } %>
           </div>
@@ -203,6 +215,11 @@
   .fill-blank-input textarea:focus {
     outline: none;
     border-color: var(--primary-500);
+  }
+  .fill-blank-hint {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--text-soft);
   }
 
   .assessment-submit-area {

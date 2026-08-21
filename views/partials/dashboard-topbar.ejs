@@ -7,9 +7,13 @@
   <div class="dashboard-topbar-right">
     <% const canShowBell = ['/admin','/assistant','/student','/tutor'].includes(basePath); %>
     <% if (canShowBell) { %>
+      <%# The bell counts two streams now: the registration/enrolment inbox it
+          always showed, and the system alerts a role is addressed by — a student's
+          cash payment request, or a focus handout waiting for a tutor. Both need
+          acting on, so both belong in the same badge. %>
       <button type="button" class="notification-pill bell-button" data-modal-target="#topbar-notifications-modal">
         <span class="bell">&#128276;</span>
-        <span class="count"><%= (inboxNotifications || []).length %></span>
+        <span class="count"><%= (inboxNotifications || []).length + (alerts || []).length %></span>
       </button>
     <% } %>
     <div class="menu-wrap">
@@ -32,7 +36,25 @@
     <button type="button" class="modal-close" data-close-modal>&times;</button>
     <h3>Notifications</h3>
     <div class="list-stack modal-scroll-box">
-      <% if (!(inboxNotifications || []).length) { %><p class="empty-state">No new notifications right now.</p><% } %>
+      <% if (!(inboxNotifications || []).length && !(alerts || []).length) { %><p class="empty-state">No new notifications right now.</p><% } %>
+
+      <%# System alerts first: a pending payment request is time-sensitive in a way
+          a registration sitting in the queue is not. %>
+      <% (alerts || []).forEach((alert) => { %>
+        <article class="list-card compact align-start">
+          <div>
+            <strong><%= alert.title %></strong>
+            <p><%= alert.message || '' %></p>
+            <p><%= formatDateTime(alert.created_at) %></p>
+          </div>
+          <div class="row-actions stack-mobile">
+            <% if (alert.link_url) { %>
+              <a class="btn btn-primary btn-sm" href="<%= alert.link_url %>">Open</a>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+
       <% (inboxNotifications || []).forEach((item) => { %>
         <article class="list-card compact align-start">
           <div>

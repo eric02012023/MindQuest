@@ -124,3 +124,68 @@ curl -o /dev/null -w "%{http_code}\n" https://mindquesttutorial.com/tutor/result
 `401` shows the guarded handout mount is active — study material is not publicly downloadable. `404` on either means an older build is still being served.
 
 Then log in as admin, open a subject, add a module, and upload a handout with real text. Within about half a minute the page should say **"Pre-Assessment — Ready — 30 items"**. If it says *Waiting for a readable handout*, the file is a scan with no text layer — use **Read with AI** on the handout card. If it stays on *Building now* far longer than a minute, check `OPENAI_API_KEY` in Render.
+
+---
+
+## The management upgrade — what a deploy has to do
+
+Five new tables and a data migration ship with this release. All of it is in
+`sql/schema.sql`, which `lib/bootstrap.js` applies **on every boot**, so a normal
+restart is the whole migration. Nothing has to be run by hand.
+
+| Table | Holds |
+|---|---|
+| `payment_entries` | The billing ledger. Billing (1) → (many) payments, append-only. |
+| `payment_requests` | Cash payments a student has reserved, pending confirmation. |
+| `app_notifications` | Role-addressed in-app notices (payment requests, focus areas). |
+| `assessment_violations` | Anti-cheating events, keyed to the live assessment tables. |
+| `focus_handouts` | Auto-generated weak-topic material, flagged for a tutor. |
+
+### The one migration worth watching
+
+Existing rows in `payment_history` with an amount above zero are copied into
+`payment_entries`, and every `billing` summary is then recomputed from that
+ledger. It runs once — it is guarded on `payment_entries` being empty.
+
+A history row whose student or billing record has since been deleted **cannot**
+be copied (the ledger's foreign keys would reject it) and is left where it is.
+`payment_history` is not written to or read from any more; it stays as the
+pre-upgrade audit trail.
+
+Check the migration before trusting the numbers:
+
+```bash
+node scripts/apply-schema.js --env .env.live      # apply + report
+node scripts/apply-schema.js --env .env.live --check   # parse only, changes nothing
+```
+
+It prints how many legacy payments existed, how many were orphaned, and whether
+any `billing` row still disagrees with its ledger. **`billing rows out of sync`
+must be `0`.**
+
+### Back up first
+
+This is the one release that rewrites `billing.partial_payment` for every
+student. Take a database backup before the first restart on the new code.
+
+### Verifying it took
+
+Log in as admin:
+
+- **Student Bill** → a row per student with a **+** button. Press it, record a
+  payment, press it again and record a second. Both must appear in the payment
+  history with their own date, amount and recorder. Nothing overwrites anything.
+- **Notifications** → a student's cash payment request appears for both Admin and
+  Assistant Admin, and either can mark it Completed.
+- **Analytics & Reports** → present for all four roles. Log in as an assistant and
+  append `?branch_id=<another branch>`; the page must still say *your assigned
+  branch*.
+
+### Two behaviours that changed
+
+- **Pre-Assessment and Post-Assessment are Multiple Choice only.** An existing
+  generated Pre-Assessment is *not* rewritten — it keeps whatever it was built
+  with until its handouts change and it regenerates.
+- **Essay is no longer a question type a tutor can choose.** Module assessments
+  are Multiple Choice, Fill in the Blank or True or False. Assessments already
+  holding essay questions still render, still submit and still grade.
