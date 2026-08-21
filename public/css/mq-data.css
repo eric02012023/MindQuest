@@ -811,6 +811,19 @@ a.mq-row {
   line-height: 1.5;
 }
 
+/* A sentence sitting under one field. `.mq-form label` is uppercase, bold and
+   letter-spaced for its caption, all of which a hint would inherit and be almost
+   unreadable in — so each of those is turned back off here. */
+.mq-field-hint {
+  margin-top: var(--mq-1);
+  font-size: var(--mq-font-sm);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--mq-text-soft);
+  line-height: 1.45;
+}
+
 /* -------------------------------------------------------------------------
    11. Charts
    Given an explicit box so a canvas cannot grow without bound on resize.

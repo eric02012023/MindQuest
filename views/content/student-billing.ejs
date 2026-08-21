@@ -20,6 +20,9 @@
   const totals = data.totals;
   const bill = data.bill;
   const pending = data.pendingRequest;
+  // The floor the server will apply: ₱500 on a first payment, any amount after
+  // one has been made. Read from lib/billing.js rather than restated here.
+  const minimumPayment = Number(data.minimumPayment || 0);
   const studentName = `${titleCaseName(currentUser.first_name)} ${titleCaseName(currentUser.last_name || '')}`.trim();
   const cashMethod = (paymentMethods || []).find((m) => m.value === 'cash');
 %>
@@ -115,8 +118,20 @@
           </label>
 
           <label>Amount to pay
-            <input type="number" name="amount" step="0.01" min="0.01" max="<%= totals.remaining %>"
+            <input type="number" name="amount" step="0.01" min="<%= minimumPayment.toFixed(2) %>"
+                   max="<%= totals.remaining %>"
                    value="<%= totals.remaining.toFixed(2) %>" required />
+            <% if (minimumPayment > 1) { %>
+              <small class="mq-field-hint">
+                Your first payment must be at least <%= money(minimumPayment) %>.
+                After that you can pay any amount towards the rest.
+              </small>
+            <% } else { %>
+              <small class="mq-field-hint">
+                You have paid before, so there is no minimum — pay whatever you can
+                towards the remaining <%= money(totals.remaining) %>.
+              </small>
+            <% } %>
           </label>
 
           <label>Purpose of payment

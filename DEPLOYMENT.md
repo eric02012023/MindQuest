@@ -204,7 +204,7 @@ Log in as admin:
 
 ### Before you push: `npm test`
 
-Two regression suites that need **no database and no API key**, so they run
+Three regression suites that need **no database and no API key**, so they run
 anywhere in about a second:
 
 ```bash
@@ -221,12 +221,22 @@ npm test
   Choice and nothing else, a module assessment offers all three of its types and
   forbids essay, and anything the model returns outside the allowed set is
   dropped rather than stored.
+- `scripts/test-payment-minimum.js` runs `createPaymentRequest` against a
+  scripted database: the ₱500 down payment is required on the first payment and
+  on no payment after it, a bill below ₱500 lowers the floor to what is owed
+  rather than becoming unpayable, and an account whose history was deleted is not
+  asked to put money down twice.
 
-Neither replaces a manual pass in a real browser after changing the anti-cheat
-event wiring.
+None of them replaces a manual pass in a real browser after changing the
+anti-cheat event wiring.
 
-### Two behaviours that changed
+### Behaviours that changed
 
+- **The ₱500 minimum is a down payment, not a per-payment floor.** It applies to
+  the first payment on an account; after that a student may pay any amount
+  towards the rest. An account already carrying a payment — including one
+  migrated from the old system — is never asked to put money down again, and a
+  bill below ₱500 lowers the floor to what is owed instead of being unpayable.
 - **Pre-Assessment and Post-Assessment are Multiple Choice only.** An existing
   generated Pre-Assessment is *not* rewritten — it keeps whatever it was built
   with until its handouts change and it regenerates.

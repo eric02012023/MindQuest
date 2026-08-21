@@ -688,9 +688,12 @@ router.post('/assessments/:id/violation', express.json(), async (req, res) => {
 router.post('/billing/pay-online', async (req, res, next) => {
   try {
     const amount = Number(req.body.amount);
-    // Backend validation: minimum ₱500
-    if (!amount || amount < 500) {
-      setFlash(req, 'error', 'Minimum payment amount is ₱500.');
+    // The ₱500 down payment applies to the first payment only, and that rule is
+    // enforced inside createPayMongoPayment — which shares it with the cash path
+    // (lib/billing.js) so the two cannot disagree. Only the plainly invalid is
+    // worth catching here, before any network call is made.
+    if (!amount || amount <= 0) {
+      setFlash(req, 'error', 'Enter a payment amount greater than zero.');
       return res.redirect('/student/billing');
     }
     const student = await getUserById(req.session.user.id);
