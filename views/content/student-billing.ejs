@@ -161,6 +161,43 @@
             <button class="mq-btn mq-btn-primary" type="submit"><%- icon('money') %> Submit payment request</button>
           </div>
         </form>
+
+        <%# The online panel. Hidden until the picker selects it — the select
+            defaults to Cash Pay and nothing calls selectPaymentMethod on load. %>
+        <form class="mq-form" method="post" action="/student/billing/pay-online"
+              data-method="online" id="pay-form-online" style="display:none"
+              data-confirm-message="Continue to the secure payment page?">
+
+          <label>Student name<input type="text" value="<%= studentName %>" readonly /></label>
+
+          <label>Amount to pay
+            <input type="number" name="amount" step="0.01" min="<%= minimumPayment.toFixed(2) %>"
+                   max="<%= totals.remaining %>"
+                   value="<%= totals.remaining.toFixed(2) %>" required />
+            <% if (minimumPayment > 1) { %>
+              <small class="mq-field-hint">
+                Your first payment must be at least <%= money(minimumPayment) %>.
+                After that you can pay any amount towards the rest.
+              </small>
+            <% } else { %>
+              <small class="mq-field-hint">
+                You have paid before, so there is no minimum — pay whatever you can
+                towards the remaining <%= money(totals.remaining) %>.
+              </small>
+            <% } %>
+          </label>
+
+          <p class="mq-form-note">
+            This one <strong>does</strong> move money. You are taken to a secure
+            payment page for card, GCash, GrabPay or Maya, and your balance updates
+            as soon as the payment is confirmed — no trip to the branch, and nothing
+            for the office to confirm by hand.
+          </p>
+
+          <div class="mq-form-foot">
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('money') %> Pay now</button>
+          </div>
+        </form>
       <% } %>
     </section>
 
