@@ -26,8 +26,8 @@
         Notifications<% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
       </a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects">All Subjects</a>
+      <%# One entry, not two: Student Results is now a section of this page. %>
       <a class="<%= section === 'assessment_monitoring' ? 'active' : '' %>" href="<%= basePath %>/assessment-monitoring">Assessment Monitoring</a>
-      <a class="<%= section === 'student_results' ? 'active' : '' %>" href="<%= basePath %>/student-results">Student Results</a>
       <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics">Analytics &amp; Reports</a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="<%= basePath %>/profile/<%= currentUser.id %>">My Profile</a>
     </nav>

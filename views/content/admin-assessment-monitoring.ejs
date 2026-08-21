@@ -1,8 +1,73 @@
-<%# Admin Assessment Monitoring View %>
+<%# File: views/content/admin-assessment-monitoring.ejs
+    Purpose: Assessment Monitoring — the assessments that exist, and the results
+    students got from them, on one page.
+
+    These were two sidebar entries ("Assessment Monitoring" and "Student
+    Results") that read as the same thing to anyone using the system, so a person
+    checking on assessments had to visit both and remember which held what. They
+    are two halves of one question — what was set, and how it went — so they are
+    now two sections of one page, results first because that is what someone
+    opening this page is usually looking for.
+
+    Locals: results (submissions, newest first), assessments (tutor-created) %>
 <section class="page-stack">
+
+  <%# ------------------------------------------------------------- results %>
   <section class="panel-card">
     <div class="panel-card-head">
-      <h2>Assessment Monitoring</h2>
+      <h2>Student Results</h2>
+      <span class="pill"><%= (results || []).length %></span>
+    </div>
+    <% if (!(results || []).length) { %>
+      <p class="empty-state">No student submissions yet.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Assessment</th>
+              <th>Subject</th>
+              <th>Level</th>
+              <th>Purpose</th>
+              <th>Score</th>
+              <th>Percentage</th>
+              <th>Submitted</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% results.forEach(r => { %>
+              <tr>
+                <td><strong><%= r.first_name %> <%= r.last_name %></strong></td>
+                <td><%= r.assessment_title %></td>
+                <td><%= r.subject_name %></td>
+                <td><span class="level-badge <%= (r.level || '').toLowerCase() %>"><%= r.level %></span></td>
+                <td><span class="pill <%= r.purpose === 'pre' ? 'partial' : r.purpose === 'post' ? 'paid' : '' %>"><%= r.purpose || r.assessment_kind %></span></td>
+                <td><%= r.score %>/<%= r.total_points %></td>
+                <td>
+                  <div class="result-bar-container">
+                    <div class="result-bar" style="width: <%= r.percentage %>%"></div>
+                    <span><%= Number(r.percentage).toFixed(1) %>%</span>
+                  </div>
+                </td>
+                <td><%= new Date(r.submitted_at).toLocaleDateString() %></td>
+                <td>
+                  <a class="btn btn-secondary btn-sm" href="<%= basePath %>/results/<%= r.id %>">View Breakdown</a>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <%# --------------------------------------------------------- assessments %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Assessments set by tutors</h2>
+      <span class="pill"><%= (assessments || []).length %></span>
     </div>
     <% if (!(assessments || []).length) { %>
       <p class="empty-state">No tutor-created assessments yet.</p>
@@ -39,4 +104,5 @@
       </div>
     <% } %>
   </section>
+
 </section>

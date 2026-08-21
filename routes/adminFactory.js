@@ -2378,14 +2378,22 @@ function createAdminRouter(role) {
   // ==========================================================================
   // Phase 7: Assessment Monitoring & Student Results
   // ==========================================================================
+  // Assessment Monitoring and Student Results used to be two sidebar entries.
+  // They answer one question in two halves — what was set, and how it went — and
+  // read as the same page to anyone using the system, so they are now one page
+  // with a section each.
   router.get('/assessment-monitoring', async (req, res, next) => {
     try {
-      const assessments = await getAllTutorAssessmentsAdmin();
+      const [assessments, results] = await Promise.all([
+        getAllTutorAssessmentsAdmin(),
+        getStudentResultsAdmin()
+      ]);
       const shell = await buildShellData(req, {
         pageTitle: 'Assessment Monitoring',
         section: 'assessment_monitoring',
         contentView: '../content/admin-assessment-monitoring',
-        assessments
+        assessments,
+        results
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }
@@ -2398,12 +2406,12 @@ function createAdminRouter(role) {
       const submission = await getSubmissionWithAnswers(Number(req.params.submissionId));
       if (!submission) {
         setFlash(req, 'error', 'Result not found.');
-        return res.redirect(`${basePath}/student-results`);
+        return res.redirect(`${basePath}/assessment-monitoring`);
       }
       const weakAreas = await getWeakAreasForSubmission(submission.id);
       const shell = await buildShellData(req, {
         pageTitle: `${submission.first_name} ${submission.last_name || ''} - ${submission.title}`,
-        section: 'student_results',
+        section: 'assessment_monitoring',
         contentView: '../content/student-assessment-breakdown',
         submission,
         weakAreas,
@@ -2413,17 +2421,10 @@ function createAdminRouter(role) {
     } catch (error) { next(error); }
   });
 
-  router.get('/student-results', async (req, res, next) => {
-    try {
-      const results = await getStudentResultsAdmin();
-      const shell = await buildShellData(req, {
-        pageTitle: 'Student Results',
-        section: 'student_results',
-        contentView: '../content/admin-student-results',
-        results
-      });
-      res.render('shells/dashboard', shell);
-    } catch (error) { next(error); }
+  // Kept as a working URL. The results now live in a section of Assessment
+  // Monitoring, and a bookmark or an old link should land there rather than 404.
+  router.get('/student-results', (req, res) => {
+    res.redirect(`${basePath}/assessment-monitoring`);
   });
 
   return router;
