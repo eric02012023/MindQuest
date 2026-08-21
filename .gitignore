@@ -11,3 +11,7 @@ public/uploads/**
 # Local diagnostic scripts (they read secrets from .env, never hardcode them)
 test-smtp.js
 test-resend.js
+
+# Database snapshots from scripts/backup-billing.js. These hold real student
+# names and payment amounts — they belong on a disk, never in the repository.
+backups/
