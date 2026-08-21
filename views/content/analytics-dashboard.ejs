@@ -438,8 +438,11 @@
 
       <section class="mq-panel">
         <div class="mq-panel-head"><h3>Enrolment by subject</h3><span class="mq-count"><%= (a.enrolment || []).length %> subjects</span></div>
-        <div class="mq-table" style="--mq-cols: minmax(180px, 3fr) 90px 90px;">
-          <div class="mq-head"><span>Subject</span><span class="mq-num">Learners</span><span class="mq-num">Tutors</span></div>
+        <%# Learners only. This page reports on how students are doing; a staff
+            headcount is a User Management question and only made the row look
+            like a performance figure about tutors. %>
+        <div class="mq-table" style="--mq-cols: minmax(180px, 3fr) 90px;">
+          <div class="mq-head"><span>Subject</span><span class="mq-num">Learners</span></div>
           <% if (!(a.enrolment || []).length) { %>
             <div class="mq-empty">No active enrolments.</div>
           <% } %>
@@ -447,7 +450,6 @@
             <div class="mq-row">
               <span class="mq-cell mq-name" data-label="Subject"><%= row.subject_name %></span>
               <span class="mq-cell mq-num" data-label="Learners"><%= row.students %></span>
-              <span class="mq-cell mq-num" data-label="Tutors"><%= row.tutors %></span>
             </div>
           <% }) %>
         </div>
@@ -499,7 +501,10 @@
           labels: <%- JSON.stringify(Object.keys(a.levels || {})) %>,
           datasets: [{
             data: <%- JSON.stringify(Object.values(a.levels || {})) %>,
-            backgroundColor: ['#d54c4c', '#d28a1f', '#32a65a'],
+            // Beginner, Intermediate, Advance, Not yet assessed. The last is
+            // deliberately grey: it is an absence of data, not a bad result, and
+            // colouring it red would read as thirty failing students.
+            backgroundColor: ['#d54c4c', '#d28a1f', '#32a65a', '#9aa4ae'],
             borderWidth: 0
           }]
         },
