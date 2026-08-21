@@ -152,6 +152,13 @@ be copied (the ledger's foreign keys would reject it) and is left where it is.
 `payment_history` is not written to or read from any more; it stays as the
 pre-upgrade audit trail.
 
+The recompute only ever **raises** a figure the ledger can justify. If a `billing`
+row claims more was paid than the ledger can account for — which happens exactly
+when that student's history rows were deleted along with the student — the row is
+**left alone**, not rewritten down. Whether the old figure was inflated by the
+overwriting bug this release fixes or the history is simply incomplete is not
+something SQL can know, so it is handed to a person instead.
+
 Check the migration before trusting the numbers:
 
 ```bash
@@ -159,14 +166,28 @@ node scripts/apply-schema.js --env .env.live      # apply + report
 node scripts/apply-schema.js --env .env.live --check   # parse only, changes nothing
 ```
 
-It prints how many legacy payments existed, how many were orphaned, and whether
-any `billing` row still disagrees with its ledger. **`billing rows out of sync`
-must be `0`.**
+It prints how many legacy payments existed, how many were orphaned, and how many
+`billing` rows still disagree with their ledger. **`billing rows needing review`
+is not required to be `0`** — each one is listed by student name, billing id,
+recorded amount and ledger amount, and the office reconciles them by recording
+the missing payments. What must never happen is a number quietly dropping to
+zero, and that is what the guard prevents.
 
 ### Back up first
 
 This is the one release that rewrites `billing.partial_payment` for every
-student. Take a database backup before the first restart on the new code.
+student. Somee's shared plans do not generally grant `BACKUP DATABASE`, so take
+the scripted snapshot of the tables actually at risk:
+
+```bash
+node scripts/backup-billing.js --env .env.live
+```
+
+It only reads, so it is safe against production at any time. It writes one
+timestamped file to `backups/` holding a full dump of the billing tables plus
+ready-to-run `UPDATE` statements that put the four migrated columns back exactly
+as they were — the rows keep their ids through the migration, so restoring is an
+UPDATE and needs no downtime.
 
 ### Verifying it took
 
