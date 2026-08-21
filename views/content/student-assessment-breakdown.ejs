@@ -1,182 +1,248 @@
 <%# File: views/content/student-assessment-breakdown.ejs
-    Purpose: Result page — percentage, Beginner/Intermediate/Advance classification,
-    per-item right/wrong breakdown, and the weak-area map back to the module and
-    handout each missed question came from.
+    Purpose: Result page — percentage, Beginner/Intermediate/Advance
+    classification, per-item right/wrong breakdown, and the weak-area map back to
+    the module and handout each missed question came from.
 
     Shared by Student, Tutor and Admin via `viewerRole`; the tutor/admin view adds
-    the student's name and drops the encouragement copy. %>
+    the student's name and drops the encouragement copy.
+
+    Everything reads DOWN the page in rows. The topic breakdown used to be a card
+    grid, which reflowed by viewport width — so "which topic is worst" moved
+    around the screen and two people looking at the same result saw a different
+    order. Rows, worst first, do not move.
+
+    Locals: submission (with answers), weakAreas, viewerRole %>
 <%
   const pct = Number(submission.percentage || 0);
   const level = submission.level || 'Beginner';
   const levelClass = level.toLowerCase();
-  const correctCount = (submission.answers || []).filter((a) => a.is_correct).length;
-  const wrongCount = (submission.answers || []).length - correctCount;
+  const answers = submission.answers || [];
+  const correctCount = answers.filter((a) => a.is_correct).length;
+  const wrongCount = answers.length - correctCount;
   const isStudent = viewerRole === 'student';
   const typeLabel = (t) => t === 'multiple_choice' ? 'Multiple Choice'
     : t === 'true_false' ? 'True or False'
     : t === 'fill_blank' ? 'Fill in the Blank' : 'Essay';
+  const levelStatus = level === 'Advance' ? 'paid' : level === 'Intermediate' ? 'partial' : 'unpaid';
+  const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
+  // Worst first: the point of this page is deciding what to teach next.
+  const topics = [...(weakAreas || [])].sort((a, b) => Number(a.percentage) - Number(b.percentage));
+  const backUrl = isStudent
+    ? `/student/subjects/${submission.subject_id}`
+    : `${basePath}/subjects/${submission.subject_id}`;
 %>
-<section class="page-stack">
-  <div class="toolbar-card split">
-    <div>
-      <h2><%= submission.title %></h2>
-      <p class="res-subtitle">
-        <%= submission.subject_name %>
-        <% if (!isStudent) { %>
-          &middot; <%= submission.first_name %> <%= submission.last_name || '' %> (<%= submission.student_code %>)
-        <% } %>
-        &middot; <%= formatDateTime(submission.submitted_at) %>
-      </p>
+<section class="mq-page">
+
+  <%# ----------------------------------------------------------------- head %>
+  <div class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2><%= submission.title %></h2>
+        <p>
+          <%= submission.subject_name %>
+          <% if (!isStudent) { %>
+            · <%= submission.first_name %> <%= submission.last_name || '' %> (<%= submission.student_code %>)
+          <% } %>
+          · <%= formatDateTime(submission.submitted_at) %>
+        </p>
+      </div>
+      <a class="mq-btn mq-btn-sm" href="<%= backUrl %>">Back to subject</a>
     </div>
   </div>
 
-  <%# ---- Score + classification -------------------------------------------- %>
-  <section class="panel-card">
-    <div class="res-score-grid">
-      <div class="res-score-cell">
-        <span class="res-score-num"><%= pct.toFixed(1) %>%</span>
-        <span class="res-score-cap">Score</span>
-      </div>
-      <div class="res-score-cell">
-        <span class="res-level res-level-<%= levelClass %>"><%= level %></span>
-        <span class="res-score-cap">Classification</span>
-      </div>
-      <div class="res-score-cell">
-        <span class="res-score-num res-correct"><%= correctCount %></span>
-        <span class="res-score-cap">Correct</span>
-      </div>
-      <div class="res-score-cell">
-        <span class="res-score-num res-wrong"><%= wrongCount %></span>
-        <span class="res-score-cap">Incorrect</span>
-      </div>
-      <div class="res-score-cell">
-        <span class="res-score-num"><%= Number(submission.score) %>/<%= Number(submission.total_points) %></span>
-        <span class="res-score-cap">Points</span>
+  <%# ---------------------------------------------------- score at a glance %>
+  <div class="mq-summary">
+    <div class="mq-summary-item is-accent">
+      <span>Score</span><strong><%= pct.toFixed(1) %>%</strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Classification</span>
+      <strong><span class="mq-status mq-status-<%= levelStatus %>"><%= level %></span></strong>
+    </div>
+    <div class="mq-summary-item is-positive">
+      <span>Correct</span><strong><%= correctCount %></strong>
+    </div>
+    <div class="mq-summary-item is-negative">
+      <span>Incorrect</span><strong><%= wrongCount %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Points</span><strong><%= Number(submission.score) %>/<%= Number(submission.total_points) %></strong>
+    </div>
+  </div>
+
+  <%# --------------------------------------------------------------- bands %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Where this score sits</h3>
+        <p>The band this result falls in, from config/levelThresholds.js.</p>
       </div>
     </div>
-
-    <div class="res-bands">
-      <span class="res-band <%= levelClass === 'beginner' ? 'is-current' : '' %>">Beginner 0&ndash;50%</span>
-      <span class="res-band <%= levelClass === 'intermediate' ? 'is-current' : '' %>">Intermediate 51&ndash;80%</span>
-      <span class="res-band <%= levelClass === 'advance' ? 'is-current' : '' %>">Advance 81&ndash;100%</span>
+    <div class="mq-table" style="--mq-cols: minmax(140px, 1fr) 140px 110px;">
+      <div class="mq-head">
+        <span>Band</span><span>Range</span><span>This result</span>
+      </div>
+      <% [
+        { name: 'Beginner', range: '0–50%', cls: 'beginner', status: 'unpaid' },
+        { name: 'Intermediate', range: '51–80%', cls: 'intermediate', status: 'partial' },
+        { name: 'Advance', range: '81–100%', cls: 'advance', status: 'paid' }
+      ].forEach((band) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-cell-primary" data-label="Band">
+            <span class="mq-name"><%= band.name %></span>
+          </span>
+          <span class="mq-cell mq-sub" data-label="Range"><%= band.range %></span>
+          <span class="mq-cell" data-label="This result">
+            <% if (levelClass === band.cls) { %>
+              <span class="mq-status mq-status-<%= band.status %>">This one</span>
+            <% } else { %>—<% } %>
+          </span>
+        </div>
+      <% }) %>
     </div>
-
     <% if (isStudent) { %>
-      <p class="res-note">Your modules and handouts for this subject are now unlocked.</p>
+      <p class="mq-form-note" style="padding: 0 var(--mq-4) var(--mq-4);">
+        Your modules and handouts for this subject are now unlocked.
+      </p>
     <% } %>
   </section>
 
-  <%# ---- Weak areas -------------------------------------------------------- %>
-  <section class="panel-card">
-    <div class="panel-card-head">
-      <h3>Topic Breakdown</h3>
-      <span class="badge badge-info"><%= weakAreas.length %> source<%= weakAreas.length === 1 ? '' : 's' %></span>
-    </div>
-    <p class="table-note">
-      <% if (isStudent) { %>
-        Where your answers came from. The highlighted rows are the topics to review first.
-      <% } else { %>
-        Which module and handout each missed item came from — use this to decide what to teach first.
-      <% } %>
-    </p>
-
-    <% if (!weakAreas.length) { %>
-      <p class="empty-state">No topic data for this attempt.</p>
-    <% } %>
-
-    <div class="weak-grid">
-      <% weakAreas.forEach((area) => { %>
-        <article class="weak-card <%= area.is_weak ? 'is-weak' : '' %>">
-          <div class="weak-card-head">
-            <span class="weak-module">
-              <% if (area.order_number) { %>Module <%= area.order_number %><% } else { %>Unattributed<% } %>
-            </span>
-            <% if (area.is_weak) { %><span class="badge badge-danger">Needs review</span><% } %>
-          </div>
-          <h4><%= area.module_title %></h4>
-          <% if (area.handout_name) { %>
-            <p class="weak-handout">Handout: <%= area.handout_name %></p>
+  <%# --------------------------------------------------------- topic rows %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Topic breakdown</h3>
+        <p>
+          <% if (isStudent) { %>
+            Where your answers came from. The topics marked for review are the ones to go back to first.
+          <% } else { %>
+            Which module and handout each item came from. Worst first — teach from the top.
           <% } %>
-          <div class="weak-bar"><span style="width: <%= area.percentage %>%;"></span></div>
-          <p class="weak-meta"><%= area.correct %> of <%= area.total %> correct (<%= area.percentage %>%)</p>
-        </article>
+        </p>
+      </div>
+      <span class="mq-count"><%= topics.length %> source<%= topics.length === 1 ? '' : 's' %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: 110px minmax(180px, 2fr) minmax(160px, 2fr) 110px minmax(120px, 1fr) 120px;">
+      <div class="mq-head">
+        <span>Module</span>
+        <span>Title</span>
+        <span>Handout</span>
+        <span class="mq-num">Score</span>
+        <span>Share</span>
+        <span>Verdict</span>
+      </div>
+
+      <% if (!topics.length) { %>
+        <div class="mq-empty">
+          <strong>No topic data for this attempt</strong>
+          The questions were not attributed to a module.
+        </div>
+      <% } %>
+
+      <% topics.forEach((area) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-sub" data-label="Module">
+            <%= area.order_number ? `Module ${area.order_number}` : 'Unattributed' %>
+          </span>
+          <span class="mq-cell mq-cell-primary" data-label="Title">
+            <span class="mq-name"><%= area.module_title %></span>
+          </span>
+          <span class="mq-cell mq-sub" data-label="Handout"><%= area.handout_name || '—' %></span>
+          <span class="mq-cell mq-num" data-label="Score"><%= area.correct %>/<%= area.total %></span>
+          <span class="mq-cell" data-label="Share">
+            <span class="mq-meter <%= meterClass(Number(area.percentage)) %>">
+              <i style="width: <%= Math.max(0, Math.min(100, Number(area.percentage))) %>%;"></i>
+            </span>
+            <span class="mq-sub"><%= area.percentage %>%</span>
+          </span>
+          <span class="mq-cell" data-label="Verdict">
+            <% if (area.is_weak) { %>
+              <span class="mq-status mq-status-unpaid">Needs review</span>
+            <% } else { %>
+              <span class="mq-status mq-status-paid">Solid</span>
+            <% } %>
+          </span>
+        </div>
       <% }) %>
     </div>
   </section>
 
-  <%# ---- Per-item breakdown ----------------------------------------------- %>
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Item by Item</h3></div>
+  <%# ----------------------------------------------------------- item rows %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Item by item</h3>
+        <p>Every question in order, with what was answered and what was expected.</p>
+      </div>
+      <span class="mq-count"><%= answers.length %> item<%= answers.length === 1 ? '' : 's' %></span>
+    </div>
 
-    <% (submission.answers || []).forEach((a, i) => { %>
-      <article class="res-item <%= a.is_correct ? 'is-correct' : 'is-wrong' %>">
-        <div class="res-item-head">
-          <span class="res-item-num"><%= i + 1 %></span>
-          <span class="badge badge-info"><%= typeLabel(a.question_type) %></span>
-          <span class="res-item-verdict <%= a.is_correct ? 'ok' : 'bad' %>">
-            <%= a.is_correct ? 'Correct' : 'Incorrect' %>
-            (<%= Number(a.points_earned) %>/<%= Number(a.points) %>)
+    <% if (!answers.length) { %>
+      <div class="mq-empty"><strong>No answers stored</strong>Nothing was recorded for this attempt.</div>
+    <% } %>
+
+    <% answers.forEach((a, i) => { %>
+      <article class="mq-item <%= a.is_correct ? 'is-correct' : 'is-wrong' %>">
+        <div class="mq-item-head">
+          <span class="mq-item-num"><%= i + 1 %></span>
+          <span class="mq-chip"><%= typeLabel(a.question_type) %></span>
+          <span class="mq-status mq-status-<%= a.is_correct ? 'paid' : 'unpaid' %>">
+            <%= a.is_correct ? 'Correct' : 'Incorrect' %> · <%= Number(a.points_earned) %>/<%= Number(a.points) %>
           </span>
         </div>
 
-        <p class="res-item-q"><%= a.question_text %></p>
+        <p class="mq-item-q"><%= a.question_text %></p>
 
-        <div class="res-item-answers">
-          <div class="res-answer">
-            <span class="res-answer-cap"><%= isStudent ? 'Your answer' : 'Student answer' %></span>
-            <span class="res-answer-val">
+        <div class="mq-item-answers">
+          <div class="mq-item-answer">
+            <span><%= isStudent ? 'Your answer' : 'Student answer' %></span>
+            <strong>
               <% if (!a.student_answer) { %>
                 <em>No answer</em>
               <% } else if (a.question_type === 'multiple_choice') { %>
                 <% const picked = (a.options || []).find((o) => o.option_label === a.student_answer); %>
-                <%= a.student_answer %><% if (picked) { %> &mdash; <%= picked.option_text %><% } %>
+                <%= a.student_answer %><% if (picked) { %> — <%= picked.option_text %><% } %>
               <% } else { %>
                 <%= a.student_answer %>
               <% } %>
-            </span>
+            </strong>
           </div>
 
           <% if (!a.is_correct) { %>
-            <div class="res-answer">
-              <span class="res-answer-cap"><%= a.question_type === 'essay' ? 'Expected key points' : 'Correct answer' %></span>
-              <span class="res-answer-val">
+            <div class="mq-item-answer">
+              <span><%= a.question_type === 'essay' ? 'Expected key points' : 'Correct answer' %></span>
+              <strong>
                 <% if (a.question_type === 'multiple_choice') { %>
                   <% const right = (a.options || []).find((o) => o.option_label === a.correct_answer); %>
-                  <%= a.correct_answer %><% if (right) { %> &mdash; <%= right.option_text %><% } %>
+                  <%= a.correct_answer %><% if (right) { %> — <%= right.option_text %><% } %>
                 <% } else if (a.question_type === 'essay') { %>
                   <%= a.answer_rubric || a.correct_answer %>
                 <% } else { %>
                   <%= a.correct_answer %>
                 <% } %>
-              </span>
+              </strong>
             </div>
           <% } %>
         </div>
 
         <% if (a.ai_feedback) { %>
-          <p class="res-feedback"><strong>Feedback:</strong> <%= a.ai_feedback %></p>
+          <p class="mq-item-note"><strong>Feedback:</strong> <%= a.ai_feedback %></p>
         <% } %>
         <% if (a.explanation && !a.is_correct) { %>
-          <p class="res-explain"><strong>Why:</strong> <%= a.explanation %></p>
+          <p class="mq-item-note"><strong>Why:</strong> <%= a.explanation %></p>
         <% } %>
 
         <% if (a.source_order_number || a.source_handout_name) { %>
-          <p class="res-source">
+          <p class="mq-item-source">
             From
             <% if (a.source_order_number) { %>Module <%= a.source_order_number %><% } %>
-            <% if (a.source_module_title) { %>&middot; <%= a.source_module_title %><% } %>
-            <% if (a.source_handout_name) { %>&middot; <%= a.source_handout_name %><% } %>
+            <% if (a.source_module_title) { %>· <%= a.source_module_title %><% } %>
+            <% if (a.source_handout_name) { %>· <%= a.source_handout_name %><% } %>
           </p>
         <% } %>
       </article>
     <% }) %>
   </section>
 
-  <div class="row-actions">
-    <% if (isStudent) { %>
-      <a class="btn btn-primary" href="/student/subjects/<%= submission.subject_id %>">Back to Subject</a>
-    <% } else { %>
-      <a class="btn btn-secondary" href="<%= basePath %>/subjects/<%= submission.subject_id %>">Back to Subject</a>
-    <% } %>
-  </div>
 </section>
