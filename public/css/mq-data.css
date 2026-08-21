@@ -811,6 +811,57 @@ a.mq-row {
   line-height: 1.5;
 }
 
+/* One field per row: caption on the left, control on the right, a rule between
+   each. `.mq-form` on its own is an auto-fit grid, which suits a short form but
+   turns a forty-field profile into a wall of columns that reads in no particular
+   order and leaves orphans on the last row. A profile is a record, so it is laid
+   out like one — straight down, one fact per line.
+
+   Applied to the label rather than a wrapper so the existing markup, and the
+   edit-toggle script that walks [data-profile-editable] inside it, are unchanged. */
+.mq-form-rows {
+  grid-template-columns: 1fr;
+  gap: 0;
+  padding: 0;
+}
+
+.mq-form-rows > label,
+.mq-form-rows > .mq-form-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 230px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mq-3);
+  padding: var(--mq-3) var(--mq-4);
+  border-bottom: 1px solid var(--mq-line);
+  margin: 0;
+}
+
+.mq-form-rows > label:hover {
+  background: var(--mq-surface-2, transparent);
+}
+
+.mq-form-rows > .mq-form-foot {
+  padding: var(--mq-3) var(--mq-4);
+  border-bottom: 0;
+}
+
+/* The caption keeps the small-caps treatment; the control must not inherit it. */
+.mq-form-rows > label > input,
+.mq-form-rows > label > select,
+.mq-form-rows > label > textarea,
+.mq-form-rows > label > .multi-select {
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .mq-form-rows > label,
+  .mq-form-rows > .mq-form-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: var(--mq-1);
+  }
+}
+
 /* A sentence sitting under one field. `.mq-form label` is uppercase, bold and
    letter-spaced for its caption, all of which a hint would inherit and be almost
    unreadable in — so each of those is turned back off here. */
@@ -864,6 +915,91 @@ a.mq-row {
 .mq-meter-low i { background: #d54c4c; }
 .mq-meter-mid i { background: #d28a1f; }
 .mq-meter-high i { background: #32a65a; }
+
+/* -------------------------------------------------------------------------
+   11b. Result items — one answered question per block, stacked down the page
+
+   A question, what was answered, what was expected and why is too much for a
+   table row and too little for its own card grid. These read as a list: a rule
+   between each, a coloured edge for right or wrong so the eye can skim for the
+   misses without reading a word.
+   ---------------------------------------------------------------------- */
+
+.mq-item {
+  padding: var(--mq-4);
+  border-top: 1px solid var(--mq-line);
+  border-left: 3px solid transparent;
+}
+
+.mq-item.is-correct { border-left-color: #32a65a; }
+.mq-item.is-wrong { border-left-color: #d54c4c; }
+
+.mq-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--mq-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--mq-2);
+}
+
+.mq-item-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--mq-surface-soft);
+  border: 1px solid var(--mq-line);
+  font-size: var(--mq-font-sm);
+  font-weight: 700;
+  color: var(--mq-text-soft);
+}
+
+.mq-item-q {
+  margin: 0 0 var(--mq-3);
+  font-size: var(--mq-font);
+  font-weight: 600;
+  color: var(--mq-text);
+  line-height: 1.5;
+}
+
+.mq-item-answers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--mq-3);
+}
+
+.mq-item-answer span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--mq-text-soft);
+  margin-bottom: 2px;
+}
+
+.mq-item-answer strong {
+  font-size: var(--mq-font);
+  font-weight: 600;
+  color: var(--mq-text);
+  word-break: break-word;
+}
+
+.mq-item-note,
+.mq-item-source {
+  margin: var(--mq-3) 0 0;
+  font-size: var(--mq-font-sm);
+  color: var(--mq-text-soft);
+  line-height: 1.5;
+}
+
+.mq-item-source {
+  padding-top: var(--mq-2);
+  border-top: 1px dashed var(--mq-line);
+}
 
 /* -------------------------------------------------------------------------
    12. Mobile — rows become stacked records with their column name inline
