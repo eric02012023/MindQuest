@@ -303,7 +303,11 @@
           <span class="mq-cell mq-sub" data-label="Subject"><%= row.subject_name %></span>
           <span class="mq-cell mq-num" data-label="Score"><%= Number(row.percentage).toFixed(1) %>%</span>
           <span class="mq-cell" data-label="Result">
-            <span class="mq-status mq-status-<%= Number(row.percentage) >= 75 ? 'paid' : Number(row.percentage) >= 50 ? 'partial' : 'unpaid' %>"><%= row.level %></span>
+            <%# Coloured from the classification it is showing, not from a second
+                set of cut-offs. These were 75/50 while the bands in
+                config/levelThresholds.js are 80/50, so two "Intermediate" chips
+                could carry different colours — 78% green, 55% amber. %>
+            <span class="mq-status mq-status-<%= row.level === 'Advance' ? 'paid' : row.level === 'Intermediate' ? 'partial' : 'unpaid' %>"><%= row.level %></span>
           </span>
         </div>
       <% }) %>

@@ -967,7 +967,7 @@ BEGIN
   CREATE TABLE dbo.modules (
     id INT IDENTITY(1,1) PRIMARY KEY,
     subject_id INT NOT NULL,
-    level NVARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advanced')),
+    level NVARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advance')),
     title NVARCHAR(200) NOT NULL,
     description NVARCHAR(MAX) NULL,
     file_path NVARCHAR(500) NULL,
@@ -990,7 +990,7 @@ BEGIN
     id INT IDENTITY(1,1) PRIMARY KEY,
     student_id INT NOT NULL,
     subject_id INT NOT NULL,
-    level NVARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advanced')),
+    level NVARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advance')),
     pre_assessment_id INT NULL,
     score INT NULL,
     total_points INT NULL,
@@ -1289,6 +1289,92 @@ BEGIN
        AND t.paid >= b.partial_payment;';
   BEGIN TRY EXEC sp_executesql @resync_billing; END TRY BEGIN CATCH
     PRINT 'Warning: billing re-sync from payment_entries skipped: ' + ERROR_MESSAGE();
+  END CATCH
+END;
+
+
+-- Accept the spelling the application actually writes.
+--
+-- Older copies of this file created student_subject_levels and modules with a
+-- CHECK that allowed 'Advanced', while determineLevel() returns 'Advance' — see
+-- config/levelThresholds.js, where the DB constraint is the stated reason that
+-- spelling matters. On such a database every attempt to record a top
+-- classification fails the constraint, and since the caller logs and swallows
+-- that failure the student silently keeps whatever level they already had.
+--
+-- The live database was already corrected by the Phase 2 migration; this repairs
+-- any other copy and makes one built from this file correct from the start. The
+-- constraint is dropped before the rows are normalised because 'Advanced' is the
+-- only value the old constraint would accept.
+BEGIN TRY
+  DECLARE @drop_level_checks NVARCHAR(MAX) = N'';
+  SELECT @drop_level_checks = @drop_level_checks
+       + 'ALTER TABLE dbo.' + QUOTENAME(t.name) + ' DROP CONSTRAINT ' + QUOTENAME(c.name) + ';'
+    FROM sys.check_constraints c
+    JOIN sys.tables t ON t.object_id = c.parent_object_id
+   WHERE t.name IN ('student_subject_levels', 'modules')
+     AND c.definition LIKE '%Advanced%';
+
+  IF @drop_level_checks <> N''
+  BEGIN
+    EXEC sp_executesql @drop_level_checks;
+
+    IF OBJECT_ID('dbo.student_subject_levels','U') IS NOT NULL
+      EXEC sp_executesql N'UPDATE dbo.student_subject_levels SET level = ''Advance'' WHERE level = ''Advanced'';';
+    IF OBJECT_ID('dbo.modules','U') IS NOT NULL
+      EXEC sp_executesql N'UPDATE dbo.modules SET level = ''Advance'' WHERE level = ''Advanced'';';
+
+    IF OBJECT_ID('dbo.student_subject_levels','U') IS NOT NULL
+      EXEC sp_executesql N'ALTER TABLE dbo.student_subject_levels ADD CONSTRAINT CK_ssl_level
+             CHECK (level IN (''Beginner'',''Intermediate'',''Advance''));';
+    IF OBJECT_ID('dbo.modules','U') IS NOT NULL
+      EXEC sp_executesql N'ALTER TABLE dbo.modules ADD CONSTRAINT CK_modules_level
+             CHECK (level IN (''Beginner'',''Intermediate'',''Advance''));';
+  END
+END TRY BEGIN CATCH
+  PRINT 'Warning: level CHECK constraint alignment skipped: ' + ERROR_MESSAGE();
+END CATCH;
+
+
+-- Re-derive every recorded classification from the student's latest submission.
+--
+-- The classification used to be written by the Pre- and Post-Assessment routes
+-- only; the module-assessment route never did it. A student who opened a subject
+-- at 30% and later scored 100% on a module assessment stayed "Beginner" on
+-- record for ever — and since Analytics reads this table for its per-student
+-- level and for the level-spread chart, they and the whole chart stayed in the
+-- Beginner colour no matter how well anyone did.
+--
+-- gradeAndSubmitAssessment now records it for every kind of assessment, but rows
+-- already written under the old behaviour would never correct themselves. This
+-- is a plain re-derive of the latest measurement, so it is safe on every boot:
+-- once the table and the submissions agree it changes nothing.
+IF OBJECT_ID('dbo.student_subject_levels','U') IS NOT NULL
+   AND OBJECT_ID('dbo.tutor_assessment_submissions','U') IS NOT NULL
+   AND OBJECT_ID('dbo.tutor_assessments','U') IS NOT NULL
+BEGIN
+  DECLARE @resync_levels NVARCHAR(MAX) = N'
+    UPDATE ssl
+       SET level             = latest.level,
+           score             = CAST(ROUND(latest.score, 0) AS INT),
+           total_points      = latest.total_points,
+           percentage        = latest.percentage,
+           pre_assessment_id = latest.assessment_id,
+           assigned_at       = DATEADD(hour, 8, GETUTCDATE())
+      FROM dbo.student_subject_levels ssl
+      CROSS APPLY (
+        SELECT TOP 1 sub.level, sub.score, sub.total_points, sub.percentage, sub.assessment_id
+          FROM dbo.tutor_assessment_submissions sub
+          JOIN dbo.tutor_assessments ta ON ta.id = sub.assessment_id
+         WHERE sub.student_id = ssl.student_id
+           AND ta.subject_id  = ssl.subject_id
+           AND sub.level IS NOT NULL
+         ORDER BY sub.submitted_at DESC, sub.id DESC
+      ) latest
+     WHERE ssl.level <> latest.level
+        OR ISNULL(ssl.percentage, -1) <> ISNULL(latest.percentage, -1);';
+  BEGIN TRY EXEC sp_executesql @resync_levels; END TRY BEGIN CATCH
+    PRINT 'Warning: student_subject_levels re-sync skipped: ' + ERROR_MESSAGE();
   END CATCH
 END;
 

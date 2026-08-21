@@ -44,7 +44,6 @@ const {
   // Phase 4: Admin pre/post assessments
   // Phase 5/6: Module & Level System
   getStudentSubjectLevel,
-  setStudentSubjectLevel,
   getModuleBySubjectAndLevel,
   getModulesBySubject,
   getTutorAssessmentsByModule,
@@ -888,16 +887,9 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
 
     await finaliseSitting(req, { assessmentId, submissionId: result.submissionId });
 
-    // Record the classification against the subject so tutors see it at a glance.
-    await setStudentSubjectLevel({
-      student_id: req.session.user.id,
-      subject_id: subjectId,
-      level: result.level,
-      pre_assessment_id: assessmentId,
-      score: Math.round(result.score),
-      total_points: result.totalPoints,
-      percentage: result.percentage
-    }).catch((error) => console.error('[pre-assessment] could not save subject level:', error.message));
+    // The classification is recorded by gradeAndSubmitAssessment itself, for every
+    // kind of assessment — see the note there. It used to be done here, which is
+    // why the module-assessment route was able to leave it behind.
 
     // Weak-topic follow-up (upgrade Section 6.3): analyse the topics this student
     // scored lowest on, generate focus material for them, flag it for their
@@ -1012,16 +1004,8 @@ router.post('/subjects/:subjectId/post-assessment', async (req, res, next) => {
     await finaliseSitting(req, { assessmentId: gate.assessment.id, submissionId: result.submissionId });
 
     // The classification on record follows the latest measurement, which is the
-    // point of sitting the same questions again.
-    await setStudentSubjectLevel({
-      student_id: req.session.user.id,
-      subject_id: subjectId,
-      level: result.level,
-      pre_assessment_id: gate.assessment.id,
-      score: Math.round(result.score),
-      total_points: result.totalPoints,
-      percentage: result.percentage
-    }).catch((error) => console.error('[post-assessment] could not save subject level:', error.message));
+    // point of sitting the same questions again — recorded by
+    // gradeAndSubmitAssessment for every assessment kind, not just this one.
 
     setFlash(req, 'success', `Post-Assessment submitted. Your level: ${result.level} (${result.percentage}%).`);
     res.redirect(`/student/results/${result.submissionId}`);
