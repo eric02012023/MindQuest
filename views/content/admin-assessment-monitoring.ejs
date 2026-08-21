@@ -1,108 +1,160 @@
 <%# File: views/content/admin-assessment-monitoring.ejs
-    Purpose: Assessment Monitoring — the assessments that exist, and the results
-    students got from them, on one page.
+    Purpose: Assessment Monitoring — the results students got, and the
+    assessments those results came from, on one page.
 
     These were two sidebar entries ("Assessment Monitoring" and "Student
-    Results") that read as the same thing to anyone using the system, so a person
-    checking on assessments had to visit both and remember which held what. They
-    are two halves of one question — what was set, and how it went — so they are
-    now two sections of one page, results first because that is what someone
-    opening this page is usually looking for.
+    Results") that read as the same thing, so a person checking on assessments
+    had to visit both and remember which held what. They are two halves of one
+    question — how it went, and what was set — so they are two sections of one
+    page. Results first: that is what this page is opened for.
 
     Locals: results (submissions, newest first), assessments (tutor-created) %>
-<section class="page-stack">
+<%
+  const rows = results || [];
+  const sets = assessments || [];
+  const levelStatus = (level) => level === 'Advance' ? 'paid' : level === 'Intermediate' ? 'partial' : 'unpaid';
+  const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
+  const purposeLabel = (p) => p === 'pre' ? 'Pre' : p === 'post' ? 'Post' : p === 'activity' ? 'Module' : (p || '—');
+  const averageScore = rows.length
+    ? (rows.reduce((sum, r) => sum + Number(r.percentage || 0), 0) / rows.length).toFixed(1)
+    : '0.0';
+  const passing = rows.filter((r) => Number(r.percentage || 0) >= 51).length;
+%>
+<section class="mq-page">
 
-  <%# ------------------------------------------------------------- results %>
-  <section class="panel-card">
-    <div class="panel-card-head">
-      <h2>Student Results</h2>
-      <span class="pill"><%= (results || []).length %></span>
-    </div>
-    <% if (!(results || []).length) { %>
-      <p class="empty-state">No student submissions yet.</p>
-    <% } else { %>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Student</th>
-              <th>Assessment</th>
-              <th>Subject</th>
-              <th>Level</th>
-              <th>Purpose</th>
-              <th>Score</th>
-              <th>Percentage</th>
-              <th>Submitted</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% results.forEach(r => { %>
-              <tr>
-                <td><strong><%= r.first_name %> <%= r.last_name %></strong></td>
-                <td><%= r.assessment_title %></td>
-                <td><%= r.subject_name %></td>
-                <td><span class="level-badge <%= (r.level || '').toLowerCase() %>"><%= r.level %></span></td>
-                <td><span class="pill <%= r.purpose === 'pre' ? 'partial' : r.purpose === 'post' ? 'paid' : '' %>"><%= r.purpose || r.assessment_kind %></span></td>
-                <td><%= r.score %>/<%= r.total_points %></td>
-                <td>
-                  <div class="result-bar-container">
-                    <div class="result-bar" style="width: <%= r.percentage %>%"></div>
-                    <span><%= Number(r.percentage).toFixed(1) %>%</span>
-                  </div>
-                </td>
-                <td><%= new Date(r.submitted_at).toLocaleDateString() %></td>
-                <td>
-                  <a class="btn btn-secondary btn-sm" href="<%= basePath %>/results/<%= r.id %>">View Breakdown</a>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
+  <div class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Assessment Monitoring</h2>
+        <p>What learners scored, and the assessments those scores came from.</p>
       </div>
-    <% } %>
+    </div>
+  </div>
+
+  <%# ------------------------------------------------------------ at a glance %>
+  <div class="mq-summary">
+    <div class="mq-summary-item is-accent">
+      <span>Submissions</span><strong><%= rows.length %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Average score</span><strong><%= averageScore %>%</strong>
+    </div>
+    <div class="mq-summary-item is-positive">
+      <span>Above Beginner</span><strong><%= passing %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Assessments set</span><strong><%= sets.length %></strong>
+    </div>
+  </div>
+
+  <%# ---------------------------------------------------------- student results %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Student results</h3>
+        <p>Every submission, newest first. Open a row to see the item-by-item breakdown.</p>
+      </div>
+      <span class="mq-count"><%= rows.length %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: minmax(160px, 2fr) minmax(160px, 2fr) minmax(120px, 1fr) 120px 90px 100px minmax(140px, 1fr) 110px 110px;">
+      <div class="mq-head">
+        <span>Student</span>
+        <span>Assessment</span>
+        <span>Subject</span>
+        <span>Level</span>
+        <span>Type</span>
+        <span class="mq-num">Score</span>
+        <span>Percentage</span>
+        <span>Submitted</span>
+        <span style="text-align:right;">Actions</span>
+      </div>
+
+      <% if (!rows.length) { %>
+        <div class="mq-empty">
+          <strong>No submissions yet</strong>
+          Results appear here as soon as a learner submits an assessment.
+        </div>
+      <% } %>
+
+      <% rows.forEach((r) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-cell-primary" data-label="Student">
+            <span class="mq-name"><%= titleCaseName(r.first_name) %> <%= titleCaseName(r.last_name || '') %></span>
+            <% if (r.student_code) { %><span class="mq-sub"><%= r.student_code %></span><% } %>
+          </span>
+          <span class="mq-cell" data-label="Assessment"><%= r.assessment_title %></span>
+          <span class="mq-cell mq-sub" data-label="Subject"><%= r.subject_name %></span>
+          <span class="mq-cell" data-label="Level">
+            <span class="mq-status mq-status-<%= levelStatus(r.level) %>"><%= r.level || '—' %></span>
+          </span>
+          <span class="mq-cell" data-label="Type">
+            <span class="mq-chip"><%= purposeLabel(r.purpose || r.assessment_kind) %></span>
+          </span>
+          <span class="mq-cell mq-num" data-label="Score"><%= r.score %>/<%= r.total_points %></span>
+          <span class="mq-cell" data-label="Percentage">
+            <span class="mq-meter <%= meterClass(Number(r.percentage)) %>">
+              <i style="width: <%= Math.max(0, Math.min(100, Number(r.percentage))) %>%;"></i>
+            </span>
+            <span class="mq-sub"><%= Number(r.percentage).toFixed(1) %>%</span>
+          </span>
+          <span class="mq-cell mq-sub" data-label="Submitted"><%= formatDate(r.submitted_at) %></span>
+          <span class="mq-cell mq-cell-actions">
+            <a class="mq-btn mq-btn-sm" href="<%= basePath %>/results/<%= r.id %>">Breakdown</a>
+          </span>
+        </div>
+      <% }) %>
+    </div>
   </section>
 
-  <%# --------------------------------------------------------- assessments %>
-  <section class="panel-card">
-    <div class="panel-card-head">
-      <h2>Assessments set by tutors</h2>
-      <span class="pill"><%= (assessments || []).length %></span>
-    </div>
-    <% if (!(assessments || []).length) { %>
-      <p class="empty-state">No tutor-created assessments yet.</p>
-    <% } else { %>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Subject</th>
-              <th>Module</th>
-              <th>Level</th>
-              <th>Purpose</th>
-              <th>Tutor</th>
-              <th>Items</th>
-              <th>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% assessments.forEach(a => { %>
-              <tr>
-                <td><strong><%= a.title %></strong></td>
-                <td><%= a.subject_name %></td>
-                <td><%= a.module_title %></td>
-                <td><span class="level-badge <%= (a.level || '').toLowerCase() %>"><%= a.level %></span></td>
-                <td><span class="pill <%= a.purpose === 'pre' ? 'partial' : a.purpose === 'post' ? 'paid' : '' %>"><%= a.purpose %></span></td>
-                <td><%= a.first_name %> <%= a.last_name %></td>
-                <td><%= a.question_count %></td>
-                <td><%= new Date(a.created_at).toLocaleDateString() %></td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
+  <%# -------------------------------------------------- assessments set by tutors %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Assessments set by tutors</h3>
+        <p>What exists to be taken, and who wrote it.</p>
       </div>
-    <% } %>
+      <span class="mq-count"><%= sets.length %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-cols: minmax(180px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) 120px 90px minmax(140px, 1fr) 80px 110px;">
+      <div class="mq-head">
+        <span>Title</span>
+        <span>Subject</span>
+        <span>Module</span>
+        <span>Level</span>
+        <span>Type</span>
+        <span>Tutor</span>
+        <span class="mq-num">Items</span>
+        <span>Created</span>
+      </div>
+
+      <% if (!sets.length) { %>
+        <div class="mq-empty">
+          <strong>No tutor-created assessments yet</strong>
+          Assessments a tutor builds for a module appear here.
+        </div>
+      <% } %>
+
+      <% sets.forEach((a) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-cell-primary" data-label="Title">
+            <span class="mq-name"><%= a.title %></span>
+          </span>
+          <span class="mq-cell mq-sub" data-label="Subject"><%= a.subject_name %></span>
+          <span class="mq-cell mq-sub" data-label="Module"><%= a.module_title || '—' %></span>
+          <span class="mq-cell" data-label="Level">
+            <span class="mq-status mq-status-<%= levelStatus(a.level) %>"><%= a.level || '—' %></span>
+          </span>
+          <span class="mq-cell" data-label="Type">
+            <span class="mq-chip"><%= purposeLabel(a.purpose) %></span>
+          </span>
+          <span class="mq-cell" data-label="Tutor"><%= titleCaseName(a.first_name) %> <%= titleCaseName(a.last_name || '') %></span>
+          <span class="mq-cell mq-num" data-label="Items"><%= a.question_count %></span>
+          <span class="mq-cell mq-sub" data-label="Created"><%= formatDate(a.created_at) %></span>
+        </div>
+      <% }) %>
+    </div>
   </section>
 
 </section>
