@@ -86,7 +86,32 @@ async function main() {
       console.log(`payment_entries rows        : ${a.entries}`);
       console.log(`legacy payments (amount > 0): ${a.legacy_payments}`);
       console.log(`  of which orphaned         : ${a.orphaned} (student or billing record deleted — left in payment_history)`);
-      console.log(`billing rows out of sync    : ${a.out_of_sync}`);
+      console.log(`billing rows needing review : ${a.out_of_sync}`);
+
+      // Name them. The re-sync deliberately refuses to LOWER a recorded payment
+      // the ledger cannot account for — see the guard in sql/schema.sql — so
+      // these rows keep their old figure and someone has to reconcile them by
+      // hand. A count alone would tell nobody which accounts to look at.
+      if (a.out_of_sync > 0) {
+        const rows = await pool.request().query(`
+          SELECT b.id, b.full_bill, b.partial_payment, b.payment_status,
+                 COALESCE(u.user_id, '(deleted student)') AS student_code,
+                 LTRIM(RTRIM(COALESCE(u.first_name, '') + ' ' + COALESCE(u.last_name, ''))) AS student_name,
+                 (SELECT COALESCE(SUM(pe.amount), 0) FROM dbo.payment_entries pe WHERE pe.billing_id = b.id) AS ledger_total
+          FROM dbo.billing b
+          LEFT JOIN dbo.users u ON u.id = b.student_id
+          WHERE b.partial_payment <> (SELECT COALESCE(SUM(pe.amount), 0)
+                                        FROM dbo.payment_entries pe WHERE pe.billing_id = b.id)
+          ORDER BY b.id`);
+        console.log('');
+        console.log('  These accounts kept their recorded figure because the ledger could not');
+        console.log('  account for it. Nothing was lost — they need a person to reconcile:');
+        for (const row of rows.recordset) {
+          const who = row.student_name ? `${row.student_name} (${row.student_code})` : row.student_code;
+          console.log(`    billing #${row.id}  ${who}`);
+          console.log(`      recorded paid ${Number(row.partial_payment).toFixed(2)} · ledger has ${Number(row.ledger_total).toFixed(2)} · status ${row.payment_status}`);
+        }
+      }
     }
   } finally {
     await pool.close();

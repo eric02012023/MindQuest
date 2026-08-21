@@ -1249,9 +1249,24 @@ END;
 --
 -- Without this the migrated accounts would keep whatever partial_payment the old
 -- mutable field happened to hold, which is precisely the number this upgrade
--- stopped trusting. Runs whenever a billing row disagrees with its entries, so it
--- is both the migration step and a self-heal if anything ever writes around the
--- ledger.
+-- stopped trusting.
+--
+-- THE GUARD IS THE IMPORTANT PART. This only re-derives a row when the ledger can
+-- account for AT LEAST what the row already claims was paid (t.paid >=
+-- b.partial_payment). It will raise a figure the ledger can justify; it will
+-- never lower one.
+--
+-- Found on real data before this shipped: a live account recorded ₱500 paid with
+-- no payment_history row that could produce it, because the student had been
+-- deleted and their history rows went with them. An unguarded re-derive rewrote
+-- that account to ₱0 and "unpaid" — money vanishing quietly, which is the exact
+-- failure the append-only ledger exists to prevent.
+--
+-- Lowering is not a decision SQL should make. Either the old figure was inflated
+-- by the overwriting bug this release fixes, or the history is incomplete, and
+-- only the office knows which. So the row is LEFT ALONE and reported by
+-- scripts/apply-schema.js as needing a human. A number somebody has to reconcile
+-- beats a number nobody can recover.
 IF OBJECT_ID('dbo.payment_entries','U') IS NOT NULL AND OBJECT_ID('dbo.billing','U') IS NOT NULL
 BEGIN
   DECLARE @resync_billing NVARCHAR(MAX) = N'
@@ -1263,14 +1278,15 @@ BEGIN
                                WHEN t.paid > 0 THEN ''partial''
                                ELSE ''unpaid''
                              END,
-           last_paid_at    = t.last_paid_at,
+           last_paid_at    = COALESCE(t.last_paid_at, b.last_paid_at),
            updated_at      = DATEADD(hour, 8, GETUTCDATE())
       FROM dbo.billing b
       CROSS APPLY (
         SELECT COALESCE(SUM(pe.amount), 0) AS paid, MAX(pe.paid_at) AS last_paid_at
         FROM dbo.payment_entries pe WHERE pe.billing_id = b.id
       ) t
-     WHERE b.partial_payment <> t.paid;';
+     WHERE b.partial_payment <> t.paid
+       AND t.paid >= b.partial_payment;';
   BEGIN TRY EXEC sp_executesql @resync_billing; END TRY BEGIN CATCH
     PRINT 'Warning: billing re-sync from payment_entries skipped: ' + ERROR_MESSAGE();
   END CATCH
