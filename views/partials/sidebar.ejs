@@ -14,9 +14,9 @@
   <% if (basePath === '/admin' || basePath === '/assistant') { %>
     <nav class="sidebar-nav">
       <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="<%= basePath %>">Dashboard</a>
+      <%# One entry. Student Profiles and Tutor Profiles were the same list with
+          the role pinned, and User Management already filters by role. %>
       <a class="<%= section === 'users' ? 'active' : '' %>" href="<%= basePath %>/users">User Management</a>
-      <a class="<%= section === 'students' ? 'active' : '' %>" href="<%= basePath %>/students">Student Profiles</a>
-      <a class="<%= section === 'tutors' ? 'active' : '' %>" href="<%= basePath %>/tutors">Tutor Profiles</a>
       <% if (currentUser.role === 'admin') { %><a class="<%= section === 'branches' ? 'active' : '' %>" href="<%= basePath %>/branches">Branch Management</a><% } %>
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="<%= basePath %>/billing">Student Bill</a>
       <a class="<%= section === 'income' ? 'active' : '' %>" href="<%= basePath %>/income-report">Income Report</a>

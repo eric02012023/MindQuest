@@ -482,77 +482,16 @@ function createAdminRouter(role) {
   });
 
   /**
-   * Student Profiles and Tutor Profiles.
+   * Student Profiles and Tutor Profiles used to be their own pages: the same
+   * row list over the same query with the role pinned. User Management already
+   * lists every user and already filters by role, so they were a second way to
+   * reach a page the admin was on anyway.
    *
-   * Both are the same row list over the same query with the role pinned, so they
-   * share one view rather than being two templates that drift. Each row carries
-   * only what identifies the person; the full profile is one click away.
+   * Kept as redirects so older links and bookmarks land on the right filtered
+   * list rather than a 404.
    */
-  async function renderProfileList(req, res, next, listRole) {
-    try {
-      const scopeBranchId = getScopeBranchId(req);
-      const search = req.query.search || '';
-      const yearLevel = req.query.year_level || 'all';
-
-      const [page, archivedUsers, subjects] = await Promise.all([
-        getUsersPaged({
-          scopeBranchId,
-          role: listRole,
-          archived: false,
-          search,
-          yearLevel,
-          page: req.query.page,
-          pageSize: req.query.page_size
-        }),
-        getUsers({ scopeBranchId, role: listRole, archived: true, search }),
-        getSubjects(false)
-      ]);
-
-      // The assignment counts are what make the row worth reading: a tutor with
-      // no students, or a student with no tutor, is the thing an admin looks for.
-      const ids = page.rows.map((row) => Number(row.id)).filter(Boolean);
-      let assignmentCounts = new Map();
-      if (ids.length) {
-        const column = listRole === 'tutor' ? 'tutor_id' : 'student_id';
-        const counts = await query(
-          `SELECT ${column} AS owner_id, COUNT(DISTINCT subject_id) AS subject_count,
-                  COUNT(DISTINCT ${listRole === 'tutor' ? 'student_id' : 'tutor_id'}) AS partner_count
-           FROM user_subject_assignments
-           WHERE is_archived = 0 AND ${column} IN (${ids.map(() => '?').join(',')})
-           GROUP BY ${column}`,
-          ids
-        );
-        assignmentCounts = new Map(counts.map((row) => [Number(row.owner_id), row]));
-      }
-
-      const rows = page.rows.map((row) => ({
-        ...row,
-        subject_count: Number(assignmentCounts.get(Number(row.id))?.subject_count || 0),
-        partner_count: Number(assignmentCounts.get(Number(row.id))?.partner_count || 0)
-      }));
-
-      const shell = await buildShellData(req, {
-        pageTitle: listRole === 'tutor' ? 'Tutor Profiles' : 'Student Profiles',
-        section: listRole === 'tutor' ? 'tutors' : 'students',
-        contentView: '../content/admin-profile-list',
-        listRole,
-        users: rows,
-        pager: page,
-        query: req.query,
-        archivedUsers,
-        subjects,
-        yearLevelOptions: YEAR_LEVEL_OPTIONS,
-        selectedYearLevel: yearLevel,
-        search
-      });
-      res.render('shells/dashboard', shell);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  router.get('/students', (req, res, next) => renderProfileList(req, res, next, 'student'));
-  router.get('/tutors', (req, res, next) => renderProfileList(req, res, next, 'tutor'));
+  router.get('/students', (req, res) => res.redirect(`${basePath}/users?role=student`));
+  router.get('/tutors', (req, res) => res.redirect(`${basePath}/users?role=tutor`));
 
   // Route handler: GET request
 
