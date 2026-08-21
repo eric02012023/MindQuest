@@ -181,6 +181,29 @@ Log in as admin:
   append `?branch_id=<another branch>`; the page must still say *your assigned
   branch*.
 
+### Before you push: `npm test`
+
+Two regression suites that need **no database and no API key**, so they run
+anywhere in about a second:
+
+```bash
+npm test
+```
+
+- `scripts/test-anti-cheat-client.js` runs `public/js/anti-cheat.js` against a
+  hand-rolled DOM: three-strike escalation, one alt-tab costing one strike rather
+  than two, and — the part most likely to break silently — `required` being
+  stripped before the auto-submit, without which the browser refuses the submit
+  and strands the student on a page that just told them the assessment was over.
+- `scripts/test-assessment-types.js` runs the real generation pipeline with the
+  OpenAI transport stubbed: the prompt a Pre-Assessment sends offers Multiple
+  Choice and nothing else, a module assessment offers all three of its types and
+  forbids essay, and anything the model returns outside the allowed set is
+  dropped rather than stored.
+
+Neither replaces a manual pass in a real browser after changing the anti-cheat
+event wiring.
+
 ### Two behaviours that changed
 
 - **Pre-Assessment and Post-Assessment are Multiple Choice only.** An existing

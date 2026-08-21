@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "init-db": "node scripts/init-db.js"
+    "init-db": "node scripts/init-db.js",
+    "apply-schema": "node scripts/apply-schema.js",
+    "test": "node scripts/test-anti-cheat-client.js && node scripts/test-assessment-types.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
