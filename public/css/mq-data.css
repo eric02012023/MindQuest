@@ -274,6 +274,23 @@
    3. The row list
    ---------------------------------------------------------------------- */
 
+/* A table wider than its panel SCROLLS; it does not get cut off.
+
+   This was `overflow: hidden`, which clipped the rounded corners neatly and
+   also silently amputated any table whose columns did not fit. A nine-column
+   table needs about 1200px, a laptop beside the sidebar gives rather less, and
+   the last columns — the score and the button to open a result — were simply
+   not there, with nothing to suggest they existed.
+
+   Between the 900px breakpoint (where rows become stacked records and fit
+   anything) and a wide desktop, the row has to be allowed to overflow and the
+   frame has to let the reader reach it, by scrollbar, trackpad or swipe.
+
+   Each row carries `--mq-min-width` so every row in a table is the same width
+   as its header. Without it the rows are only as wide as the frame while their
+   grid tracks overflow it, so scrolling right runs off the end of the header
+   background and the columns stop lining up. Tables that fit leave the variable
+   unset and behave exactly as before. */
 .mq-table {
   --mq-cols: 1fr;
   display: block;
@@ -281,7 +298,35 @@
   background: var(--mq-surface);
   border: 1px solid var(--mq-line);
   border-radius: var(--mq-radius);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.mq-table > .mq-head,
+.mq-table > .mq-row,
+.mq-table > .mq-empty {
+  min-width: var(--mq-min-width, 0);
+}
+
+/* A visible, unobtrusive scrollbar: the reader has to know there is more. */
+.mq-table::-webkit-scrollbar {
+  height: 10px;
+}
+
+.mq-table::-webkit-scrollbar-track {
+  background: var(--mq-surface-soft);
+}
+
+.mq-table::-webkit-scrollbar-thumb {
+  background: var(--mq-line);
+  border-radius: 999px;
+  border: 2px solid var(--mq-surface-soft);
+}
+
+.mq-table::-webkit-scrollbar-thumb:hover {
+  background: var(--mq-text-soft);
 }
 
 /* A list inside a panel already has the panel's frame. */
@@ -1008,6 +1053,18 @@ a.mq-row {
 @media (max-width: 900px) {
   .mq-head {
     display: none;
+  }
+
+  /* Stacked records fit any width, so the desktop minimum must be dropped —
+     left on, every table would scroll sideways on a phone for no reason. */
+  .mq-table {
+    overflow-x: hidden;
+  }
+
+  .mq-table > .mq-head,
+  .mq-table > .mq-row,
+  .mq-table > .mq-empty {
+    min-width: 0;
   }
 
   .mq-row {
