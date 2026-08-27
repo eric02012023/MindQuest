@@ -95,6 +95,11 @@ Where the button appears:
 It stays hidden unless the browser confirms an install is possible, and hides
 itself again once the app is installed.
 
+The installed app opens on `/login` rather than the landing page — the marketing
+page is for visitors arriving from a search, not for someone who pressed their
+own app icon. `/login` is behind `ensureGuest`, so anyone still signed in is
+redirected to their own dashboard and never sees the form at all.
+
 | Device | How | Notes |
 |---|---|---|
 | Android (Chrome) | Press **Install App** | Full install, icon in the app drawer |

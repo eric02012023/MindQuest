@@ -5,7 +5,7 @@
   "description": "Unlocking Minds, One Quest At A Time! Lessons, assessments, billing and messages for MindQuest students, tutors and staff.",
   "lang": "en",
   "dir": "ltr",
-  "start_url": "/",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
