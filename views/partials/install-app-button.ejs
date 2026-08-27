@@ -1,0 +1,24 @@
+<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/partials/install-app-button.ejs | Purpose: The optional "Install App" button, shared by the landing page, the login page and every dashboard topbar. %>
+<%#
+  Rendered hidden. /js/pwa.js removes the `hidden` attribute only when the
+  browser has confirmed MindQuest can be installed on this device — and leaves
+  it hidden when the app is already installed, or when the browser has no way to
+  install it at all. That way nobody is shown a button that would do nothing.
+
+  Pass `variant: 'on-dark'` where the button sits on a dark header.
+%>
+<% const installVariant = typeof variant === 'undefined' ? '' : variant; %>
+<button
+  type="button"
+  class="mq-install-btn <%= installVariant %>"
+  data-pwa-install
+  hidden
+  title="Install MindQuest as an app on this device"
+>
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v12" />
+    <path d="m7 11 5 5 5-5" />
+    <path d="M4 20h16" />
+  </svg>
+  <span class="mq-install-label">Install App</span>
+</button>

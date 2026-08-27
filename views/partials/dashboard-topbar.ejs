@@ -5,6 +5,10 @@
     <div class="dashboard-topbar-title"><h1><%= pageTitle %></h1></div>
   </div>
   <div class="dashboard-topbar-right">
+    <%# Offered to all four roles. It stays hidden unless the browser can act on
+        it, so on an already-installed app or an unsupported browser the topbar
+        looks exactly as it did before. %>
+    <%- include('install-app-button', { variant: '' }) %>
     <% const canShowBell = ['/admin','/assistant','/student','/tutor'].includes(basePath); %>
     <% if (canShowBell) { %>
       <%# The bell counts two streams now: the registration/enrolment inbox it

@@ -56,6 +56,40 @@ app.get('/sitemap.xml', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
 });
 
+/**
+ * Installable app (PWA).
+ *
+ * These three files are served from the site root rather than from the /assets
+ * or /js mounts below, because their location is what makes them work:
+ *
+ *   /sw.js                 a service worker only controls pages at or below its
+ *                          own path. Served from /js/sw.js it could speak for
+ *                          /js/ and nothing else; served from the root it covers
+ *                          the whole site, which is what `scope: "/"` in the
+ *                          manifest asks for.
+ *   /manifest.webmanifest  kept beside it so the scope it declares and the path
+ *                          it is fetched from agree.
+ *   /offline.html          the page the service worker shows when the network is
+ *                          gone, so it has to be reachable at a stable URL.
+ *
+ * `no-cache` on the worker means the browser revalidates it on every check
+ * instead of possibly sitting on a stale copy — the difference between a bad
+ * worker being replaced by the next deploy and it lingering on someone's phone.
+ */
+app.get('/sw.js', (req, res) => {
+  res.type('application/javascript');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+app.get('/manifest.webmanifest', (req, res) => {
+  res.type('application/manifest+json');
+  res.sendFile(path.join(__dirname, 'public', 'manifest.webmanifest'));
+});
+app.get('/offline.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'offline.html'));
+});
+
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use('/css', express.static(path.join(__dirname, 'public', 'css')));

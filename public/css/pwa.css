@@ -1,0 +1,214 @@
+/* =============================================================================
+   MindQuest — installable app (PWA) layer
+   -----------------------------------------------------------------------------
+   Loaded by views/partials/head.ejs on every page, and driven by /js/pwa.js.
+
+   Two things live here and nothing else:
+     .mq-install-btn   the optional "Install App" button, hidden until the
+                       browser confirms an install is actually possible
+     .mq-pwa-sheet     the small dialog that explains Add to Home Screen on
+                       iPhone and iPad, where the browser offers no button
+
+   Both are deliberately self-contained. The install button appears on the
+   landing page, the login page and inside all four role dashboards, and those
+   pages do not share a modal stylesheet — so this file borrows nothing from
+   them and leaks nothing into them.
+   ========================================================================== */
+
+/* -------------------------------------------------------------------------
+   The install button
+   ---------------------------------------------------------------------- */
+
+.mq-install-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border: 1px solid rgba(6, 76, 2, .22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .9);
+  color: #064c02;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+/* pwa.js toggles the `hidden` attribute; without this the flex display above
+   would win and the button would show on browsers that cannot install. */
+.mq-install-btn[hidden] {
+  display: none;
+}
+
+.mq-install-btn:hover {
+  background: #fff;
+  border-color: rgba(6, 76, 2, .45);
+  transform: translateY(-1px);
+}
+
+.mq-install-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(25, 121, 27, .3);
+}
+
+.mq-install-btn svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+/* On the dark landing-page header and the dark sidebar the outlined version
+   disappears, so those two spots opt into a solid fill instead. */
+.mq-install-btn.on-dark {
+  background: rgba(255, 255, 255, .14);
+  border-color: rgba(255, 255, 255, .35);
+  color: #fff;
+}
+
+.mq-install-btn.on-dark:hover {
+  background: rgba(255, 255, 255, .24);
+  border-color: rgba(255, 255, 255, .6);
+}
+
+/* The login page has room for the full label, so it keeps one even on a phone
+   and sits centred under the Forgot Password / Go Back row. The row itself
+   collapses when the button inside it is hidden, so an unsupported browser
+   sees no stray gap. */
+.login-install-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.login-install-row:not(:has(.mq-install-btn:not([hidden]))) {
+  display: none;
+}
+
+/* The topbar is tight on a phone: keep the icon, drop the word. */
+@media (max-width: 640px) {
+  .dashboard-topbar .mq-install-btn .mq-install-label {
+    display: none;
+  }
+
+  .dashboard-topbar .mq-install-btn {
+    padding: 8px 10px;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   The "how to install" dialog
+   ---------------------------------------------------------------------- */
+
+.mq-pwa-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(4, 30, 8, .55);
+  backdrop-filter: blur(3px);
+}
+
+.mq-pwa-sheet.is-open {
+  display: flex;
+}
+
+.mq-pwa-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 30px 28px 26px;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(4, 30, 8, .3);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #102033;
+  text-align: center;
+}
+
+.mq-pwa-logo {
+  width: 66px;
+  height: 66px;
+  margin: 0 auto 14px;
+  display: block;
+}
+
+.mq-pwa-card h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+}
+
+.mq-pwa-lead {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #5f7084;
+}
+
+.mq-pwa-steps {
+  margin: 0 0 22px;
+  padding: 0 0 0 22px;
+  text-align: left;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #263b52;
+}
+
+.mq-pwa-steps li + li {
+  margin-top: 9px;
+}
+
+.mq-pwa-steps strong {
+  color: #064c02;
+}
+
+.mq-pwa-done {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(180deg, #19791b 0%, #064c02 100%);
+  border-radius: 999px;
+  padding: 12px 32px;
+}
+
+.mq-pwa-done:hover {
+  filter: brightness(1.06);
+}
+
+.mq-pwa-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+  color: #5f7084;
+  background: #f7fafc;
+  transition: background .15s ease, color .15s ease;
+}
+
+.mq-pwa-close:hover {
+  background: #e5eef3;
+  color: #102033;
+}

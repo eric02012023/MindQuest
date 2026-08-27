@@ -112,6 +112,67 @@ FROM sys.database_files;
 
 ---
 
+## The installable app (PWA)
+
+Users can install MindQuest from the browser. It needs no build step, no store
+account and no extra hosting — the files ship with the app and Render serves
+them like any other route. See the README for what users see and press.
+
+Three files must be reachable at the **site root**, and `server.js` serves them
+there on purpose:
+
+| URL | Why the root matters |
+|---|---|
+| `/sw.js` | A service worker only controls pages at or below its own path. Under `/js/` it would speak for `/js/` alone. |
+| `/manifest.webmanifest` | Kept beside it so the `scope: "/"` it declares matches where it is served from. |
+| `/offline.html` | Shown by the worker when the network is gone, so it needs a stable URL. |
+
+### What the service worker will and will not do
+
+It **never caches a page**. Every HTML page here is rendered for one logged-in
+person, so a cached page would be replayed to whoever opens the app next on that
+device and would keep showing stale figures. HTML is always fetched live.
+
+It also does not touch `/uploads/`, `/download/`, `/socket.io/`, `/webhook/`, or
+any `POST`. Handouts stay gated by the server, messaging stays live, and logins,
+payments and assessment submissions behave exactly as they do in a normal tab.
+
+What it does cache is small and deliberate:
+
+- `/css/` and `/js/` — **network-first**. These ship under fixed names with no
+  content hash, so cache-first would serve the previous deploy's stylesheet for
+  one more load after every release. Network-first keeps them current online and
+  still works offline.
+- `/assets/` — **stale-while-revalidate**. The logo and landing artwork are the
+  heavy files and almost never change.
+
+### Verifying it after a deploy
+
+```bash
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://mindquesttutorial.com/sw.js
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://mindquesttutorial.com/manifest.webmanifest
+```
+
+Both must be `200`. Then open the site in Chrome → DevTools → **Application**:
+*Manifest* lists MindQuest with its icons and no errors, and *Service Workers*
+shows one **activated and running**. An install icon appears in the address bar,
+and the in-page **Install App** button becomes visible.
+
+### If the worker ever misbehaves
+
+Bump `CACHE_VERSION` in `public/sw.js` and deploy. The worker calls
+`skipWaiting()` and `clients.claim()`, and its `activate` step deletes every
+cache that is not the current one — so one deploy replaces it everywhere on the
+next page load. `/sw.js` is served with `Cache-Control: no-cache` so no browser
+sits on a stale copy of the worker itself.
+
+To withdraw the feature entirely, replace the body of `public/sw.js` with a
+worker that unregisters itself, and deploy that before removing anything else —
+a service worker already on someone's phone does not disappear just because the
+file stops being served.
+
+---
+
 ## Verifying a deploy
 
 Two checks that need no login and prove the new code is running:

@@ -29,6 +29,12 @@
         <a href="/forgot-password">Forgot Password?</a>
         <a href="/">Go Back</a>
       </div>
+      <%# Offered here because this is the one page every role passes through,
+          and installing before logging in means the account is already signed
+          in the first time the app icon is opened. %>
+      <div class="login-install-row">
+        <%- include('partials/install-app-button', { variant: '' }) %>
+      </div>
     </div>
     <div class="login-panel login-info-panel">
       <img src="assets/logo.jpeg" alt="Logo" />
