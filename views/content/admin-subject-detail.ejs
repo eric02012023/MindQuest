@@ -68,13 +68,34 @@
         <header class="modal-head">
           <div>
             <h3>Add Module</h3>
-            <p class="modal-sub">Numbered automatically as the next module in this subject.</p>
+            <p class="modal-sub">Choose its number, or leave it as suggested.</p>
           </div>
           <button type="button" class="modal-close" data-close-modal aria-label="Close">&times;</button>
         </header>
 
+        <%# The lowest number no live module is using. A number freed by removing
+            a module becomes available again, so the only module in a subject is
+            never called "Module 4" just because three were removed before it. %>
+        <%
+          const usedNumbers = modules.map((m) => Number(m.order_number)).filter((n) => n > 0);
+          let suggestedNumber = 1;
+          while (usedNumbers.includes(suggestedNumber)) suggestedNumber++;
+        %>
+
         <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/modules" class="stack-form modal-form">
           <div class="modal-body">
+            <label class="field">
+              <span class="field-label">Module Number</span>
+              <input type="number" name="order_number" min="1" max="<%= maxModuleNumber %>"
+                     value="<%= suggestedNumber %>" required />
+              <span class="field-hint">
+                <% if (usedNumbers.length) { %>
+                  Already used in this subject: <%= usedNumbers.sort((a, b) => a - b).join(', ') %>.
+                <% } else { %>
+                  No modules yet in this subject.
+                <% } %>
+              </span>
+            </label>
             <label class="field">
               <span class="field-label">Module Title</span>
               <input type="text" name="title" placeholder="e.g. Fractions and Decimals" required />

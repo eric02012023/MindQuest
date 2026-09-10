@@ -93,6 +93,7 @@ const {
   getModuleById,
   createSubjectModule,
   updateSubjectModule,
+  MAX_MODULE_NUMBER,
   getModuleHandouts,
   addModuleHandouts,
   archiveModuleHandout,
@@ -1491,6 +1492,7 @@ function createAdminRouter(role) {
         subjectAssessments: await getSubjectAssessments(req.params.id),
         // Module system (overhaul Phase 3): All Subjects -> subject -> Modules
         modules: await getSubjectModules(req.params.id),
+        maxModuleNumber: MAX_MODULE_NUMBER,
         moduleTargetOptions: getModuleTargetOptions(),
         preResults: await getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' }),
         preStatus: await getPreAssessmentStatus(req.params.id),
@@ -1525,6 +1527,7 @@ function createAdminRouter(role) {
         subject_id: Number(req.params.id),
         title: req.body.title,
         description: req.body.description,
+        order_number: req.body.order_number,
         target_year_levels: normalizeArray(req.body.target_year_levels),
         uploaded_by: req.session.user.id
       });
@@ -1544,12 +1547,18 @@ function createAdminRouter(role) {
         return res.redirect(`${basePath}/subjects`);
       }
       const handouts = await getModuleHandouts(mod.id);
+      // The other live modules in this subject, so the settings form can say
+      // which numbers are already spoken for before the admin submits.
+      const siblingModules = (await getSubjectModules(mod.subject_id))
+        .filter((m) => Number(m.id) !== Number(mod.id));
       const shell = await buildShellData(req, {
         pageTitle: mod.title,
         section: 'subjects',
         contentView: '../content/admin-module-detail',
         mod,
         handouts,
+        siblingModules,
+        maxModuleNumber: MAX_MODULE_NUMBER,
         moduleTargetOptions: getModuleTargetOptions(),
         // Pre-Assessment build status (Phase 10): the admin uploads handouts here,
         // so this is where they should see the assessment being built from them.
@@ -1567,12 +1576,13 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Only the main admin can edit modules.');
         return res.redirect(back);
       }
-      await updateSubjectModule(Number(req.params.id), {
+      const updated = await updateSubjectModule(Number(req.params.id), {
         title: req.body.title,
         description: req.body.description,
+        order_number: req.body.order_number,
         target_year_levels: normalizeArray(req.body.target_year_levels)
       });
-      setFlash(req, 'success', 'Module updated.');
+      setFlash(req, 'success', `Module updated. It is now Module ${updated.order_number}.`);
       res.redirect(back);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not update the module.');

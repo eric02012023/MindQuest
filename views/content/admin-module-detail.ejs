@@ -105,6 +105,19 @@
     <% if (currentUser.role === 'admin') { %>
       <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/update" class="stack-form">
         <label class="field">
+          <span class="field-label">Module Number</span>
+          <input type="number" name="order_number" min="1" max="<%= maxModuleNumber %>"
+                 value="<%= mod.order_number %>" required />
+          <span class="field-hint">
+            <% const siblingNumbers = siblingModules.map((m) => Number(m.order_number)).sort((a, b) => a - b); %>
+            <% if (siblingNumbers.length) { %>
+              Taken by other modules here: <%= siblingNumbers.join(', ') %>.
+            <% } else { %>
+              This is the only module in <%= mod.subject_name %>.
+            <% } %>
+          </span>
+        </label>
+        <label class="field">
           <span class="field-label">Module Title</span>
           <input type="text" name="title" value="<%= mod.title %>" required />
         </label>
