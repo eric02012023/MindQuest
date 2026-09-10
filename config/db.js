@@ -28,12 +28,72 @@ const baseConfig = {
   connectionTimeout: Number(process.env.DB_CONNECTION_TIMEOUT || 30000)
 };
 
+/**
+ * ── Surviving a dropped connection ──────────────────────────────────────────
+ *
+ * The database is a remote, shared host that closes idle sockets and drops
+ * connections under load. Two things made every one of those drops permanent:
+ *
+ *  1. `poolPromise` was cached forever, *including when it rejected*. One failed
+ *     connect — a blip during boot, a restart at the far end — and every query
+ *     for the rest of the process's life awaited that same rejected promise. The
+ *     app looked dead until someone restarted it, with a fresh server sitting
+ *     right there able to connect.
+ *  2. A socket that died between queries surfaced as "Connection lost -
+ *     read ECONNRESET" on whatever page the user happened to be opening, with no
+ *     attempt to get a working connection and try again.
+ *
+ * So a failed connect is no longer remembered, and a lost connection retires the
+ * pool so the next caller builds a new one.
+ */
+const TRANSIENT_CODES = new Set([
+  'ECONNRESET', 'ESOCKET', 'ETIMEOUT', 'ETIMEDOUT',
+  'ECONNCLOSED', 'ENOTOPEN', 'EPIPE', 'ECONNREFUSED'
+]);
+
+const TRANSIENT_TEXT = [
+  'connection lost', 'connection is closed', 'connection not yet open',
+  'socket hang up', 'the connection is closed'
+];
+
+/** True when the error is the connection dying, not the statement being wrong. */
+function isTransientConnectionError(error) {
+  if (!error) return false;
+  const code = error.code || error.originalError?.code || error.originalError?.originalError?.code;
+  if (code && TRANSIENT_CODES.has(code)) return true;
+  const message = String(error.message || '').toLowerCase();
+  return TRANSIENT_TEXT.some((fragment) => message.includes(fragment));
+}
+
 let poolPromise;
+
+/** Drop the cached pool so the next caller opens a fresh one. */
+function retirePool(reason) {
+  if (!poolPromise) return;
+  const dying = poolPromise;
+  poolPromise = null;
+  console.error(`[db] connection pool retired: ${reason}`);
+  // Close in the background. A pool whose socket already died will often reject
+  // here, and that must not become an unhandled rejection.
+  Promise.resolve(dying)
+    .then((pool) => pool.close())
+    .catch(() => {});
+}
+
 // Function: getPool
 // Role: Provides helper logic for this file.
 function getPool() {
   if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool(baseConfig).connect();
+    const pool = new sql.ConnectionPool(baseConfig);
+    // Without a listener, the pool emitting 'error' takes the whole process down
+    // — an EventEmitter with no 'error' handler throws. This is the one place
+    // that can hear a socket die while no query is in flight.
+    pool.on('error', (error) => retirePool(error.message || 'pool error'));
+    poolPromise = pool.connect().catch((error) => {
+      // Never cache a rejection: the next request deserves a fresh attempt.
+      poolPromise = null;
+      throw error;
+    });
   }
   return poolPromise;
 }
@@ -124,9 +184,40 @@ async function runQuery(executor, sqlText, values = []) {
 
 // Role: Handles a reusable server-side operation used by this module.
 
+/**
+ * True for a statement that only reads. Used to decide what may be retried.
+ *
+ * The distinction matters because a connection can die *after* the server has
+ * already applied the statement. Replaying a SELECT in that window costs nothing;
+ * replaying an INSERT can write the row twice — an extra payment, an extra
+ * enrolment. So a write is never retried automatically, even though the pool is
+ * still retired so the *next* request finds a working connection.
+ */
+function isReadOnlyStatement(sqlText) {
+  const text = String(sqlText || '').trim().toLowerCase();
+  if (!/^(select|with)\b/.test(text)) return false;
+  return !/\b(insert|update|delete|merge|drop|alter|create|truncate|exec)\b/.test(text);
+}
+
+// Function: query
+
+// Role: Handles a reusable server-side operation used by this module.
+
 async function query(sqlText, params = []) {
-  const pool = await getPool();
-  return runQuery(pool, sqlText, params);
+  const canRetry = isReadOnlyStatement(sqlText);
+  // One retry, not a loop: if a second fresh connection also dies the database
+  // is genuinely unavailable, and hammering it turns a blip into an outage.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const pool = await getPool();
+      return await runQuery(pool, sqlText, params);
+    } catch (error) {
+      if (!isTransientConnectionError(error)) throw error;
+      retirePool(error.message || 'lost connection during a query');
+      if (attempt >= 1 || !canRetry) throw error;
+      console.error('[db] retrying the read on a fresh connection.');
+    }
+  }
 }
 
 // Function: withTransaction
@@ -155,6 +246,12 @@ async function withTransaction(work) {
       }
     } catch (_rollbackError) {
       // Preserve the original database error so callers see the real cause.
+    }
+    // The work itself is never replayed — it may have side effects, and half of
+    // it may already have been applied. But a pool whose socket died must not be
+    // handed to the next caller, or one drop cascades into every later request.
+    if (isTransientConnectionError(error)) {
+      retirePool(error.message || 'lost connection during a transaction');
     }
     throw error;
   }
