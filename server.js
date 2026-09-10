@@ -25,7 +25,7 @@ const tutorRoutes = require('./routes/tutor');
 const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName } = require('./lib/utils');
 const { icon } = require('./lib/icons');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
-const { getFile, usingSupabase, describeBackend } = require('./lib/storage');
+const { getFile, usingSupabase, describeBackend, checkBackend } = require('./lib/storage');
 
 const app = express();
 const server = http.createServer(app);
@@ -404,6 +404,12 @@ async function start() {
     const { dbName } = await bootstrapDatabase();
     const localIP = getLocalIP();
 
+    // Ask the upload backend whether it is actually there before announcing it.
+    // Printing the configured bucket back as "survives restarts" without checking
+    // is how a deleted Supabase project stayed invisible until the first upload
+    // 500'd — the banner below now reports what is true, not what was intended.
+    const storage = await checkBackend();
+
     server.listen(port, '0.0.0.0', () => {
       console.log(`MindQuest web system is running on:`);
       console.log(`- Local:   http://localhost:${port}`);
@@ -413,10 +419,20 @@ async function start() {
       // "inside the app folder" means every uploaded handout will be lost on the
       // next restart — configure Supabase, or a disk with UPLOAD_ROOT.
       console.log(`Uploads: ${describeBackend()}`);
-      if (!usingSupabase) {
+      if (storage.backend === 'local') {
         console.log(
           `  directory: ${UPLOADS_ROOT}`
           + (usingExternalUploadRoot ? ' (persistent, from UPLOAD_ROOT)' : ' (inside the app folder)')
+        );
+      }
+      if (storage.degraded) {
+        // Say what to do about it here, at boot, rather than leaving the admin to
+        // discover it from a failed upload with no explanation attached.
+        console.log(
+          '  Uploads still work, but they are being kept on this server instead of in the bucket.\n'
+          + '  To restore remote storage: check that the Supabase project in SUPABASE_URL still\n'
+          + '  exists and that SUPABASE_SERVICE_KEY belongs to it. To use local storage on purpose,\n'
+          + '  remove SUPABASE_URL and SUPABASE_SERVICE_KEY (and set UPLOAD_ROOT to a persistent disk).'
         );
       }
 
