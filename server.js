@@ -24,6 +24,7 @@ const studentRoutes = require('./routes/student');
 const tutorRoutes = require('./routes/tutor');
 const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName } = require('./lib/utils');
 const { icon } = require('./lib/icons');
+const { resolvePageStyles } = require('./lib/pageStyles');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
 const { getFile, usingSupabase, describeBackend, checkBackend } = require('./lib/storage');
 
@@ -44,6 +45,10 @@ app.locals.branchAddress = branchAddress;
 app.locals.titleCaseName = titleCaseName;
 // One icon set for every row action in the app. Print it with <%- %>.
 app.locals.icon = icon;
+// Which stylesheets a dashboard page loads. A module rather than a few lines in
+// the shell, because a section pointing at a sheet that does not exist renders
+// the page with no layout at all and nothing throws — see lib/pageStyles.js.
+app.locals.resolvePageStyles = resolvePageStyles;
 
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 

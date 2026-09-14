@@ -46,7 +46,10 @@
     <div class="mq-filters">
       <label class="mq-field mq-field-search">
         <span>Search</span>
-        <input type="search" name="search" value="<%= search || '' %>" placeholder="Student name, ID or branch" />
+        <%# Slip codes are accepted here too, so whoever is at the counter does
+            not have to know whether what the student handed them is a code, a
+            name or a student ID. %>
+        <input type="search" name="search" value="<%= search || '' %>" placeholder="Name, student ID, branch or SLIP-000042" />
       </label>
       <label class="mq-field">
         <span>Status</span>
@@ -74,10 +77,163 @@
     <div class="mq-toolbar-actions">
       <a class="mq-btn" href="<%= basePath %>/income-report"><%- icon('chart') %> Payment Collection</a>
       <a class="mq-btn" href="<%= basePath %>/payments/history"><%- icon('receipt') %> Payment history</a>
-      <a class="mq-btn" href="<%= basePath %>/pos"><%- icon('money') %> POS</a>
       <button type="button" class="mq-btn" data-modal-target="#reenroll-students-modal">Re-enroll</button>
     </div>
   </form>
+
+  <%# ================================================== the counter (POS)
+      This was its own page. It is a section here now, because Student Bill
+      already lists every account with its balance and a button that records a
+      payment — a second screen for the same job was redundant, and staff had to
+      know which one to open.
+
+      What it adds that the rows below cannot: the queue of slips students are
+      holding, and taking payment against a slip CODE. Searching the toolbar
+      above for a slip code (SLIP-000042) opens that slip's form right here.
+      ================================================================== %>
+  <% const slips = openSlips || []; const sel = selectedSlip || null; %>
+
+  <% if (sel) { %>
+    <%
+      const req_ = sel.request;
+      const t_ = sel.ledger ? sel.ledger.totals : null;
+      const who = `${titleCaseName(req_.first_name)} ${titleCaseName(req_.last_name || '')}`.trim();
+      const remaining = t_ ? t_.remaining : 0;
+      const declared = Number(req_.amount || 0);
+      // Default the drawer to what the slip says, but never above what is owed —
+      // a slip issued before another payment landed can be stale.
+      const suggested = Math.min(declared, remaining || declared);
+    %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h2>Record payment — <%= who %></h2>
+          <p><%= req_.student_code || '—' %> · <%= req_.branch_name || 'No branch' %> · <strong><%= slipCode(req_.id) %></strong></p>
+        </div>
+        <span class="mq-status <%= remaining > 0 ? 'mq-status-unpaid' : 'mq-status-paid' %>">
+          <%= remaining > 0 ? `${money(remaining)} outstanding` : 'Fully settled' %>
+        </span>
+      </div>
+
+      <% if (!t_) { %>
+        <div class="mq-empty">This student has no billing record, so there is nothing to pay against.</div>
+      <% } else { %>
+        <div class="mq-summary" style="margin:0 16px 12px;">
+          <div class="mq-summary-item"><span>Total billed</span><strong><%= money(t_.totalBilled) %></strong></div>
+          <div class="mq-summary-item is-positive"><span>Total paid</span><strong><%= money(t_.totalPaid) %></strong></div>
+          <div class="mq-summary-item is-negative"><span>Balance</span><strong><%= money(t_.remaining) %></strong></div>
+          <div class="mq-summary-item"><span>Slip says</span><strong><%= money(declared) %></strong></div>
+        </div>
+
+        <% if (req_.reference_note) { %>
+          <div class="mq-detail">
+            <div class="mq-detail-item is-wide"><span>Student's note</span><strong><%= req_.reference_note %></strong></div>
+          </div>
+        <% } %>
+
+        <form class="mq-form" method="post" action="<%= basePath %>/pos/record"
+              data-confirm-message="Record this payment? Ledger entries cannot be edited or removed afterwards.">
+          <input type="hidden" name="request_id" value="<%= req_.id %>" />
+          <input type="hidden" name="student_id" value="<%= req_.student_id %>" />
+
+          <%# The amount RECEIVED, which is not necessarily what the slip
+              declared — a student who said ₱1,300 may arrive with ₱800. Both
+              numbers are kept; this is the one that moves the balance. %>
+          <label>Amount received
+            <input type="number" name="amount" step="0.01" min="0.01" max="<%= remaining || undefined %>"
+                   value="<%= suggested > 0 ? Number(suggested).toFixed(2) : '' %>" required autocomplete="off" />
+          </label>
+
+          <label>Payment method
+            <select name="payment_method">
+              <% (paymentMethods || []).forEach((method) => { %>
+                <option value="<%= method.value %>" <%= method.value === 'Cash' ? 'selected' : '' %>><%= method.label %></option>
+              <% }) %>
+            </select>
+          </label>
+
+          <label>Purpose
+            <select name="purpose">
+              <% (paymentPurposes || []).forEach((purpose) => { %>
+                <option value="<%= purpose %>" <%= req_.purpose === purpose ? 'selected' : '' %>><%= purpose %></option>
+              <% }) %>
+            </select>
+          </label>
+
+          <label>OR / reference number
+            <input type="text" name="reference_no" placeholder="Optional — the receipt number you issued" autocomplete="off" />
+          </label>
+
+          <label class="is-wide">Notes
+            <textarea name="note" rows="2" placeholder="Optional — anything the receipt should record"></textarea>
+          </label>
+
+          <p class="mq-form-note">
+            This appends <strong>one</strong> entry to <%= who %>'s ledger, logged against
+            <strong><%= titleCaseName(currentUser.first_name) %> <%= titleCaseName(currentUser.last_name || '') %></strong>
+            (<%= currentUser.role === 'admin' ? 'Admin' : 'Assistant Admin' %>), and closes
+            <%= slipCode(req_.id) %>. Entries cannot be edited or removed — a mistake is
+            corrected by recording an adjustment.
+          </p>
+
+          <div class="mq-form-foot">
+            <a class="mq-btn" href="<%= basePath %>/billing">Cancel</a>
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Record payment</button>
+          </div>
+        </form>
+      <% } %>
+    </section>
+  <% } %>
+
+  <%# Always rendered, even when empty. "No slips waiting" is information a
+      cashier needs; a panel that disappears when the queue clears just looks
+      like the feature broke. %>
+  <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h2>Payment slips waiting</h2>
+          <p>Students who generated a slip but have not paid yet. Oldest first.</p>
+        </div>
+        <span class="mq-count"><%= slips.length %></span>
+      </div>
+
+      <div class="mq-table" style="--mq-min-width: 900px; --mq-cols: 130px minmax(160px, 1.6fr) 1fr 110px 150px 170px;">
+        <div class="mq-head">
+          <span>Slip</span><span>Student</span><span>Branch</span>
+          <span class="mq-num">Slip says</span><span>Issued</span><span style="text-align:right;">Actions</span>
+        </div>
+
+        <% if (!slips.length) { %>
+          <div class="mq-empty">
+            <strong>No slips waiting</strong>
+            A slip appears here as soon as a student generates one. To take a payment from
+            someone without a slip, use the <strong>+</strong> button on their row below.
+          </div>
+        <% } %>
+
+        <% slips.forEach((slip) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-cell-primary" data-label="Slip">
+              <span class="mq-name"><%= slipCode(slip.id) %></span>
+            </span>
+            <span class="mq-cell" data-label="Student">
+              <%= titleCaseName(slip.first_name) %> <%= titleCaseName(slip.last_name || '') %>
+              <span class="mq-sub"><%= slip.student_code || '—' %></span>
+            </span>
+            <span class="mq-cell" data-label="Branch"><%= slip.branch_name || '—' %></span>
+            <span class="mq-cell mq-money" data-label="Slip says"><%= money(slip.amount) %></span>
+            <span class="mq-cell mq-sub" data-label="Issued"><%= formatDateTime(slip.created_at) %></span>
+            <span class="mq-cell mq-cell-actions">
+              <a class="mq-btn mq-btn-sm mq-btn-primary" href="<%= basePath %>/billing?slip=<%= slip.id %>">Take payment</a>
+              <form method="post" action="<%= basePath %>/pos/<%= slip.id %>/cancel"
+                    data-confirm-message="Void <%= slipCode(slip.id) %>? Nothing is added to the ledger.">
+                <button class="mq-btn mq-btn-sm" type="submit">Void</button>
+              </form>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+  </section>
 
   <section class="mq-panel">
     <div class="mq-panel-head">

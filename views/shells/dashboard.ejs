@@ -2,30 +2,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <%
-  const roleFolder = basePath === '/assistant' ? 'assistant-admin' : String(basePath || '').replace(/^\//, '') || 'public';
-  // Each page's stylesheet also carries the base layout (the former global.css),
-  // so a section with no sheet of its own would 404 and lose the whole shell.
-  // New sections are therefore mapped onto a sheet that EXISTS FOR THAT ROLE —
-  // the folders differ, so the map has to be per role, not shared. The new
-  // sections' own look comes from the shared /css/mq-data.css.
-  const sectionMap = {
-    archive_notifications: 'notification-archives',
-    notification_history: 'notification-history',
-    payment_history: 'payment-history',
-    income: 'dashboard'
-  };
-  const roleSectionMap = {
-    admin: { notifications: 'notification-history' },
-    'assistant-admin': { notifications: 'notification-history', students: 'users', tutors: 'users' },
-    tutor: { focus: 'modules' },
-    student: {}
-  };
-  Object.assign(sectionMap, roleSectionMap[roleFolder] || {});
-  const sectionSlug = sectionMap[section] || String(section || 'dashboard').replace(/_/g, '-');
-  const roleThemeCss = `/css/${roleFolder}/theme.css`;
-  const shellPageCss = `/css/${roleFolder}/${sectionSlug}.css`;
-  const shellPageClass = `${roleFolder}-${sectionSlug}-page`;
-  const shellStyles = [roleThemeCss, shellPageCss];
+  // Which stylesheets this page loads now lives in lib/pageStyles.js, because a
+  // section with no sheet of its own does not just look plain — the request 404s
+  // and the page renders with NO layout at all (theme.css is 82 bytes; the PAGE
+  // sheet carries the shell). That failure is silent: the route still answers
+  // 200. Moving the decision into a module lets scripts/test-page-styles.js
+  // check every section against the files actually on disk.
+  const pageStyles = resolvePageStyles(basePath, section);
+  const shellPageClass = pageStyles.pageClass;
+  const shellStyles = pageStyles.styles;
 %>
 <%- include('../partials/head', { pageTitle, pageCss: shellStyles }) %>
 <body class="dashboard-body <%= shellPageClass %>">

@@ -965,17 +965,46 @@ function createAdminRouter(role) {
   // Purpose: Processes this endpoint and returns the correct view or action result.
 
   /**
-   * Student Billing — row-based, one row per student, with the full payment
-   * ledger attached to each row.
+   * Student Bill — row-based, one row per student, with the full payment ledger
+   * attached to each row, AND the POS counter it used to duplicate.
+   *
+   * WHY THE POS LIVES HERE
+   * The POS started as its own page and was immediately redundant: Student Bill
+   * already lists every account with its balance and a "+" that records a
+   * payment. Two screens for "take money from a student" is two places to keep
+   * in step, and staff had to know which one to open. The genuinely new parts —
+   * the queue of slips waiting at the counter, and looking a student up by the
+   * slip code they are holding — are now a section of this page instead.
    *
    * `edit` and `info` in the query string still work: they open the header form
    * or the SOA panel for that student, which is what the old links pointed at.
+   * `slip` opens the counter form for one waiting slip.
    */
   router.get('/billing', async (req, res, next) => {
     try {
       const scopeBranchId = getScopeBranchId(req);
       const search = String(req.query.search || '').trim();
       const status = req.query.status || 'all';
+      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+
+      // ---- the counter (was /pos) ------------------------------------------
+      // Slips still waiting to be paid, oldest first: that is the queue at the
+      // desk, so it is ordered the way the desk works.
+      const openSlips = (await getPaymentRequests(scope, { status: 'pending' }))
+        .slice()
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+      // A slip code in `slip` (or typed into the search box) opens that slip's
+      // counter form. Staff should not have to know whether what the student
+      // handed them is a slip code or a name.
+      let selectedSlip = null;
+      const byCode = parseSlipCode(req.query.slip || search);
+      if (byCode) {
+        const request = await getPaymentRequestById(byCode);
+        if (request && request.status === 'pending' && canActOnBranch(req.session.user, request.branch_id)) {
+          selectedSlip = { request, ledger: await getBillingLedger(request.student_id) };
+        }
+      }
 
       const rawRows = await getBillingRows(scopeBranchId, 'all', { search, status });
 
@@ -1006,7 +1035,7 @@ function createAdminRouter(role) {
       }, { billed: 0, paid: 0, remaining: 0, settled: 0, accounts: rawRows.length });
 
       const shell = await buildShellData(req, {
-        pageTitle: 'Student Billing',
+        pageTitle: 'Student Bill',
         section: 'billing',
         contentView: '../content/admin-billing',
         billingRows,
@@ -1020,7 +1049,11 @@ function createAdminRouter(role) {
         query: req.query,
         openEditStudentId,
         openInfoStudentId,
-        openPayStudentId
+        openPayStudentId,
+        // The counter, folded in from the old /pos page.
+        openSlips,
+        selectedSlip,
+        slipCode
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -1383,55 +1416,19 @@ function createAdminRouter(role) {
      Both end in exactly one ledger append, so neither can double-count.
      ======================================================================== */
 
-  router.get('/pos', async (req, res, next) => {
-    try {
-      const scopeBranchId = getScopeBranchId(req);
-      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
-      const search = String(req.query.search || '').trim();
-
-      // Slips still waiting to be taken, oldest first — that is the queue at the
-      // counter, so it is the default view of this page.
-      const openSlips = (await getPaymentRequests(scope, { status: 'pending' }))
-        .slice()
-        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-      // A slip code, a student name or a student ID all land in the same box:
-      // whoever is at the counter should not have to know which one they have.
-      let selected = null;
-      const byCode = parseSlipCode(req.query.slip || search);
-      if (byCode) {
-        const request = await getPaymentRequestById(byCode);
-        if (request && request.status === 'pending' && canActOnBranch(req.session.user, request.branch_id)) {
-          selected = { kind: 'slip', request, ledger: await getBillingLedger(request.student_id) };
-        }
-      }
-
-      // No slip matched: look the student up instead.
-      let matches = [];
-      if (!selected && search) {
-        matches = await getBillingRows(scopeBranchId, 'all', { search });
-      }
-      if (!selected && matches.length === 1) {
-        selected = { kind: 'student', student: matches[0], ledger: await getBillingLedger(matches[0].student_id) };
-        matches = [];
-      }
-
-      const shell = await buildShellData(req, {
-        pageTitle: 'POS — Record Payment',
-        section: 'pos',
-        contentView: '../content/admin-pos',
-        openSlips,
-        selected,
-        matches,
-        search,
-        slipCode,
-        paymentMethods: PAYMENT_METHODS,
-        paymentPurposes: PAYMENT_PURPOSES
-      });
-      res.render('shells/dashboard', shell);
-    } catch (error) {
-      next(error);
-    }
+  /**
+   * The POS used to be its own page. It is a section of Student Bill now — that
+   * page already lists every account with its balance and a button that records
+   * a payment, so a second screen for the same job was one more place to keep in
+   * step and one more decision for whoever is at the desk.
+   *
+   * Kept as a redirect rather than deleted: the alert a student's slip raises
+   * links to /pos?slip=N, and those rows are already sitting in staff queues.
+   * The query string is carried across so such a link still opens that slip.
+   */
+  router.get('/pos', (req, res) => {
+    const qs = new URLSearchParams(req.query).toString();
+    return res.redirect(`${basePath}/billing${qs ? `?${qs}` : ''}`);
   });
 
   /**
@@ -1442,7 +1439,8 @@ function createAdminRouter(role) {
    * counter ends up with a paid slip still sitting in the queue.
    */
   router.post('/pos/record', async (req, res, next) => {
-    const backTo = `${basePath}/pos`;
+    // Back to Student Bill: the counter is a section of that page now.
+    const backTo = `${basePath}/billing`;
     try {
       const requestId = Number(req.body.request_id) || null;
       const amount = req.body.amount;
@@ -1539,7 +1537,8 @@ function createAdminRouter(role) {
 
   /** Void a slip that will not be paid — the student left, or it was a mistake. */
   router.post('/pos/:id/cancel', async (req, res, next) => {
-    const backTo = `${basePath}/pos`;
+    // Back to Student Bill: the counter is a section of that page now.
+    const backTo = `${basePath}/billing`;
     try {
       const request = await getPaymentRequestById(Number(req.params.id));
       if (!request) {
