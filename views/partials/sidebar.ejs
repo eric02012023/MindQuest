@@ -19,11 +19,22 @@
       <a class="<%= section === 'users' ? 'active' : '' %>" href="<%= basePath %>/users">User Management</a>
       <% if (currentUser.role === 'admin') { %><a class="<%= section === 'branches' ? 'active' : '' %>" href="<%= basePath %>/branches">Branch Management</a><% } %>
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="<%= basePath %>/billing">Student Bill</a>
-      <a class="<%= section === 'income' ? 'active' : '' %>" href="<%= basePath %>/income-report">Income Report</a>
-      <%# Payment requests students submit land here, alongside the system alerts.
-          Badged so a pending cash payment is visible without opening the page. %>
+      <%# Phase 3: cash is taken here now, not confirmed from a notification.
+          Badged with the slips still waiting at the counter. %>
+      <a class="<%= section === 'pos' ? 'active' : '' %>" href="<%= basePath %>/pos">
+        POS<% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
+      </a>
+      <%# Phase 7.3: renamed from "Income Report". The URL is unchanged so old
+          links still resolve. Notifications now live as a section on this page
+          (7.2), which is why the bell is gone from the topbar. %>
+      <a class="<%= section === 'income' ? 'active' : '' %>" href="<%= basePath %>/income-report">
+        Payment Collection<% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
+      </a>
+      <%# The full inbox — registrations, enrolment requests, archive and history.
+          Payment Collection carries the same alerts as a summary; this is where
+          they are worked through. %>
       <a class="<%= section === 'notifications' ? 'active' : '' %>" href="<%= basePath %>/notifications">
-        Notifications<% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
+        Notifications<% if (typeof notificationCount !== 'undefined' && notificationCount > 0) { %> <span class="sidebar-badge"><%= notificationCount %></span><% } %>
       </a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects">All Subjects</a>
       <%# One entry, not two: Student Results is now a section of this page. %>

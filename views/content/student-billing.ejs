@@ -23,6 +23,7 @@
   // The floor the server will apply: ₱500 on a first payment, any amount after
   // one has been made. Read from lib/billing.js rather than restated here.
   const minimumPayment = Number(data.minimumPayment || 0);
+  const floor = data.paymentFloor || { amount: minimumPayment, kind: 'down_payment', remaining: totals.remaining, split: 3 };
   const studentName = `${titleCaseName(currentUser.first_name)} ${titleCaseName(currentUser.last_name || '')}`.trim();
   const cashMethod = (paymentMethods || []).find((m) => m.value === 'cash');
 %>
@@ -41,7 +42,26 @@
     <div class="mq-summary-item">
       <span>Payment due</span><strong><%= bill && bill.payment_due ? formatDate(bill.payment_due) : '—' %></strong>
     </div>
+    <%# Phase 2.4: the balance after the down payment is cleared in three
+        instalments, so the floor on the next one is a third of what is left.
+        It sits here, as a fact about the account, rather than as a note stapled
+        to the amount field — that note now appears only when a payment is
+        actually short. %>
+    <% if (totals.remaining > 0) { %>
+      <div class="mq-summary-item">
+        <span><%= floor.kind === 'down_payment' ? 'Down payment required' : 'Minimum next payment' %></span>
+        <strong><%= money(floor.amount) %></strong>
+      </div>
+    <% } %>
   </div>
+
+  <% if (totals.remaining > 0 && floor.kind === 'instalment' && floor.amount > 1) { %>
+    <p class="mq-form-note">
+      Your down payment is in. The remaining <strong><%= money(floor.remaining) %></strong> is paid in
+      <%= floor.split %> instalments, so the next payment must be at least
+      <strong><%= money(floor.amount) %></strong> — you can always pay more, up to the full balance.
+    </p>
+  <% } %>
 
   <% if (!bill) { %>
     <div class="mq-panel">
@@ -57,7 +77,7 @@
       <div class="mq-panel-head">
         <div>
           <h2>Make a payment</h2>
-          <p>Reserve the amount here, then pay at the branch. The office confirms it and your balance updates.</p>
+          <p>Pay online, or generate a payment slip and settle it in cash at your branch counter.</p>
         </div>
         <% if (totals.remaining > 0) { %>
           <span class="mq-status mq-status-unpaid"><%= money(totals.remaining) %> outstanding</span>
@@ -67,16 +87,22 @@
       </div>
 
       <% if (pending) { %>
+        <%# Phase 3: an open slip is not a pending transaction to wait on — it is
+            a document to go and show. So this says where it is, not "please
+            wait". %>
         <div class="mq-detail">
           <div class="mq-detail-item is-wide">
-            <span>Request waiting</span>
+            <span>You have a payment slip open</span>
             <strong>
-              You have a pending request for <%= money(pending.amount) %>
-              submitted <%= formatDateTime(pending.created_at) %>.
-              Pay at <%= pending.branch_name || 'your branch' %> and the office will confirm it.
-              You can submit a new request once this one is processed.
+              Slip for <%= money(pending.amount) %>, issued <%= formatDateTime(pending.created_at) %>.
+              Show it at <%= pending.branch_name || 'your branch' %> — the cashier records the payment
+              on the POS. A new slip can be issued once this one has been recorded or cancelled.
             </strong>
           </div>
+        </div>
+        <div class="mq-form-foot" style="padding:0 16px 16px;">
+          <a class="mq-btn mq-btn-primary" href="/student/billing/slip"><%- icon('receipt') %> View my payment slip</a>
+          <a class="mq-btn" href="/student/billing/slip.pdf" target="_blank" rel="noopener">Open PDF</a>
         </div>
       <% } else if (totals.remaining <= 0) { %>
         <div class="mq-empty">Nothing to pay right now. Your account is fully settled.</div>
@@ -94,16 +120,19 @@
           <p class="mq-form-note" id="pay-method-note"><%= cashMethod ? cashMethod.description : '' %></p>
         </div>
 
-        <%# The cash form. Each method gets its own panel keyed by data-method, so
-            a second method is a second panel and not a rewrite of this one. %>
-        <form class="mq-form" method="post" action="/student/billing/pay-request"
+        <%# Phase 3 — the cash panel is a SLIP generator, not a transaction.
+            Nothing here takes money. The student states what they mean to pay,
+            gets a document with a code on it, and the cashier enters the real
+            amount on the POS. Each method still gets its own panel keyed by
+            data-method, so the picker script is unchanged. %>
+        <form class="mq-form" method="post" action="/student/billing/slip"
               data-method="cash" id="pay-form-cash"
-              data-confirm-message="Submit this cash payment request? The office will be notified.">
+              data-confirm-message="Generate a payment slip? Show it at the branch to pay — no money is taken now.">
           <input type="hidden" name="payment_method" value="cash" />
 
           <label>Student name<input type="text" value="<%= studentName %>" readonly /></label>
 
-          <label>Branch
+          <label>Pay at
             <% if (currentUser.branch_id) { %>
               <input type="text" value="<%= (branches || []).find((b) => Number(b.id) === Number(currentUser.branch_id))?.name || 'Your branch' %>" readonly />
               <input type="hidden" name="branch_id" value="<%= currentUser.branch_id %>" />
@@ -117,21 +146,15 @@
             <% } %>
           </label>
 
-          <label>Amount to pay
+          <%# Phase 2.3: no standing note here. The hint below is empty until the
+              amount typed is actually short, so a student paying a valid amount
+              is not told off for it. %>
+          <label>Amount you intend to pay
             <input type="number" name="amount" step="0.01" min="<%= minimumPayment.toFixed(2) %>"
                    max="<%= totals.remaining %>"
-                   value="<%= totals.remaining.toFixed(2) %>" required />
-            <% if (minimumPayment > 1) { %>
-              <small class="mq-field-hint">
-                Your first payment must be at least <%= money(minimumPayment) %>.
-                After that you can pay any amount towards the rest.
-              </small>
-            <% } else { %>
-              <small class="mq-field-hint">
-                You have paid before, so there is no minimum — pay whatever you can
-                towards the remaining <%= money(totals.remaining) %>.
-              </small>
-            <% } %>
+                   value="<%= totals.remaining.toFixed(2) %>" required
+                   data-pay-amount data-minimum="<%= minimumPayment %>" />
+            <small class="mq-field-hint mq-field-hint-error" data-pay-warning hidden></small>
           </label>
 
           <label>Purpose of payment
@@ -142,23 +165,20 @@
             </select>
           </label>
 
-          <label>Preferred date &amp; time
-            <input type="datetime-local" name="preferred_at" />
-          </label>
-
           <label class="is-wide">Notes for the office (optional)
             <input type="text" name="reference_note" placeholder="e.g. paying with my guardian on Saturday morning" />
           </label>
 
           <p class="mq-form-note">
-            This records your <strong>intention</strong> to pay — it does not take any money.
-            Admin and Assistant Admin are notified immediately with your name, the amount,
-            your branch and the date and time you submitted it. Your balance changes only
-            once they confirm the cash was received.
+            This produces a <strong>payment slip</strong> — a statement of what you owe, which you can
+            show on your phone, save as a PDF or print. <strong>No money is taken here.</strong>
+            You pay at the counter, the cashier records it on the POS, and it appears in your
+            Payment History straight away. The amount above is what you <em>intend</em> to pay; the
+            cashier records whatever actually changes hands.
           </p>
 
           <div class="mq-form-foot">
-            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('money') %> Submit payment request</button>
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('receipt') %> Generate payment slip</button>
           </div>
         </form>
 
@@ -173,18 +193,9 @@
           <label>Amount to pay
             <input type="number" name="amount" step="0.01" min="<%= minimumPayment.toFixed(2) %>"
                    max="<%= totals.remaining %>"
-                   value="<%= totals.remaining.toFixed(2) %>" required />
-            <% if (minimumPayment > 1) { %>
-              <small class="mq-field-hint">
-                Your first payment must be at least <%= money(minimumPayment) %>.
-                After that you can pay any amount towards the rest.
-              </small>
-            <% } else { %>
-              <small class="mq-field-hint">
-                You have paid before, so there is no minimum — pay whatever you can
-                towards the remaining <%= money(totals.remaining) %>.
-              </small>
-            <% } %>
+                   value="<%= totals.remaining.toFixed(2) %>" required
+                   data-pay-amount data-minimum="<%= minimumPayment %>" />
+            <small class="mq-field-hint mq-field-hint-error" data-pay-warning hidden></small>
           </label>
 
           <p class="mq-form-note">
@@ -211,10 +222,13 @@
         <span class="mq-count"><%= totals.paymentCount %> payment<%= totals.paymentCount === 1 ? '' : 's' %></span>
       </div>
 
-      <div class="mq-table" style="--mq-cols: 48px 160px 110px 120px 130px 110px;">
+      <%# Phase 2.2: the reference number the gateway gave the transaction. For an
+          online payment it is what the student quotes when querying a charge, so
+          it belongs on the row rather than only in the office's copy. %>
+      <div class="mq-table" style="--mq-cols: 48px 160px 110px 120px 120px minmax(140px, 1fr) 110px;">
         <div class="mq-head">
           <span>#</span><span>Date &amp; time</span><span class="mq-num">Amount</span>
-          <span>Method</span><span>Purpose</span><span class="mq-num">Balance after</span>
+          <span>Method</span><span>Purpose</span><span>Reference no.</span><span class="mq-num">Balance after</span>
         </div>
 
         <% if (!data.entries.length) { %>
@@ -236,6 +250,9 @@
             <span class="mq-cell mq-money mq-money-paid" data-label="Amount"><%= money(entry.amount) %></span>
             <span class="mq-cell" data-label="Method"><span class="mq-chip"><%= entry.payment_method || 'Cash' %></span></span>
             <span class="mq-cell mq-sub" data-label="Purpose"><%= entry.purpose || 'Tuition' %></span>
+            <span class="mq-cell mq-sub mq-ref" data-label="Reference no.">
+              <% if (entry.reference_no) { %><code><%= entry.reference_no %></code><% } else { %>—<% } %>
+            </span>
             <span class="mq-cell mq-num mq-sub" data-label="Balance after"><%= money(entry.balance_after) %></span>
           </div>
         <% }) %>
@@ -315,4 +332,43 @@
     var note = document.getElementById('pay-method-note');
     if (note) note.textContent = PAY_METHOD_NOTES[value] || '';
   }
+
+  // Phase 2.3: the note under "amount to pay" appears ONLY when the amount is
+  // short. The floor and its wording come from the server (lib/billing.js), so
+  // what this warns about and what the server refuses are the same rule — the
+  // form is not re-deriving it. The server still has the last word; this only
+  // saves the student a round trip.
+  var PAY_FLOOR = <%- JSON.stringify({ amount: floor.amount, kind: floor.kind, remaining: floor.remaining, split: floor.split }) %>;
+
+  function payShortfallMessage(entered) {
+    var min = Number(PAY_FLOOR.amount || 0);
+    var peso = function (n) { return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    if (PAY_FLOOR.kind === 'instalment') {
+      return 'Short by ' + peso(min - entered) + '. The next payment must be at least ' + peso(min)
+        + ' — one third of the ' + peso(PAY_FLOOR.remaining) + ' still owed.';
+    }
+    return 'Short by ' + peso(min - entered) + '. The first payment on your account must be at least '
+      + peso(min) + '.';
+  }
+
+  document.querySelectorAll('[data-pay-amount]').forEach(function (input) {
+    var warning = input.parentElement.querySelector('[data-pay-warning]');
+    if (!warning) return;
+    var check = function () {
+      var raw = input.value.trim();
+      var entered = Number(raw);
+      // Nothing typed yet, or not a number: that is the required/step validation's
+      // job, not this note's. Only an amount that is genuinely SHORT speaks up.
+      if (!raw || !isFinite(entered) || entered <= 0 || entered >= Number(PAY_FLOOR.amount || 0)) {
+        warning.hidden = true;
+        warning.textContent = '';
+        return;
+      }
+      warning.textContent = payShortfallMessage(entered);
+      warning.hidden = false;
+    };
+    input.addEventListener('input', check);
+    input.addEventListener('blur', check);
+    check();
+  });
 </script>

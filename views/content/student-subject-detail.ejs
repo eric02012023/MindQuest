@@ -4,6 +4,14 @@
     <div class="panel-card-head"><h2><%= assignment.subject_name %></h2></div>
     <p><strong>Tutor:</strong> <%= assignment.tutor_name %></p>
     <p><strong>Time Schedule:</strong> <%= assignment.time_slot || '-' %></p>
+    <%# Phase 4.2: this subject's own month, which is not the same as any other
+        subject's — each runs from the day it was taken out. %>
+    <% if (assignment.start_date || assignment.end_date) { %>
+      <p>
+        <strong>Enrolment period:</strong>
+        <%= formatDate(assignment.start_date) %> &ndash; <%= formatDate(assignment.end_date) %>
+      </p>
+    <% } %>
     <% if (tutor) { %>
       <a class="limited-profile-card" href="/student/tutors/<%= tutor.id %>">
         <img src="<%= tutor.image_path || '/assets/logo.png' %>" alt="Tutor avatar" class="profile-avatar" />
@@ -30,7 +38,27 @@
           <p>Your modules and handouts for this subject unlock once you finish it.</p>
         </div>
       </div>
-      <% if (handoutsReady) { %>
+      <%# Two things can hold the Pre-Assessment shut, and they are different
+          problems with different fixes: the down payment is the student's to
+          settle, a missing handout is the centre's. Saying which one applies is
+          the whole point — "locked" on its own tells them nothing to act on.
+          Both are enforced in routes/student.js; this only reports them. %>
+      <% const downPaymentDue = typeof downPayment !== 'undefined' && downPayment && !downPayment.satisfied; %>
+      <% if (downPaymentDue) { %>
+        <p class="lock-note">
+          A down payment of at least <strong><%= money(downPayment.required) %></strong> is required
+          before you can take the Pre-Assessment.
+          <% if (downPayment.hasBill) { %>
+            You have paid <%= money(downPayment.paid) %>, so <strong><%= money(downPayment.shortfall) %></strong>
+            is still needed.
+          <% } else { %>
+            Your account has not been billed yet — please contact the office.
+          <% } %>
+        </p>
+        <% if (downPayment.hasBill) { %>
+          <a class="btn btn-primary" href="/student/billing">Go to Billing Data</a>
+        <% } %>
+      <% } else if (handoutsReady) { %>
         <p class="lock-note">
           It is built from this subject's handouts and mixes multiple choice, true or false,
           and short essay items. It is not graded for marks — it shows your tutor what to

@@ -55,10 +55,11 @@
   <section class="mq-panel">
     <div class="mq-panel-head">
       <div>
-        <h2>Cash payment requests</h2>
-        <p>Either Admin or Assistant Admin can process these — whoever gets there first.</p>
+        <h2>Payment slips</h2>
+        <p>Slips students have generated. Take the money on the <a href="<%= basePath %>/pos">POS</a> —
+           either Admin or Assistant Admin, whoever is at the counter.</p>
       </div>
-      <span class="mq-count"><%= requests.length %> request<%= requests.length === 1 ? '' : 's' %></span>
+      <span class="mq-count"><%= requests.length %> slip<%= requests.length === 1 ? '' : 's' %></span>
     </div>
 
     <div class="mq-table" style="--mq-min-width: 970px; --mq-cols: 150px minmax(170px, 2fr) 1fr 110px 130px 110px 96px;">
@@ -181,15 +182,15 @@
          <%= String(openRequestId || '') === String(request.id) ? 'data-force-open="true"' : '' %>>
       <div class="global-modal-card wide">
         <button type="button" class="modal-close" data-close-modal>&times;</button>
-        <h3>Cash payment request #<%= request.id %></h3>
+        <h3>Payment slip <%= slipCode(request.id) %></h3>
 
         <div class="mq-detail">
           <div class="mq-detail-item"><span>Student</span><strong><%= nameOf(request) %></strong></div>
           <div class="mq-detail-item"><span>Student ID</span><strong><%= request.student_code %></strong></div>
           <div class="mq-detail-item"><span>Branch</span><strong><%= request.branch_name || '—' %></strong></div>
-          <div class="mq-detail-item"><span>Amount requested</span><strong><%= money(request.amount) %></strong></div>
+          <div class="mq-detail-item"><span>Amount on the slip</span><strong><%= money(request.amount) %></strong></div>
           <div class="mq-detail-item"><span>Purpose</span><strong><%= request.purpose || 'Tuition' %></strong></div>
-          <div class="mq-detail-item"><span>Method</span><strong><%= request.payment_method === 'cash' ? 'Cash at branch' : request.payment_method %></strong></div>
+          <div class="mq-detail-item"><span>Method</span><strong><%= request.payment_method === 'cash' ? `Cash at ${titleCaseName(request.branch_name || '')}` : request.payment_method %></strong></div>
           <div class="mq-detail-item"><span>Submitted</span><strong><%= formatDateTime(request.created_at) %></strong></div>
           <div class="mq-detail-item"><span>Preferred date &amp; time</span><strong><%= request.preferred_at ? formatDateTime(request.preferred_at) : 'Any time' %></strong></div>
           <div class="mq-detail-item"><span>Contact</span><strong><%= request.contact_number || '—' %></strong></div>

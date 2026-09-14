@@ -137,10 +137,25 @@ const {
   getFocusHandouts,
   getFocusHandoutById,
   resolveScope,
-  canActOnBranch
+  canActOnBranch,
+  // POS (Phase 3): staff-entered payments and the alerts they raise
+  notifyAdminRoles,
+  // Phase 5: one tutor per student, and an admin-only schedule
+  setStudentTutorAndSchedule,
+  getAssignedTutorFor,
+  FIXED_TIME_SLOTS
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
+const { normalizeAmount } = require('../lib/billing');
+const { slipCode, parseSlipCode } = require('../lib/paymentSlip');
 const { query } = require('../config/db');
+
+/** "Jane Cruz (Assistant Admin)" — who took the money, for a notification. */
+function displayActor(user) {
+  const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim() || 'Staff';
+  const role = user?.role === 'admin' ? 'Admin' : user?.role === 'admin_assistant' ? 'Assistant Admin' : '';
+  return role ? `${name} (${role})` : name;
+}
 
 const profileUploader = createUploader('profiles');
 const resourceUploader = createUploader('resources');
@@ -515,6 +530,22 @@ function createAdminRouter(role) {
         user.role === 'tutor' ? getTutorAssignments(user.id) : Promise.resolve([]),
         getSubjects(false)
       ]);
+
+      // Phase 5: the admin's tutor/schedule editor needs the tutors who actually
+      // teach at this student's branch, and which of the centre's slots each of
+      // them still has free.
+      const assignableTutors = user.role === 'student'
+        ? (await getUsers({ role: 'tutor', scopeBranchId: user.branch_id || null }))
+        : [];
+      const currentTutor = user.role === 'student' ? await getAssignedTutorFor(user.id) : null;
+      const tutorSlotUsage = user.role === 'student'
+        ? await query(
+            `SELECT usa.tutor_id, usa.time_slot, usa.student_id
+               FROM user_subject_assignments usa
+              WHERE usa.is_archived = 0 AND usa.tutor_id IS NOT NULL AND usa.time_slot IS NOT NULL`
+          )
+        : [];
+
       const shell = await buildShellData(req, {
         pageTitle: isOwnAdminProfile ? 'Admin Profile' : `${user.role === 'student' ? 'Student' : 'Tutor'} Profile`,
         section: isOwnAdminProfile ? 'profile' : 'users',
@@ -523,11 +554,54 @@ function createAdminRouter(role) {
         studentAssignments,
         tutorAssignments,
         subjectOptions,
+        assignableTutors,
+        currentTutor,
+        tutorSlotUsage,
+        timeSlots: FIXED_TIME_SLOTS,
         supportOptions: ['Exam Preparation & Reviews','Homework Assistance','Project Guidance']
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
       next(error);
+    }
+  });
+
+  /**
+   * Phase 5 — set a student's tutor and time schedule.
+   *
+   * The tutor goes to EVERY subject the student is enrolled in, because a
+   * student has one tutor (setStudentTutorAndSchedule enforces that). The
+   * schedule is set here, by staff, and the student-side apply routes refuse
+   * once a tutor exists — between them that is what makes "only an admin can
+   * change the schedule" actually true.
+   */
+  router.post('/profile/:id/tutor', async (req, res, next) => {
+    const backTo = `${basePath}/profile/${req.params.id}`;
+    try {
+      const student = await getUserById(req.params.id);
+      if (!student || student.role !== 'student') {
+        setFlash(req, 'error', 'Student not found.');
+        return res.redirect(`${basePath}/users`);
+      }
+      if (!canActOnBranch(req.session.user, student.branch_id)) {
+        setFlash(req, 'error', 'You can only manage students from your branch.');
+        return res.redirect(`${basePath}/users`);
+      }
+
+      const result = await setStudentTutorAndSchedule(
+        student.id,
+        { tutorId: req.body.tutor_id, timeSlot: req.body.time_slot },
+        req.session.user
+      );
+
+      setFlash(req, 'success', result.tutorId
+        ? `${result.tutorName} is now the tutor for all ${result.subjectsUpdated} of this student's subjects`
+          + `${result.timeSlot ? `, at ${result.timeSlot}` : ''}.`
+        : `Tutor and schedule cleared across all ${result.subjectsUpdated} subjects.`);
+      return res.redirect(backTo);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not update the tutor or schedule.');
+      return res.redirect(backTo);
     }
   });
 
@@ -1005,7 +1079,7 @@ function createAdminRouter(role) {
   });
 
   /**
-   * Income Report — one row per transaction, with search, date range, branch,
+   * Payment Collection (was "Income Report") — one row per transaction, with search, date range, branch,
    * method and purpose filters, and a compact summary bar on top.
    */
   router.get('/income-report', async (req, res, next) => {
@@ -1034,7 +1108,11 @@ function createAdminRouter(role) {
       const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
 
       const shell = await buildShellData(req, {
-        pageTitle: 'Income Report',
+        // Phase 7.3: "Income Report" -> "Payment Collection". The page reports
+        // money COLLECTED from students, which is not the centre's income — it
+        // says nothing about costs — and staff read the old title as a P&L.
+        // The URL stays /income-report so existing links and bookmarks work.
+        pageTitle: 'Payment Collection',
         section: 'income',
         contentView: '../content/admin-income-report',
         rows: pageRows,
@@ -1271,6 +1349,9 @@ function createAdminRouter(role) {
         contentView: '../content/admin-notifications',
         requests,
         alerts,
+        // Requests are payment slips now (Phase 3), and the page labels them
+        // with the same code the student is holding.
+        slipCode,
         requestPager: { page, pageCount, total: allRequests.length, pageSize },
         alertPager: { page: alertPage, pageCount: alertPageCount, total: allAlerts.length, pageSize },
         search,
@@ -1286,6 +1367,197 @@ function createAdminRouter(role) {
       res.render('shells/dashboard', shell);
     } catch (error) {
       next(error);
+    }
+  });
+
+  /* ========================================================================
+     POS — the counter (Phase 3)
+     ------------------------------------------------------------------------
+     Cash is no longer something a student "requests" and an admin "confirms"
+     from a notification. The student brings a slip; this screen is where the
+     money is entered, once, by whoever took it.
+
+     Two ways in, because both happen at a real counter:
+       - by slip code, when the student has one (the normal case), and
+       - straight against a student, for a walk-in with no slip.
+     Both end in exactly one ledger append, so neither can double-count.
+     ======================================================================== */
+
+  router.get('/pos', async (req, res, next) => {
+    try {
+      const scopeBranchId = getScopeBranchId(req);
+      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+      const search = String(req.query.search || '').trim();
+
+      // Slips still waiting to be taken, oldest first — that is the queue at the
+      // counter, so it is the default view of this page.
+      const openSlips = (await getPaymentRequests(scope, { status: 'pending' }))
+        .slice()
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+      // A slip code, a student name or a student ID all land in the same box:
+      // whoever is at the counter should not have to know which one they have.
+      let selected = null;
+      const byCode = parseSlipCode(req.query.slip || search);
+      if (byCode) {
+        const request = await getPaymentRequestById(byCode);
+        if (request && request.status === 'pending' && canActOnBranch(req.session.user, request.branch_id)) {
+          selected = { kind: 'slip', request, ledger: await getBillingLedger(request.student_id) };
+        }
+      }
+
+      // No slip matched: look the student up instead.
+      let matches = [];
+      if (!selected && search) {
+        matches = await getBillingRows(scopeBranchId, 'all', { search });
+      }
+      if (!selected && matches.length === 1) {
+        selected = { kind: 'student', student: matches[0], ledger: await getBillingLedger(matches[0].student_id) };
+        matches = [];
+      }
+
+      const shell = await buildShellData(req, {
+        pageTitle: 'POS — Record Payment',
+        section: 'pos',
+        contentView: '../content/admin-pos',
+        openSlips,
+        selected,
+        matches,
+        search,
+        slipCode,
+        paymentMethods: PAYMENT_METHODS,
+        paymentPurposes: PAYMENT_PURPOSES
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
+   * Take the money. One append to the ledger, whichever way the counter got here.
+   *
+   * A slip is completed through completePaymentRequest so the slip is closed and
+   * the payment recorded in the same step — doing it as two actions is how a
+   * counter ends up with a paid slip still sitting in the queue.
+   */
+  router.post('/pos/record', async (req, res, next) => {
+    const backTo = `${basePath}/pos`;
+    try {
+      const requestId = Number(req.body.request_id) || null;
+      const amount = req.body.amount;
+      const note = String(req.body.note || '').trim();
+      const referenceNo = String(req.body.reference_no || '').trim();
+
+      if (requestId) {
+        const request = await getPaymentRequestById(requestId);
+        if (!request) {
+          setFlash(req, 'error', 'That payment slip no longer exists.');
+          return res.redirect(backTo);
+        }
+        if (!canActOnBranch(req.session.user, request.branch_id)) {
+          setFlash(req, 'error', 'You can only take payments for your own branch.');
+          return res.redirect(backTo);
+        }
+
+        const { request: updated, entry } = await completePaymentRequest(requestId, req.session.user, {
+          amount,
+          note: [referenceNo ? `OR/Ref ${referenceNo}` : '', note].filter(Boolean).join(' — ')
+        });
+
+        await markAppNotificationReferenceRead('payment_request', requestId, req.session.user)
+          .catch((error) => console.error('[notifications] could not mark read:', error.message));
+
+        await notifyAdminRoles({
+          type: 'pos_payment',
+          title: `POS payment recorded — ${updated.first_name} ${updated.last_name}`,
+          message: `₱${Number(updated.recorded_amount || 0).toFixed(2)} taken at `
+            + `${updated.branch_name || 'the branch'} against ${slipCode(requestId)}, `
+            + `recorded by ${displayActor(req.session.user)}.`,
+          linkPath: '/payments/history',
+          refType: 'payment_entry',
+          refId: entry.entryId,
+          branchId: request.branch_id,
+          severity: 'success'
+        }).catch((error) => console.error('[pos] could not notify staff:', error.message));
+
+        setFlash(req, 'success',
+          `₱${Number(updated.recorded_amount || 0).toFixed(2)} recorded for `
+          + `${updated.first_name} ${updated.last_name} as payment #${entry.sequenceNo}. `
+          + `${slipCode(requestId)} is closed.`);
+        return res.redirect(backTo);
+      }
+
+      // Walk-in: no slip, so the student is named directly.
+      const studentId = Number(req.body.student_id);
+      if (!studentId) {
+        setFlash(req, 'error', 'Choose a student or a payment slip first.');
+        return res.redirect(backTo);
+      }
+      const student = await getUserById(studentId);
+      if (!student || student.role !== 'student') {
+        setFlash(req, 'error', 'Student not found.');
+        return res.redirect(backTo);
+      }
+      if (!canActOnBranch(req.session.user, student.branch_id)) {
+        setFlash(req, 'error', 'You can only take payments for your own branch.');
+        return res.redirect(backTo);
+      }
+
+      const entry = await addPaymentEntry({
+        studentId,
+        amount,
+        paymentMethod: req.body.payment_method || 'Cash',
+        purpose: req.body.purpose || 'Tuition',
+        referenceNo: referenceNo || null,
+        notes: note || 'Cash taken at the counter (POS, no slip).',
+        actor: req.session.user,
+        source: 'admin'
+      });
+
+      await notifyAdminRoles({
+        type: 'pos_payment',
+        title: `POS payment recorded — ${student.first_name} ${student.last_name}`,
+        message: `₱${Number(normalizeAmount(amount)).toFixed(2)} taken at the counter with no slip, `
+          + `recorded by ${displayActor(req.session.user)}.`,
+        linkPath: '/payments/history',
+        refType: 'payment_entry',
+        refId: entry.entryId,
+        branchId: student.branch_id,
+        severity: 'success'
+      }).catch((error) => console.error('[pos] could not notify staff:', error.message));
+
+      setFlash(req, 'success',
+        `₱${Number(normalizeAmount(amount)).toFixed(2)} recorded for `
+        + `${student.first_name} ${student.last_name} as payment #${entry.sequenceNo}.`);
+      return res.redirect(backTo);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not record that payment.');
+      return res.redirect(backTo);
+    }
+  });
+
+  /** Void a slip that will not be paid — the student left, or it was a mistake. */
+  router.post('/pos/:id/cancel', async (req, res, next) => {
+    const backTo = `${basePath}/pos`;
+    try {
+      const request = await getPaymentRequestById(Number(req.params.id));
+      if (!request) {
+        setFlash(req, 'error', 'That payment slip no longer exists.');
+        return res.redirect(backTo);
+      }
+      if (!canActOnBranch(req.session.user, request.branch_id)) {
+        setFlash(req, 'error', 'You can only void slips from your own branch.');
+        return res.redirect(backTo);
+      }
+      await cancelPaymentRequest(Number(req.params.id), req.session.user, req.body.note);
+      await markAppNotificationReferenceRead('payment_request', Number(req.params.id), req.session.user)
+        .catch((error) => console.error('[notifications] could not mark read:', error.message));
+      setFlash(req, 'success', `${slipCode(req.params.id)} voided. Nothing was added to the ledger.`);
+      return res.redirect(backTo);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not void that slip.');
+      return res.redirect(backTo);
     }
   });
 
@@ -2008,7 +2280,11 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Assessment not found.');
         return res.redirect(`${basePath}/assessments`);
       }
-      if (req.session.user.role === 'admin_assistant' && Number(assessment.branch_id) !== Number(req.session.user.assistant_scope_branch_id)) {
+      // assessments.branch_id is nullable on older rows, so fall back to the
+      // branch of the student it was assigned to rather than failing the check
+      // against NULL and locking the assistant out of their own branch.
+      const assessmentBranchId = assessment.branch_id ?? assessment.student_branch_id;
+      if (req.session.user.role === 'admin_assistant' && Number(assessmentBranchId) !== Number(req.session.user.assistant_scope_branch_id)) {
         setFlash(req, 'error', 'You can only view assessments from your branch.');
         return res.redirect(`${basePath}/assessments`);
       }

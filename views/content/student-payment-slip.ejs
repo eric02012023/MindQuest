@@ -1,0 +1,202 @@
+<%# File: views/content/student-payment-slip.ejs
+    Purpose: "This is what I owe" — the thing a student shows at the counter.
+
+    WHAT THIS REPLACED
+    The cash flow used to end in a form: type an amount, submit a request, wait
+    for an admin to confirm it from Notifications. That put half a transaction on
+    the student's screen and left the office matching people to requests.
+
+    Cash is a POS transaction now (Phase 3). So this page takes money from
+    nobody. It states the account, names the branch that may take the payment,
+    and gives the student something to hand over: the slip on screen, the same
+    slip as a PDF, or printed.
+
+    The on-screen slip uses the real ₱ sign; the PDF says "PHP" because the PDF's
+    base-14 fonts have no peso glyph — see lib/paymentSlip.js.
+
+    Locals: slip (from buildSlipModel), slipRequest %>
+<%
+  const s = slip;
+  const hasSlip = Boolean(s.slipCode);
+%>
+<section class="mq-page">
+
+  <div class="mq-toolbar print-hide">
+    <div class="mq-toolbar-actions">
+      <a class="mq-btn" href="/student/billing"><%- icon('receipt') %> Back to Billing Data</a>
+    </div>
+    <div class="mq-toolbar-actions">
+      <a class="mq-btn" href="/student/billing/slip.pdf" target="_blank" rel="noopener">
+        <%- icon('receipt') %> Open PDF
+      </a>
+      <button type="button" class="mq-btn mq-btn-primary" onclick="printPaymentSlip()">
+        <%- icon('print') %> Print / Save as PDF
+      </button>
+    </div>
+  </div>
+
+  <% if (!s.hasBill) { %>
+    <div class="mq-panel">
+      <div class="mq-empty">
+        <strong>No billing record yet</strong>
+        Your account has not been billed, so there is nothing to pay. The office will post a
+        statement here once it is ready.
+      </div>
+    </div>
+  <% } else { %>
+
+    <%# ------------------------------------------------------------- the slip %>
+    <section class="mq-panel slip-sheet" id="payment-slip">
+      <div class="slip-head">
+        <div>
+          <strong>MINDQUEST TUTORIAL CENTER</strong>
+          <span>Payment Slip</span>
+        </div>
+        <div class="slip-head-right">
+          <% if (hasSlip) { %><strong><%= s.slipCode %></strong><% } else { %><strong>Not yet issued</strong><% } %>
+          <span>Issued <%= formatSlipDate(s.issuedAt) %></span>
+        </div>
+      </div>
+
+      <div class="mq-detail">
+        <div class="mq-detail-item"><span>Student name</span><strong><%= s.student.name %></strong></div>
+        <div class="mq-detail-item"><span>Student ID</span><strong><%= s.student.code || '—' %></strong></div>
+        <div class="mq-detail-item"><span>Pay at</span><strong><%= s.branchName || 'Your MindQuest branch' %></strong></div>
+        <div class="mq-detail-item"><span>Payment due</span><strong><%= formatSlipDate(s.dueDate) %></strong></div>
+      </div>
+
+      <%# Subjects, so the counter can see WHAT is being paid for rather than a
+          bare total. Each carries its own period — subjects are enrolled on
+          different days and run their own month. %>
+      <div class="mq-panel" style="margin:0 16px 16px;">
+        <div class="mq-panel-head"><h3>Enrolled subjects</h3><span class="mq-count"><%= s.subjects.length %></span></div>
+        <div class="mq-table" style="--mq-cols: minmax(160px, 1.6fr) minmax(170px, 1.4fr) 120px;">
+          <div class="mq-head"><span>Subject</span><span>Period</span><span class="mq-num">Amount</span></div>
+          <% if (!s.subjects.length) { %>
+            <div class="mq-empty">No active subject enrolments on this account.</div>
+          <% } %>
+          <% s.subjects.forEach((subject) => { %>
+            <div class="mq-row">
+              <span class="mq-cell mq-cell-primary" data-label="Subject"><span class="mq-name"><%= subject.name %></span></span>
+              <span class="mq-cell mq-sub" data-label="Period">
+                <%= formatSlipDate(subject.startDate) %><% if (subject.endDate) { %> – <%= formatSlipDate(subject.endDate) %><% } %>
+              </span>
+              <span class="mq-cell mq-money" data-label="Amount">
+                <%= subject.amount != null ? money(subject.amount) : '—' %>
+              </span>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="mq-summary" style="margin:0 16px 12px;">
+        <div class="mq-summary-item"><span>Total billed</span><strong><%= money(s.totals.billed) %></strong></div>
+        <div class="mq-summary-item is-positive"><span>Total paid</span><strong><%= money(s.totals.paid) %></strong></div>
+        <div class="mq-summary-item is-negative"><span>Balance due</span><strong><%= money(s.totals.remaining) %></strong></div>
+      </div>
+
+      <div class="slip-callout">
+        <div>
+          <span><%= s.floorKind === 'down_payment' ? 'Minimum down payment' : 'Minimum payment now' %></span>
+          <p>
+            <%= s.floorKind === 'down_payment'
+                ? 'First payment on the account. You may pay more, up to the balance due.'
+                : 'One third of the remaining balance. You may pay more, up to the balance due.' %>
+          </p>
+        </div>
+        <strong><%= money(s.minimumNow) %></strong>
+      </div>
+
+      <% if (s.declaredAmount != null) { %>
+        <div class="mq-detail">
+          <div class="mq-detail-item is-wide">
+            <span>Amount you said you would pay</span>
+            <strong><%= money(s.declaredAmount) %></strong>
+          </div>
+        </div>
+      <% } %>
+
+      <p class="slip-foot">
+        Present this slip at <strong><%= s.branchName || 'your MindQuest branch' %></strong>.
+        The cashier records the payment on the POS and it appears in your Payment History straight away.
+        <br />
+        This slip is a statement of what is owed. It is <strong>not</strong> a receipt and it is not proof of payment.
+      </p>
+    </section>
+
+    <%# --------------------------------------------------------- issue a slip %>
+    <% if (!hasSlip) { %>
+      <section class="mq-panel print-hide">
+        <div class="mq-panel-head">
+          <div>
+            <h2>Issue this slip</h2>
+            <p>Tell the office what you intend to pay. Nothing is charged — the cashier records
+               whatever actually changes hands.</p>
+          </div>
+        </div>
+        <% if (s.totals.remaining <= 0) { %>
+          <div class="mq-empty">Your account is fully settled. There is nothing to pay.</div>
+        <% } else { %>
+          <form class="mq-form" method="post" action="/student/billing/slip"
+                data-confirm-message="Generate a payment slip? Show it at the branch to pay.">
+            <label>Amount you intend to pay
+              <input type="number" name="amount" step="0.01"
+                     min="<%= Number(s.minimumNow).toFixed(2) %>" max="<%= s.totals.remaining %>"
+                     value="<%= Number(s.totals.remaining).toFixed(2) %>" required />
+            </label>
+            <label>Purpose of payment
+              <select name="purpose">
+                <% (typeof paymentPurposes !== 'undefined' ? paymentPurposes : ['Tuition']).forEach((purpose) => { %>
+                  <option value="<%= purpose %>"><%= purpose %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label class="is-wide">Notes for the office (optional)
+              <input type="text" name="reference_note" placeholder="e.g. paying with my guardian on Saturday morning" />
+            </label>
+            <div class="mq-form-foot">
+              <button class="mq-btn mq-btn-primary" type="submit"><%- icon('receipt') %> Generate payment slip</button>
+            </div>
+          </form>
+        <% } %>
+      </section>
+    <% } %>
+  <% } %>
+</section>
+
+<style>
+  /* The slip is a document, so it gets a document's proportions: a white sheet
+     with a dark masthead, not another dashboard panel. */
+  .slip-sheet { padding: 0; overflow: hidden; }
+  .slip-head {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+    padding: 18px 20px; background: #17356b; color: #fff; flex-wrap: wrap;
+  }
+  .slip-head strong { display: block; font-size: 15px; letter-spacing: 0.02em; }
+  .slip-head span { display: block; font-size: 12px; color: #c8d4ea; margin-top: 2px; }
+  .slip-head-right { text-align: right; }
+  .slip-callout {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    margin: 0 16px 16px; padding: 14px 16px; border-radius: 10px;
+    background: #f1f4f9; flex-wrap: wrap;
+  }
+  .slip-callout span { font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: #55617a; }
+  .slip-callout p { margin: 4px 0 0; font-size: 12px; color: #55617a; }
+  .slip-callout strong { font-size: 22px; }
+  .slip-foot { margin: 0; padding: 0 20px 20px; font-size: 12px; color: var(--mq-text-soft); line-height: 1.6; }
+
+  @media print {
+    /* Print the slip alone — the shell's chrome is not part of the document. */
+    .sidebar, .dashboard-topbar, .print-hide { display: none !important; }
+    .slip-sheet { border: none; box-shadow: none; }
+    .slip-head { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+
+<script>
+  // The browser's own print dialog offers "Save as PDF" on every desktop
+  // platform, so Print and Save are the same button. The downloadable PDF from
+  // /student/billing/slip.pdf is the one to send to someone else.
+  function printPaymentSlip() { window.print(); }
+</script>

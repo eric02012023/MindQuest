@@ -1,52 +1,37 @@
 <%# File: views/content/admin-income-report.ejs
-    Purpose: Income Report — one row per transaction.
+    Purpose: Payment Collection — one row per transaction, plus the alerts that
+    go with it.
 
-    Rebuilt from four large gradient cards and a chart-first layout into the
-    shared row system: a compact summary bar, a filter toolbar (search, date
-    range, branch, method, purpose), the transaction rows, and the trend chart
-    underneath rather than above — the numbers are what this page is for.
+    RENAMED FROM "INCOME REPORT" (Phase 7.3)
+    This page reports money COLLECTED from students. It says nothing about what
+    the centre spends, so calling it income invited staff to read it as a profit
+    figure. The URL is still /income-report: old links and bookmarks resolve.
+
+    WHAT WENT (Phase 7.3)
+    The "Monthly income" and "Income per branch" charts, and the whole Chart.js
+    bundle they needed. Both drew numbers that the summary bar and the rows
+    already carry — filterable by date and branch, and to the peso rather than
+    to the nearest pixel.
+
+    WHAT ARRIVED (Phase 7.2)
+    The notification section at the foot. Admin and Assistant Admin no longer
+    have a topbar bell; their alerts are about money, so they sit beside the
+    transactions they refer to.
 
     Every row is one payment_entries record, so the report and a student's ledger
     can never disagree: they are the same rows.
 
-    Locals: rows (this page), allRows (the whole filtered set, for the chart),
-            summary, pager, filters, paymentMethods, paymentPurposes %>
+    Locals: rows (this page), allRows (the whole filtered set), summary, pager,
+            filters, paymentMethods, paymentPurposes, alerts, inboxNotifications %>
 <%
   const pagerState = typeof pager === 'undefined' ? null : pager;
   const currentQuery = typeof query === 'undefined' ? {} : query;
-  const everyRow = allRows || [];
-
-  // Chart series are built from the whole filtered set, not the visible page.
-  const monthly = {};
-  everyRow.forEach((row) => {
-    const date = new Date(row.paid_at);
-    if (Number.isNaN(date.getTime())) return;
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    if (!monthly[key]) monthly[key] = { income: 0, count: 0 };
-    monthly[key].income += Number(row.amount || 0);
-    monthly[key].count += 1;
-  });
-  const monthKeys = Object.keys(monthly).sort().slice(-12);
-  const monthLabels = monthKeys.map((key) => {
-    const [year, month] = key.split('-');
-    return new Date(Number(year), Number(month) - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
-  });
-  const monthValues = monthKeys.map((key) => Number(monthly[key].income.toFixed(2)));
-  const monthCounts = monthKeys.map((key) => monthly[key].count);
-
-  const byBranch = {};
-  everyRow.forEach((row) => {
-    const name = row.branch_name || 'Unassigned';
-    byBranch[name] = (byBranch[name] || 0) + Number(row.amount || 0);
-  });
-  const branchLabels = Object.keys(byBranch);
-  const branchValues = branchLabels.map((key) => Number(byBranch[key].toFixed(2)));
 %>
 <section class="mq-page">
 
   <div class="mq-summary">
     <div class="mq-summary-item is-positive">
-      <span>Total income</span><strong><%= money(summary.totalIncome) %></strong>
+      <span>Total collected</span><strong><%= money(summary.totalIncome) %></strong>
     </div>
     <div class="mq-summary-item">
       <span>Transactions</span><strong><%= summary.transactionCount %></strong>
@@ -167,89 +152,83 @@
     </div>
   </section>
 
-  <% if (monthKeys.length) { %>
-    <div class="mq-chart-grid">
-      <section class="mq-panel">
-        <div class="mq-panel-head"><h3>Monthly income</h3></div>
-        <div class="mq-chart-box"><canvas id="incomeChart"></canvas></div>
-      </section>
+  <%# Phase 7.3: the "Monthly income" and "Income per branch" charts were here.
+      Both are gone. Every figure they drew is already in the summary bar at the
+      top and in the rows above, filterable by date and branch — the charts were
+      a second, less precise rendering of the same numbers, and "income" was the
+      wrong word for money collected from students in the first place. %>
 
-      <% if (currentUser.role === 'admin' && branchLabels.length > 1) { %>
-        <section class="mq-panel">
-          <div class="mq-panel-head"><h3>Income per branch</h3></div>
-          <div class="mq-chart-box"><canvas id="branchChart"></canvas></div>
-        </section>
-      <% } %>
+  <%# ================================================== notifications (7.2)
+      The topbar bell is gone for Admin and Assistant Admin (7.1). Their alerts
+      are about money — a slip waiting at the counter, a payment just taken — so
+      they belong here, next to the transactions they refer to, rather than in a
+      dropdown that had to be opened to be read.
+      ================================================================== %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Notifications</h2>
+        <p>Payment alerts and anything else waiting on you. Registrations and enrolment
+           requests are worked through on the Notifications page.</p>
+      </div>
+      <span class="mq-count"><%= (alerts || []).length + (inboxNotifications || []).length %></span>
     </div>
-  <% } %>
+
+    <% if (!(alerts || []).length && !(inboxNotifications || []).length) { %>
+      <div class="mq-empty">
+        <strong>Nothing waiting</strong>
+        New payment slips and recorded POS payments appear here as they happen.
+      </div>
+    <% } %>
+
+    <% if ((alerts || []).length) { %>
+      <div class="mq-table" style="--mq-cols: 150px minmax(180px, 1.4fr) minmax(220px, 2fr) 150px 110px;">
+        <div class="mq-head">
+          <span>Type</span><span>What happened</span><span>Detail</span><span>When</span>
+          <span style="text-align:right;">Action</span>
+        </div>
+        <% (alerts || []).forEach((alert) => {
+             // Phase 7.4: the old "Cash payment request" alert is gone with the
+             // flow it belonged to. Two POS-shaped alerts replace it — a slip
+             // waiting to be paid, and a payment actually recorded.
+             const label = alert.type === 'payment_slip' ? 'Pending payment slip'
+               : alert.type === 'pos_payment' ? 'POS payment recorded'
+               : alert.type === 'payment_request' ? 'Pending payment slip'
+               : String(alert.type || 'Alert').replace(/_/g, ' ');
+             const tone = alert.type === 'pos_payment' ? 'mq-status-paid'
+               : alert.severity === 'warning' ? 'mq-status-partial' : 'mq-status-unpaid'; %>
+          <div class="mq-row">
+            <span class="mq-cell" data-label="Type"><span class="mq-status <%= tone %>"><%= label %></span></span>
+            <span class="mq-cell mq-cell-primary" data-label="What happened">
+              <span class="mq-name"><%= alert.title %></span>
+            </span>
+            <span class="mq-cell mq-sub" data-label="Detail"><%= alert.message || '—' %></span>
+            <span class="mq-cell mq-sub" data-label="When"><%= formatDateTime(alert.created_at) %></span>
+            <span class="mq-cell mq-cell-actions">
+              <% if (alert.link_url) { %>
+                <a class="mq-btn mq-btn-sm mq-btn-primary" href="<%= alert.link_url %>">Open</a>
+              <% } %>
+              <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/read">
+                <button class="mq-btn mq-btn-sm" type="submit">Mark read</button>
+              </form>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <% if ((inboxNotifications || []).length) { %>
+      <div class="mq-form-foot" style="padding:12px 16px;">
+        <a class="mq-btn" href="<%= basePath %>/notifications">
+          <%- icon('view') %>
+          <%= inboxNotifications.length %> registration/enrolment request<%= inboxNotifications.length === 1 ? '' : 's' %> waiting
+        </a>
+      </div>
+    <% } %>
+  </section>
 
 </section>
 
-<script src="/js/vendor/chart.umd.min.js"></script>
-<script>
-  document.addEventListener('DOMContentLoaded', function () {
-    if (typeof Chart === 'undefined') return;
-
-    var monthCanvas = document.getElementById('incomeChart');
-    if (monthCanvas) {
-      new Chart(monthCanvas.getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: <%- JSON.stringify(monthLabels) %>,
-          datasets: [
-            {
-              label: 'Income',
-              data: <%- JSON.stringify(monthValues) %>,
-              backgroundColor: 'rgba(22, 168, 200, 0.75)',
-              borderRadius: 4,
-              borderSkipped: false
-            },
-            {
-              label: 'Transactions',
-              type: 'line',
-              data: <%- JSON.stringify(monthCounts) %>,
-              borderColor: '#d28a1f',
-              backgroundColor: 'rgba(210, 138, 31, 0.12)',
-              borderWidth: 2,
-              pointRadius: 3,
-              tension: 0.3,
-              yAxisID: 'y1'
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11 } } } },
-          scales: {
-            y: { beginAtZero: true, ticks: { callback: function (v) { return '₱' + v.toLocaleString(); }, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
-            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { precision: 0, font: { size: 11 } } },
-            x: { grid: { display: false }, ticks: { font: { size: 11 } } }
-          }
-        }
-      });
-    }
-
-    var branchCanvas = document.getElementById('branchChart');
-    if (branchCanvas) {
-      new Chart(branchCanvas.getContext('2d'), {
-        type: 'doughnut',
-        data: {
-          labels: <%- JSON.stringify(branchLabels) %>,
-          datasets: [{
-            data: <%- JSON.stringify(branchValues) %>,
-            backgroundColor: ['#16a8c8', '#0f7ea0', '#32a65a', '#d28a1f', '#8e6bd5', '#d54c4c', '#5f7084', '#0b3b53'],
-            borderWidth: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '62%',
-          plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 10, font: { size: 11 } } } }
-        }
-      });
-    }
-  });
-</script>
+<%# The Chart.js bundle and the two chart builders that lived here were removed
+    with the charts themselves (Phase 7.3). This page draws nothing now, so it no
+    longer pulls a charting library it does not use. %>

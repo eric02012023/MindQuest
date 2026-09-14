@@ -147,7 +147,19 @@
     </div>
   </form>
 
-  <%# ---------------------------------------------------------------- charts %>
+  <%# ==================================================================
+      GROUP 1 — Learner performance
+      The page's core question: how are learners actually doing? Scores
+      first because everything below is a refinement of them.
+      ================================================================== %>
+  <div class="mq-report-group">
+    <div>
+      <h2>Learner performance</h2>
+      <p>How learners are scoring, where they are weakest, and who needs attention.</p>
+    </div>
+    <span class="mq-report-group-index">1 of <%= showMoney ? 4 : (isStudent ? 2 : 3) %></span>
+  </div>
+
   <div class="mq-chart-grid">
     <section class="mq-panel">
       <div class="mq-panel-head">
@@ -314,6 +326,48 @@
     </div>
   </section>
 
+  <%# ==================================================================
+      GROUP 2 — Enrolment & progress
+      What learners are signed up to, and how far through it they are.
+      "Enrolment by subject" moved here from the money block at the foot of
+      the page: a headcount per subject is an enrolment fact, and sitting it
+      beside the income chart made it read as a revenue figure.
+      ================================================================== %>
+  <div class="mq-report-group">
+    <div>
+      <h2>Enrolment &amp; progress</h2>
+      <p>What learners are enrolled in, and how much of the material they have worked through.</p>
+    </div>
+    <span class="mq-report-group-index">2 of <%= showMoney ? 4 : (isStudent ? 2 : 3) %></span>
+  </div>
+
+  <% if (showMoney) { %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h3>Enrolment by subject</h3>
+          <p>Active learners per subject, across the selected scope.</p>
+        </div>
+        <span class="mq-count"><%= (a.enrolment || []).length %> subject<%= (a.enrolment || []).length === 1 ? '' : 's' %></span>
+      </div>
+      <%# Learners only. This page reports on how students are doing; a staff
+          headcount is a User Management question and only made the row look
+          like a performance figure about tutors. %>
+      <div class="mq-table" style="--mq-cols: minmax(180px, 3fr) 90px;">
+        <div class="mq-head"><span>Subject</span><span class="mq-num">Learners</span></div>
+        <% if (!(a.enrolment || []).length) { %>
+          <div class="mq-empty">No active enrolments.</div>
+        <% } %>
+        <% (a.enrolment || []).slice(0, 12).forEach((row) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-name" data-label="Subject"><%= row.subject_name %></span>
+            <span class="mq-cell mq-num" data-label="Learners"><%= row.students %></span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
+
   <%# ---------------------------------------------------- module completion %>
   <section class="mq-panel">
     <div class="mq-panel-head">
@@ -385,12 +439,70 @@
     </section>
   <% } %>
 
-  <%# ------------------------------------------------- anti-cheat (staff) %>
-  <% if (!isStudent) { %>
+  <%# ==================================================================
+      GROUP 3 — Payment collection (staff only)
+      What has been collected and what is still outstanding.
+
+      The "Income Trend" chart that used to open this block is GONE (Phase 6),
+      and lib/analytics.js no longer runs the monthly aggregate behind it. The
+      month-by-month picture belongs on the Payment Collection report, not on a
+      page about how learners are doing — here the useful question is simply
+      "how much is in, how much is out".
+      ================================================================== %>
+  <% if (showMoney) { %>
+    <div class="mq-report-group">
+      <div>
+        <h2>Payment collection</h2>
+        <p>Money received and still outstanding across the selected scope and period.</p>
+      </div>
+      <span class="mq-report-group-index">3 of 4</span>
+    </div>
+
     <section class="mq-panel">
       <div class="mq-panel-head">
         <div>
-          <h3>Assessment integrity</h3>
+          <h3>Collection summary</h3>
+          <p>Totals for the filters above. The full transaction list is on the Payment Collection report.</p>
+        </div>
+        <a class="mq-btn mq-btn-sm" href="<%= basePath %>/income-report"><%- icon('receipt') %> Open Payment Collection</a>
+      </div>
+
+      <div class="mq-summary">
+        <div class="mq-summary-item is-positive">
+          <span>Collected</span><strong><%= money(a.financials.collected) %></strong>
+        </div>
+        <div class="mq-summary-item is-negative">
+          <span>Outstanding</span><strong><%= money(a.financials.outstanding) %></strong>
+        </div>
+        <div class="mq-summary-item">
+          <span>Transactions</span><strong><%= a.financials.transactions %></strong>
+        </div>
+        <div class="mq-summary-item">
+          <span>Settled accounts</span>
+          <strong><%= a.financials.settledAccounts %> / <%= a.financials.settledAccounts + a.financials.unsettledAccounts %></strong>
+        </div>
+      </div>
+    </section>
+  <% } %>
+
+  <%# ==================================================================
+      GROUP 4 — Assessment integrity (staff only)
+      Last because it is an exception report: most days it is empty, and an
+      empty table at the top of a page reads as "nothing here".
+      ================================================================== %>
+  <% if (!isStudent) { %>
+    <div class="mq-report-group">
+      <div>
+        <h2>Assessment integrity</h2>
+        <p>Flagged activity during assessments. Usually empty — that is the expected state.</p>
+      </div>
+      <span class="mq-report-group-index"><%= showMoney ? '4 of 4' : '3 of 3' %></span>
+    </div>
+
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h3>Flagged events</h3>
           <p>Every flagged action during an assessment, with the attempt it belongs to.</p>
         </div>
         <span class="mq-count"><%= shown(a.violations, 40, 'event') %></span>
@@ -424,38 +536,9 @@
     </section>
   <% } %>
 
-  <%# ------------------------------------------------------ money (staff) %>
-  <% if (showMoney) { %>
-    <div class="mq-chart-grid">
-      <section class="mq-panel">
-        <div class="mq-panel-head"><h3>Income trend</h3><span class="mq-count">per month</span></div>
-        <% if (!(a.incomeTrend || []).length) { %>
-          <div class="mq-empty">No payments recorded in this range.</div>
-        <% } else { %>
-          <div class="mq-chart-box"><canvas id="incomeTrendChart"></canvas></div>
-        <% } %>
-      </section>
-
-      <section class="mq-panel">
-        <div class="mq-panel-head"><h3>Enrolment by subject</h3><span class="mq-count"><%= (a.enrolment || []).length %> subjects</span></div>
-        <%# Learners only. This page reports on how students are doing; a staff
-            headcount is a User Management question and only made the row look
-            like a performance figure about tutors. %>
-        <div class="mq-table" style="--mq-cols: minmax(180px, 3fr) 90px;">
-          <div class="mq-head"><span>Subject</span><span class="mq-num">Learners</span></div>
-          <% if (!(a.enrolment || []).length) { %>
-            <div class="mq-empty">No active enrolments.</div>
-          <% } %>
-          <% (a.enrolment || []).slice(0, 12).forEach((row) => { %>
-            <div class="mq-row">
-              <span class="mq-cell mq-name" data-label="Subject"><%= row.subject_name %></span>
-              <span class="mq-cell mq-num" data-label="Learners"><%= row.students %></span>
-            </div>
-          <% }) %>
-        </div>
-      </section>
-    </div>
-  <% } %>
+  <%# The money block that used to sit here has moved up into Group 3, and the
+      Income Trend chart it opened with was removed (Phase 6). Enrolment by
+      subject went to Group 2, where a headcount belongs. %>
 
 </section>
 
@@ -517,29 +600,8 @@
       });
     }
 
-    var incomeCanvas = document.getElementById('incomeTrendChart');
-    if (incomeCanvas) {
-      new Chart(incomeCanvas.getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: <%- JSON.stringify((a.incomeTrend || []).map((t) => t.label)) %>,
-          datasets: [{
-            label: 'Collected',
-            data: <%- JSON.stringify((a.incomeTrend || []).map((t) => t.total)) %>,
-            backgroundColor: 'rgba(50, 166, 90, 0.75)',
-            borderRadius: 4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: { beginAtZero: true, ticks: { callback: function (v) { return '₱' + v.toLocaleString(); }, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } },
-            x: { grid: { display: false }, ticks: { font: { size: 11 } } }
-          }
-        }
-      });
-    }
+    // A third chart used to be built here and was removed in Phase 6, together
+    // with its data source — see lib/analytics.js, where getIncomeTrend is no
+    // longer called by getAnalyticsDashboard.
   });
 </script>

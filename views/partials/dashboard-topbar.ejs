@@ -9,12 +9,16 @@
         it, so on an already-installed app or an unsupported browser the topbar
         looks exactly as it did before. %>
     <%- include('install-app-button', { variant: '' }) %>
-    <% const canShowBell = ['/admin','/assistant','/student','/tutor'].includes(basePath); %>
+    <%# Phase 7.1: no bell for Admin or Assistant Admin.
+        Their alerts are mostly money — a slip waiting at the counter, a payment
+        just recorded — and a dropdown is the wrong place to act on money. Those
+        now live as a section on the Payment Collection report (7.2), beside the
+        transactions they refer to, where they can be read in context.
+
+        Student and Tutor keep the bell: theirs is a genuine inbox (a schedule
+        decision, a focus handout to open) with no report page to live on. %>
+    <% const canShowBell = ['/student','/tutor'].includes(basePath); %>
     <% if (canShowBell) { %>
-      <%# The bell counts two streams now: the registration/enrolment inbox it
-          always showed, and the system alerts a role is addressed by — a student's
-          cash payment request, or a focus handout waiting for a tutor. Both need
-          acting on, so both belong in the same badge. %>
       <button type="button" class="notification-pill bell-button" data-modal-target="#topbar-notifications-modal">
         <span class="bell">&#128276;</span>
         <span class="count"><%= (inboxNotifications || []).length + (alerts || []).length %></span>

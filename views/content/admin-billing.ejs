@@ -72,8 +72,9 @@
     </div>
 
     <div class="mq-toolbar-actions">
-      <a class="mq-btn" href="<%= basePath %>/income-report"><%- icon('chart') %> Income report</a>
+      <a class="mq-btn" href="<%= basePath %>/income-report"><%- icon('chart') %> Payment Collection</a>
       <a class="mq-btn" href="<%= basePath %>/payments/history"><%- icon('receipt') %> Payment history</a>
+      <a class="mq-btn" href="<%= basePath %>/pos"><%- icon('money') %> POS</a>
       <button type="button" class="mq-btn" data-modal-target="#reenroll-students-modal">Re-enroll</button>
     </div>
   </form>
@@ -239,10 +240,13 @@
 
           <div class="mq-panel" style="margin:0 16px 16px;">
             <div class="mq-panel-head"><h3>Payment history</h3><span class="mq-count"><%= t.paymentCount %> entr<%= t.paymentCount === 1 ? 'y' : 'ies' %></span></div>
-            <div class="mq-table" style="--mq-cols: 48px 150px 110px 120px minmax(140px, 1.4fr) 110px;">
+            <%# Phase 2.2: the reference/OR number is part of the record, so it
+                prints with it. Without it a printed SOA cannot be reconciled
+                against the gateway's own report. %>
+            <div class="mq-table" style="--mq-cols: 48px 150px 110px 120px minmax(120px, 1fr) minmax(140px, 1.4fr) 110px;">
               <div class="mq-head">
                 <span>#</span><span>Date &amp; time</span><span class="mq-num">Amount</span>
-                <span>Method</span><span>Recorded by</span><span class="mq-num">Balance</span>
+                <span>Method</span><span>Reference no.</span><span>Recorded by</span><span class="mq-num">Balance</span>
               </div>
               <% if (!row.entries.length) { %>
                 <div class="mq-empty">No payments recorded yet. Use the <strong>+</strong> button to add the first one.</div>
@@ -258,6 +262,9 @@
                   <span class="mq-cell mq-sub" data-label="Date"><%= formatDateTime(entry.paid_at) %></span>
                   <span class="mq-cell mq-money" data-label="Amount"><%= money(entry.amount) %></span>
                   <span class="mq-cell" data-label="Method"><span class="mq-chip"><%= entry.payment_method || 'Cash' %></span></span>
+                  <span class="mq-cell mq-sub mq-ref" data-label="Reference no.">
+                    <% if (entry.reference_no) { %><code><%= entry.reference_no %></code><% } else { %>—<% } %>
+                  </span>
                   <span class="mq-cell mq-sub" data-label="Recorded by">
                     <%= entry.recorded_by_name
                         || (entry.recorder_first_name ? `${entry.recorder_first_name} ${entry.recorder_last_name || ''}` : 'System') %>

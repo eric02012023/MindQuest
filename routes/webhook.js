@@ -12,7 +12,17 @@ router.post('/paymongo', async (req, res) => {
       const eventType = payload.data.attributes.type;
 
       if (eventType === 'checkout_session.payment.paid') {
-        const checkoutSessionId = payload.data.attributes.data.id;
+        const session = payload.data.attributes.data;
+        const checkoutSessionId = session.id;
+
+        // The reference the student is shown and the office quotes back to the
+        // gateway is the PAYMENT id, not the checkout session id — the session
+        // exists from the moment they click Pay, whereas a payment id only
+        // exists once money actually moved. Take the paid one if the payload
+        // carries it; completeOnlinePayment falls back to the session id.
+        const payments = session?.attributes?.payments || [];
+        const paidPayment = payments.find((p) => p?.attributes?.status === 'paid') || payments[0] || null;
+        const transactionReference = paidPayment?.id || null;
 
         // Find the pending payment using the checkout session id
         const rows = await query(
@@ -22,10 +32,11 @@ router.post('/paymongo', async (req, res) => {
 
         if (rows && rows.length > 0) {
           const paymentId = rows[0].id;
-          
+
           // Call the existing completeOnlinePayment logic to deduct bill
-          await completeOnlinePayment(paymentId);
-          console.log(`[PayMongo Webhook] Payment ${paymentId} completed successfully for session ${checkoutSessionId}.`);
+          await completeOnlinePayment(paymentId, { transactionReference });
+          console.log(`[PayMongo Webhook] Payment ${paymentId} completed successfully for session ${checkoutSessionId}`
+            + `${transactionReference ? ` (transaction ${transactionReference})` : ''}.`);
         } else {
           console.log(`[PayMongo Webhook] No pending payment found for session: ${checkoutSessionId}`);
         }

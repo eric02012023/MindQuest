@@ -920,6 +920,68 @@ a.mq-row {
   line-height: 1.45;
 }
 
+/* The shortfall note under "amount to pay". It is hidden until the amount typed
+   is actually short, so when it does appear it has to read as a correction
+   rather than as more grey advice. */
+.mq-field-hint-error {
+  color: var(--danger, #d54c4c);
+  font-weight: 600;
+}
+
+/* Reference numbers are opaque strings the student may have to read back to the
+   office character by character, so they get a monospace face and are allowed to
+   wrap rather than being clipped by the column. */
+.mq-ref code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  word-break: break-all;
+}
+
+/* -------------------------------------------------------------------------
+   10b. Report group headings (Analytics & Reports, Phase 6)
+
+   The analytics page is a dozen panels deep. Read as one flat stack it is a
+   list of charts with no argument; grouped under headings it reads as sections
+   — how learners are doing, what they are enrolled in, what has been collected,
+   whether the assessments were clean. The rule is one heading per question the
+   reader might actually be asking.
+   ---------------------------------------------------------------------- */
+
+.mq-report-group {
+  margin: var(--mq-6, 28px) 0 var(--mq-3, 12px);
+  padding-bottom: var(--mq-2, 8px);
+  border-bottom: 1px solid var(--mq-border, #e4e7ec);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--mq-3, 12px);
+  flex-wrap: wrap;
+}
+
+/* The first heading sits directly under the filter bar and does not need to be
+   pushed away from it as well. */
+.mq-report-group:first-of-type { margin-top: var(--mq-3, 12px); }
+
+.mq-report-group h2 {
+  margin: 0;
+  font-size: var(--mq-font-lg, 1.05rem);
+  letter-spacing: 0.01em;
+}
+
+.mq-report-group p {
+  margin: 2px 0 0;
+  font-size: var(--mq-font-sm, 0.82rem);
+  color: var(--mq-text-soft, #667085);
+  line-height: 1.45;
+}
+
+.mq-report-group-index {
+  font-size: var(--mq-font-sm, 0.82rem);
+  font-weight: 600;
+  color: var(--mq-text-soft, #667085);
+  white-space: nowrap;
+}
+
 /* -------------------------------------------------------------------------
    11. Charts
    Given an explicit box so a canvas cannot grow without bound on resize.

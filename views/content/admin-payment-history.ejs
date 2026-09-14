@@ -3,13 +3,26 @@
   <div class="panel-card-head"><h2>Payment History</h2></div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Student</th><th>Amount</th><th>Status</th><th>Date & Time</th></tr></thead>
+      <%# Phase 2.2: the gateway's reference number is shown here, not just kept
+          in the row. It is the only handle the office has when a student rings
+          up about an online charge, and it was already being stored — the table
+          simply never displayed it. Method is next to it because a reference
+          only means something once you know which rail it came from. %>
+      <thead>
+        <tr>
+          <th>Student</th><th>Student ID</th><th>Amount</th><th>Method</th>
+          <th>Reference no.</th><th>Status</th><th>Date &amp; Time</th>
+        </tr>
+      </thead>
       <tbody>
-  <% if (!paymentHistory.length) { %><tr><td colspan="4">No payment history yet.</td></tr><% } %>
+  <% if (!paymentHistory.length) { %><tr><td colspan="7">No payment history yet.</td></tr><% } %>
   <% paymentHistory.forEach((item) => { %>
     <tr>
       <td><%= item.first_name %> <%= item.middle_name || '' %> <%= item.last_name %></td>
+      <td><%= item.user_id || '-' %></td>
       <td><%= money(item.amount) %></td>
+      <td><%= item.payment_method || 'Cash' %></td>
+      <td class="mq-ref"><% if (item.provider_reference) { %><code><%= item.provider_reference %></code><% } else { %>—<% } %></td>
       <td><%= item.payment_status || '-' %></td>
       <td><%= formatDateTime(item.paid_at) %></td>
     </tr>

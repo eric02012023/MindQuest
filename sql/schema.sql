@@ -1518,3 +1518,40 @@ BEGIN
   END CATCH
 END;
 
+
+-- ---------------------------------------------------------------------------
+-- Phase 4.2: every subject runs its OWN one-month cycle.
+--
+-- English enrolled on 3 June ends 3 July; Filipino added on 6 June ends 6 July.
+-- The two are unrelated, so the dates live on the enrolment row rather than on
+-- the student or on the billing record — an account-level "period" cannot
+-- express two subjects that started three days apart.
+--
+-- Backfilled from enrolled_at so existing enrolments get the cycle they have
+-- actually been running, not one starting the day this shipped.
+-- ---------------------------------------------------------------------------
+IF COL_LENGTH('dbo.user_subject_assignments', 'start_date') IS NULL
+  ALTER TABLE dbo.user_subject_assignments ADD start_date DATE NULL;
+
+IF COL_LENGTH('dbo.user_subject_assignments', 'end_date') IS NULL
+  ALTER TABLE dbo.user_subject_assignments ADD end_date DATE NULL;
+
+-- The backfill runs through sp_executesql, not as a plain UPDATE.
+--
+-- This whole file is sent as ONE batch (lib/bootstrap.js calls request.batch),
+-- and SQL Server compiles a batch before it runs any of it. A statement naming
+-- start_date would therefore fail to compile on the very first deploy — the run
+-- that adds the column — because at compile time the column does not exist yet.
+-- Deferring the text to sp_executesql moves its compilation to after the ALTER
+-- above has actually executed. The alternative is a GO separator, which this
+-- file cannot use: GO is a client-side batch marker and request.batch would
+-- send it to the server as a syntax error.
+IF COL_LENGTH('dbo.user_subject_assignments', 'start_date') IS NOT NULL
+  EXEC sp_executesql N'
+    UPDATE dbo.user_subject_assignments
+       SET start_date = CAST(COALESCE(enrolled_at, created_at) AS DATE)
+     WHERE start_date IS NULL;
+
+    UPDATE dbo.user_subject_assignments
+       SET end_date = DATEADD(month, 1, start_date)
+     WHERE end_date IS NULL AND start_date IS NOT NULL;';

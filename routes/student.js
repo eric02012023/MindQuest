@@ -70,8 +70,13 @@ const {
   // Merged "Billing Data" (SOA + payment history in one) and the cash Pay flow
   getStudentBillingData,
   STUDENT_PAYMENT_METHODS,
+  studentPaymentMethodsFor,
   PAYMENT_PURPOSES,
   createPaymentRequest,
+  getStudentPaymentRequests,
+  // The Pre-Assessment is gated on the ₱500 down payment (Phase 2.1).
+  getDownPaymentStatus,
+  downPaymentBlockMessage,
   notifyAdminRoles,
   getBranches,
   // Analytics & Reports, scoped to this student at the query level
@@ -88,6 +93,8 @@ const {
 } = require('../lib/data');
 const { determineLevel } = require('../config/levelThresholds');
 const { normalizeArray } = require('../lib/utils');
+// Phase 3: cash is a POS transaction now. The student's side ends at a slip.
+const { buildSlipModel, renderSlipPdf, slipFilename, slipCode, formatSlipDate } = require('../lib/paymentSlip');
 
 const router = express.Router();
 const profileUploader = createUploader('profiles');
@@ -222,6 +229,9 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     const preAssessmentDone = await hasCompletedPreAssessment(req.session.user.id, Number(req.params.subjectId));
     const newModules = await getStudentSubjectModules(req.session.user.id, Number(req.params.subjectId));
     const handoutsReady = (await getSubjectHandoutTexts(Number(req.params.subjectId))).length;
+    // Phase 2.1: the Pre-Assessment needs the ₱500 down payment. The route
+    // enforces it; this is only so the page can say so before they click.
+    const downPayment = await getDownPaymentStatus(req.session.user.id);
 
     // ---- Post-Assessment (Phase 8) ---------------------------------------
     // The student sees how close they are to the end of the cycle, and the
@@ -241,6 +251,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       newModules,
       preAssessmentDone,
       handoutsReady,
+      downPayment,
       completion,
       postAssessmentOpen,
       comparison,
@@ -317,13 +328,19 @@ router.get('/billing', async (req, res, next) => {
       getBranches()
     ]);
 
+    // "Cash Pay (at Main Branch)" — the label names the branch this student may
+    // actually pay at, rather than leaving them to guess which one is meant.
+    const studentBranch = (branches || []).find((b) => Number(b.id) === Number(req.session.user.branch_id));
+    const branchName = studentBranch?.name || '';
+
     const shell = await buildShell(req, {
       pageTitle: 'Billing Data',
       section: 'billing',
       contentView: '../content/student-billing',
       billingData,
       branches,
-      paymentMethods: STUDENT_PAYMENT_METHODS,
+      branchName,
+      paymentMethods: studentPaymentMethodsFor(branchName),
       paymentPurposes: PAYMENT_PURPOSES,
       openPay: req.query.pay === '1'
     });
@@ -334,57 +351,139 @@ router.get('/billing', async (req, res, next) => {
 });
 
 /**
- * Reserve a cash payment.
+ * Everything one payment slip is built from, for whichever student is asking.
  *
- * Creates a Pending PaymentRequest and notifies BOTH admin roles. Nothing is
- * added to the ledger here: the money has not changed hands yet, and a balance
- * that dropped the moment a student clicked a button would be a lie the office
- * would have to unpick later.
+ * Shared by the HTML slip and the PDF so the two cannot show different numbers —
+ * the student shows one of them at the counter and the cashier reads the other
+ * off the POS, and a disagreement between them is an argument at the desk.
  */
-router.post('/billing/pay-request', async (req, res, next) => {
+async function loadSlip(req) {
+  const [student, branches, assignments] = await Promise.all([
+    getUserById(req.session.user.id),
+    getBranches(),
+    getStudentAssignments(req.session.user.id)
+  ]);
+  const branch = (branches || []).find((b) => Number(b.id) === Number(student.branch_id));
+
+  // The most recent slip this student has open. A slip is a payment_requests row
+  // — see lib/paymentSlip.js for why that table rather than a new one.
+  const requests = await getStudentPaymentRequests(req.session.user.id);
+  const request = requests.find((r) => r.status === 'pending') || null;
+
+  const model = await buildSlipModel({
+    student,
+    branchName: branch?.name || '',
+    assignments,
+    request
+  });
+  return { model, request, student };
+}
+
+/**
+ * The payment slip — "this is what I owe" — as a page.
+ *
+ * This REPLACED the old cash-payment form. Cash is taken at the counter on the
+ * POS now, so nothing here moves money: the student's side of a cash payment
+ * ends with a statement they can show, print or save.
+ */
+router.get('/billing/slip', async (req, res, next) => {
+  try {
+    const { model, request } = await loadSlip(req);
+    const shell = await buildShell(req, {
+      pageTitle: 'Payment Slip',
+      section: 'billing',
+      contentView: '../content/student-payment-slip',
+      slip: model,
+      slipRequest: request,
+      paymentPurposes: PAYMENT_PURPOSES,
+      // The slip's own date format, shared with the PDF so the two documents
+      // never word the same date differently.
+      formatSlipDate
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** The same slip as a real file, to keep, print, or send to a parent. */
+router.get('/billing/slip.pdf', async (req, res, next) => {
+  try {
+    const { model } = await loadSlip(req);
+    const pdf = renderSlipPdf(model);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdf.length);
+    // `inline` so a phone opens it in the viewer — the student is going to SHOW
+    // this at a counter, and forcing a download first would be in the way. The
+    // filename still applies when they choose to save it.
+    res.setHeader('Content-Disposition', `inline; filename="${slipFilename(model)}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Issue a slip: record what the student intends to pay, then show it to them.
+ *
+ * Still a PaymentRequest row, and still Pending until the counter records the
+ * money — the difference from the old flow is what the student is shown
+ * afterwards, and that the office completes it from the POS rather than from a
+ * notification.
+ */
+async function issuePaymentSlip(req, res) {
   try {
     const student = await getUserById(req.session.user.id);
-
-    // A student may only file against their own account, and only for a branch
-    // they actually belong to — the branch field is a convenience, not a choice.
+    const branches = await getBranches();
+    const branch = (branches || []).find((b) => Number(b.id) === Number(student.branch_id));
     const branchId = Number(student.branch_id) || Number(req.body.branch_id) || null;
 
     const request = await createPaymentRequest({
       student,
       amount: req.body.amount,
-      paymentMethod: req.body.payment_method || 'cash',
+      paymentMethod: 'cash',
       purpose: req.body.purpose,
-      preferredAt: req.body.preferred_at || null,
       referenceNote: req.body.reference_note || null,
-      branchId
+      branchId,
+      branchName: branch?.name || ''
     });
 
     const studentName = [student.first_name, student.last_name].filter(Boolean).join(' ');
-    const branchName = student.branch_name || 'Unassigned branch';
+    const branchName = branch?.name || 'Unassigned branch';
     await notifyAdminRoles({
-      type: 'payment_request',
-      title: `Cash payment request — ${studentName}`,
-      message: `${studentName} (${student.user_id}) wants to pay ₱${request.amount.toFixed(2)} in cash at ${branchName}`
-        + `${req.body.preferred_at ? ` on ${new Date(req.body.preferred_at).toLocaleString()}` : ''}. Status: Pending.`,
-      linkPath: `/notifications?request=${request.id}`,
+      type: 'payment_slip',
+      title: `Pending payment slip — ${studentName}`,
+      message: `${studentName} (${student.user_id}) generated ${slipCode(request.id)} for ₱${request.amount.toFixed(2)} `
+        + `to pay at ${branchName}. Record it on the POS when they arrive.`,
+      linkPath: `/pos?slip=${request.id}`,
       refType: 'payment_request',
       refId: request.id,
       branchId,
-      severity: 'warning'
-    }).catch((error) => console.error('[payment-request] could not notify staff:', error.message));
+      severity: 'info'
+    }).catch((error) => console.error('[payment-slip] could not notify staff:', error.message));
 
-    setFlash(
-      req,
-      'success',
-      `Payment request submitted for ₱${request.amount.toFixed(2)}. `
-      + 'The office has been notified — pay at the branch and they will confirm it here.'
-    );
-    res.redirect('/student/billing');
+    setFlash(req, 'success', `Payment slip ${slipCode(request.id)} is ready. Show it at ${branchName}.`);
+    return res.redirect('/student/billing/slip');
   } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not submit that payment request.');
-    res.redirect('/student/billing');
+    setFlash(req, 'error', error.message || 'Could not generate that payment slip.');
+    return res.redirect('/student/billing');
   }
-});
+}
+
+router.post('/billing/slip', issuePaymentSlip);
+
+/**
+ * The old "reserve a cash payment" endpoint.
+ *
+ * It is now the slip route under another name. Keeping it as a delegation rather
+ * than deleting it means a stale tab, a bookmarked form or a back-button repost
+ * still does the right thing instead of 404ing — and, more importantly, there is
+ * only ONE piece of code that can open a cash payment. Two endpoints that both
+ * created requests would drift, and a student could end up with a request the
+ * POS screen never lists.
+ */
+router.post('/billing/pay-request', issuePaymentSlip);
 
 // Route handler: GET request
 
@@ -813,6 +912,14 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       return res.redirect('/student/subjects');
     }
 
+    // The down-payment gate. Checked here and again on POST, because hiding the
+    // button on the subject page is not a gate — this URL can simply be typed.
+    const downPayment = await getDownPaymentStatus(req.session.user.id);
+    if (!downPayment.satisfied) {
+      setFlash(req, 'error', downPaymentBlockMessage(downPayment));
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+
     // Already done: send them to their result rather than letting them retake it.
     const done = await hasCompletedPreAssessment(req.session.user.id, subjectId);
     if (done) {
@@ -862,6 +969,15 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
     if (!assignment) {
       setFlash(req, 'error', 'Subject not found in your account.');
       return res.redirect('/student/subjects');
+    }
+
+    // The same gate as the GET. A submission that arrives without a down payment
+    // is refused rather than graded: otherwise the page could be opened before a
+    // refund or a reversal and submitted afterwards.
+    const downPayment = await getDownPaymentStatus(req.session.user.id);
+    if (!downPayment.satisfied) {
+      setFlash(req, 'error', downPaymentBlockMessage(downPayment));
+      return res.redirect(`/student/subjects/${subjectId}`);
     }
 
     const assessmentId = Number(req.body.assessment_id);

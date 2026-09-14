@@ -645,7 +645,9 @@ router.post('/assessments/templates/:templateId/assign', async (req, res, next) 
       return res.redirect('/tutor/assessments');
     }
     const firstStudent = students.find((s) => Number(s.student_id || s.id) === assignedStudentIds[0]);
-    await assignAssessmentTemplateToStudents(req.params.templateId, req.session.user.id, assignedStudentIds, firstStudent?.branch_id || req.session.user.branch_id || null);
+    // The student's own branch first: the assignment row's branch_id is nullable.
+    const assignBranchId = firstStudent?.student_branch_id || firstStudent?.branch_id || req.session.user.branch_id || null;
+    await assignAssessmentTemplateToStudents(req.params.templateId, req.session.user.id, assignedStudentIds, assignBranchId);
     setFlash(req, 'success', 'Admin assessment sent to selected students.');
     res.redirect('/tutor/assessments');
   } catch (error) {

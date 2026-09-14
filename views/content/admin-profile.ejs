@@ -53,10 +53,12 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
           <span class="mq-status mq-status-<%= profileUser.status === 'approved' ? 'approved' : profileUser.status === 'pending' ? 'pending' : 'rejected' %>"><%= profileUser.status || 'unknown' %></span>
         </strong>
       </div>
-      <div class="mq-detail-item">
-        <span><%= isStudent ? 'Tutors assigned' : 'Learners assigned' %></span>
-        <strong><%= assignments.length %></strong>
-      </div>
+      <%# The "Tutors assigned" / "Learners assigned" count used to sit here. It
+          said nothing the assignments panel further down does not say better:
+          that panel names the tutor for each subject and carries the same count
+          in its own header chip. Two places showing the same number is two
+          places to disagree, so this one went. `assignments` is still read by
+          that panel — it is not dead. %>
       <div class="mq-detail-item">
         <span>Subjects</span>
         <strong><%= userSubjects.length %></strong>
@@ -184,10 +186,15 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
       <span class="mq-count"><%= assignments.length %></span>
     </div>
 
-    <div class="mq-table" style="--mq-cols: minmax(180px, 2fr) minmax(180px, 2fr);">
+    <%# Phase 4.2: each subject shows its OWN month. They genuinely differ —
+        English taken out on 3 June ends 3 July while Filipino added on the 6th
+        ends 6 July — so one "enrolment period" for the student would be wrong
+        for every subject but one. %>
+    <div class="mq-table" style="--mq-cols: minmax(160px, 2fr) minmax(160px, 2fr) minmax(190px, 1.6fr);">
       <div class="mq-head">
         <span>Subject</span>
         <span><%= isStudent ? 'Tutor' : 'Learner' %></span>
+        <span>Enrolment period</span>
       </div>
 
       <% if (!assignments.length) { %>
@@ -205,10 +212,121 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
           <span class="mq-cell" data-label="<%= isStudent ? 'Tutor' : 'Learner' %>">
             <%= (isStudent ? item.tutor_name : item.student_name) || '—' %>
           </span>
+          <span class="mq-cell mq-sub" data-label="Enrolment period">
+            <% if (item.start_date || item.end_date) { %>
+              <%= formatDate(item.start_date) %> &ndash; <%= formatDate(item.end_date) %>
+            <% } else { %>—<% } %>
+          </span>
         </div>
       <% }) %>
     </div>
   </section>
+
+  <%# ------------------------------------------------ tutor & schedule (Phase 5)
+      Admin-only, and deliberately ONE control for the whole student rather than
+      one per subject: the centre runs one tutor per learner, so a per-subject
+      picker would offer a combination it cannot timetable. The time slot sits in
+      the same form because it moves with the tutor — a new tutor has a different
+      diary — and because the student is not allowed to change either once set. %>
+  <% if (isStudent) { %>
+    <%
+      const tutors = assignableTutors || [];
+      const slots = timeSlots || [];
+      const usage = tutorSlotUsage || [];
+      // Which slots each tutor already has taken by SOMEONE ELSE. Shown rather
+      // than hidden, so an admin can see why a slot is not on offer.
+      const takenByTutor = {};
+      usage.forEach((row) => {
+        if (Number(row.student_id) === Number(profileUser.id)) return;
+        const key = String(row.tutor_id);
+        (takenByTutor[key] = takenByTutor[key] || []).push(row.time_slot);
+      });
+      const currentTutorId = currentTutor ? String(currentTutor.tutor_id) : '';
+      const currentSlot = currentTutor ? (currentTutor.time_slot || '') : '';
+    %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h3>Tutor &amp; time schedule</h3>
+          <p>Applies to <strong>all <%= assignments.length %></strong> of this student's subjects — one tutor per student.</p>
+        </div>
+        <span class="mq-chip"><%= currentTutor ? currentTutor.tutor_name : 'No tutor assigned' %></span>
+      </div>
+
+      <% if (!assignments.length) { %>
+        <div class="mq-empty">
+          <strong>No active subjects</strong>
+          Enrol this student in a subject first — there is nothing to assign a tutor to.
+        </div>
+      <% } else { %>
+        <form class="mq-form mq-form-rows" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor"
+              data-confirm-message="Assign this tutor and schedule to every subject this student is enrolled in?">
+          <label>Tutor
+            <select name="tutor_id" data-tutor-select>
+              <option value="">— No tutor assigned —</option>
+              <% tutors.forEach((tutor) => { %>
+                <option value="<%= tutor.id %>" <%= currentTutorId === String(tutor.id) ? 'selected' : '' %>
+                        data-taken="<%= (takenByTutor[String(tutor.id)] || []).join('|') %>">
+                  <%= titleCaseName(tutor.first_name) %> <%= titleCaseName(tutor.last_name || '') %><%= tutor.branch_name ? ` — ${tutor.branch_name}` : '' %>
+                </option>
+              <% }) %>
+            </select>
+          </label>
+
+          <label>Time schedule
+            <select name="time_slot" data-slot-select>
+              <option value="">— No schedule set —</option>
+              <% slots.forEach((slot) => { %>
+                <option value="<%= slot %>" <%= currentSlot === slot ? 'selected' : '' %>><%= slot %></option>
+              <% }) %>
+            </select>
+            <small class="mq-field-hint" data-slot-note></small>
+          </label>
+
+          <p class="mq-form-note">
+            Saving writes this tutor to <strong>every</strong> subject this student is enrolled in —
+            they cannot have a different tutor per subject. The student cannot change their tutor
+            or schedule themselves; both are set here.
+          </p>
+
+          <div class="mq-form-foot">
+            <button class="mq-btn mq-btn-primary" type="submit">Save tutor &amp; schedule</button>
+          </div>
+        </form>
+      <% } %>
+    </section>
+
+    <script>
+      // Grey out the slots the chosen tutor already teaches at, and say so. The
+      // server refuses a clash regardless — this only stops the admin finding
+      // out after a round trip.
+      (function () {
+        var tutorSelect = document.querySelector('[data-tutor-select]');
+        var slotSelect = document.querySelector('[data-slot-select]');
+        var note = document.querySelector('[data-slot-note]');
+        if (!tutorSelect || !slotSelect) return;
+
+        function refresh() {
+          var option = tutorSelect.options[tutorSelect.selectedIndex];
+          var taken = (option && option.getAttribute('data-taken') || '').split('|').filter(Boolean);
+          Array.prototype.forEach.call(slotSelect.options, function (slot) {
+            if (!slot.value) return;
+            var clash = taken.indexOf(slot.value) !== -1;
+            slot.disabled = clash;
+            slot.textContent = clash ? slot.value + ' — already taken' : slot.value;
+          });
+          if (slotSelect.selectedOptions[0] && slotSelect.selectedOptions[0].disabled) slotSelect.value = '';
+          if (note) {
+            note.textContent = taken.length
+              ? 'This tutor is already booked at: ' + taken.join(', ')
+              : '';
+          }
+        }
+        tutorSelect.addEventListener('change', refresh);
+        refresh();
+      })();
+    </script>
+  <% } %>
 
   <%# ------------------------------------------------------- password (own) %>
   <% if (isOwnAccount && ['admin','admin_assistant'].includes(currentUser.role)) { %>
