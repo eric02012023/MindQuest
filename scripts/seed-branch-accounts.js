@@ -146,6 +146,13 @@ async function emailExists(email) {
   return Boolean(rows[0]);
 }
 
+// user_id is NOT NULL UNIQUE, but the real code needs the identity the insert
+// has not produced yet, so a placeholder goes in and the UPDATE below replaces
+// it. It has to be unique on its own: deriving it from the address collided,
+// because the longest aliases differ only in digits past NVARCHAR(50).
+const runStamp = Date.now().toString(36);
+let placeholderSequence = 0;
+
 async function insertUser(account, passwordHash) {
   const result = await query(
     `INSERT INTO users (
@@ -155,7 +162,7 @@ async function insertUser(account, passwordHash) {
        parent_facebook, subjects_json, support_json, extra_json, status, is_archived
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 0)`,
     [
-      `TMP-${account.email.slice(0, 40)}`,
+      `TMP-${runStamp}-${placeholderSequence++}`,
       account.role,
       Number(account.branchId),
       passwordHash,
