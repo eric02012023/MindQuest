@@ -30,7 +30,7 @@
  * Service Workers > Unregister.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `mindquest-static-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -112,15 +112,41 @@ self.addEventListener('fetch', (event) => {
  * Page loads. The request object is passed through untouched so it keeps the
  * session cookie a navigation normally carries — the server still decides who
  * is logged in and what they may see.
+ *
+ * A failed fetch here does NOT mean the person is offline. It means this one
+ * request never got an answer, and the host is at least as likely a cause as
+ * their Wi-Fi: the app runs on a free Render instance that spins down after a
+ * quiet period and takes the better part of a minute to wake, and the first
+ * request that arrives while it is waking can fail outright. Blaming the
+ * network for that sent people to reboot a router that was working fine.
+ *
+ * So one failure is retried before giving up — but only while the device still
+ * reports itself online, because a genuinely disconnected phone should reach
+ * the offline page immediately rather than sit on a white screen for seconds.
+ * The request is deliberately never aborted on a timeout: a slow navigation is
+ * usually the very request that is waking the instance, and cancelling it would
+ * stop the thing we are waiting for.
  */
+const NAVIGATION_RETRY_DELAYS_MS = [1200, 3000];
+
 async function networkOnlyWithOfflinePage(request) {
-  try {
-    return await fetch(request);
-  } catch (error) {
-    const cache = await caches.open(STATIC_CACHE);
-    const offlinePage = await cache.match(OFFLINE_URL);
-    return offlinePage || Response.error();
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetch(request);
+    } catch (error) {
+      const canRetry = attempt < NAVIGATION_RETRY_DELAYS_MS.length && self.navigator.onLine !== false;
+      if (!canRetry) break;
+      await delay(NAVIGATION_RETRY_DELAYS_MS[attempt]);
+    }
   }
+
+  const cache = await caches.open(STATIC_CACHE);
+  const offlinePage = await cache.match(OFFLINE_URL);
+  return offlinePage || Response.error();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function networkFirst(request) {

@@ -158,6 +158,39 @@ Both must be `200`. Then open the site in Chrome → DevTools → **Application*
 shows one **activated and running**. An install icon appears in the address bar,
 and the in-page **Install App** button becomes visible.
 
+### When the site shows the offline page and your internet is fine
+
+The offline page appearing does **not** mean the visitor lost their connection.
+The worker shows it whenever a page load fails, and a host that is asleep, down
+or suspended fails in exactly the same way a dead Wi-Fi does. On the free Render
+instance this is the common case, not the rare one: it spins down when idle and
+takes up to a minute to wake, and the request that arrives while it is waking
+can fail outright.
+
+Find out which it is before changing anything — from a terminal, not a browser,
+because the browser is the thing being misled:
+
+```bash
+nslookup mindquesttutorial.com      # must answer with Render's IPs (216.24.57.x)
+curl -s -o /dev/null -w "%{http_code} in %{time_total}s\n" --max-time 90 https://mindquesttutorial.com/
+```
+
+| What you get | What it means |
+|---|---|
+| `200` | The server is up. The problem is the copy of the worker on that one device — unregister it in DevTools → Application → Service Workers. |
+| `000` / timeout, DNS fine | The server is not answering. Render dashboard → the service → check it is not suspended, and read the deploy log. Nothing in this repo can fix it. |
+| DNS fails | The custom domain is the problem, not the app. Render → Settings → Custom Domains. |
+
+`000` with DNS resolving is the one to recognise: **the app is not broken, the
+host is not serving it.** Redeploying the code changes nothing until the service
+is running again.
+
+The page itself no longer guesses. It checks `navigator.onLine` to tell the two
+apart, says which one it is, and then polls the server on a backoff until it
+answers — so a waking instance reloads the page on its own with nobody watching
+it. The worker also retries a failed navigation twice before falling back, which
+absorbs a single cold-start failure without the visitor ever seeing this page.
+
 ### If the worker ever misbehaves
 
 Bump `CACHE_VERSION` in `public/sw.js` and deploy. The worker calls

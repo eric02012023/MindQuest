@@ -46,21 +46,185 @@
       padding: 12px 30px;
     }
     button:hover { filter: brightness(1.06); }
+    button[disabled] { cursor: default; filter: saturate(.35) brightness(1.1); }
     .hint { margin: 20px 0 0; font-size: 13px; color: #7c8a9a; }
+    .spinner {
+      display: none;
+      width: 15px;
+      height: 15px;
+      margin: 0 9px 0 0;
+      vertical-align: -2px;
+      border: 2px solid rgba(6, 76, 2, .18);
+      border-top-color: #19791b;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    .is-checking .spinner { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation-duration: 2.4s; }
+    }
   </style>
 </head>
 <body>
   <main class="card">
     <img src="/assets/icon-192.png" alt="MindQuest Tutorial Center" />
-    <h1>You are offline</h1>
-    <p>MindQuest needs an internet connection to load your lessons, assessments and messages. Check your Wi-Fi or mobile data, then try again.</p>
-    <button type="button" onclick="location.reload()">Try again</button>
-    <p class="hint">The app will reconnect on its own once you are back online.</p>
+    <h1 id="title">Reconnecting…</h1>
+    <p id="message">Checking whether MindQuest can be reached from this device.</p>
+    <button type="button" id="retry">Try again</button>
+    <p class="hint" id="status" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span><span id="statusText">Checking…</span>
+    </p>
   </main>
   <script>
-    // Reload the moment the device reports it is back on the network, so the
-    // person does not have to notice and press the button themselves.
-    window.addEventListener('online', function () { location.reload(); });
+    /*
+     * This page is shown whenever a page load fails — and that is NOT the same
+     * thing as the person being offline. The two causes look identical to the
+     * service worker but need opposite advice:
+     *
+     *   the device has no network   they fix it, and nothing we do helps
+     *   the server did not answer   they can do nothing, and it usually comes
+     *                               back on its own — MindQuest runs on a free
+     *                               Render instance that spins down when idle
+     *                               and takes up to a minute to wake up
+     *
+     * Telling someone to "check your Wi-Fi" in the second case sends them to
+     * reboot a router that was never broken. So the page works out which case
+     * it is, says so honestly, and then keeps checking until the app answers —
+     * the point being that a waking server reloads the page by itself, with
+     * nobody watching it and nobody pressing anything.
+     */
+    (function () {
+      'use strict';
+
+      var title = document.getElementById('title');
+      var message = document.getElementById('message');
+      var statusText = document.getElementById('statusText');
+      var statusLine = document.getElementById('status');
+      var retry = document.getElementById('retry');
+
+      // Backing off keeps a phone left on this page from hammering a server that
+      // is already struggling, while still checking often enough at the start
+      // that a quick blip is over before anyone reads the message.
+      var DELAYS_MS = [3000, 5000, 8000, 13000, 21000, 30000];
+      var attempt = 0;
+      var timer = null;
+      var checking = false;
+
+      function deviceIsOffline() {
+        return navigator.onLine === false;
+      }
+
+      function render() {
+        if (deviceIsOffline()) {
+          title.textContent = 'You are offline';
+          message.textContent =
+            'MindQuest needs an internet connection to load your lessons, assessments and messages. ' +
+            'Check your Wi-Fi or mobile data — the app reconnects on its own once you are back online.';
+        } else {
+          title.textContent = 'MindQuest is not responding';
+          message.textContent =
+            'Your internet connection is working, but the MindQuest server did not answer. ' +
+            'It may be starting back up, which can take about a minute. This page reloads itself the moment it responds.';
+        }
+      }
+
+      function setStatus(text, busy) {
+        statusText.textContent = text;
+        statusLine.classList.toggle('is-checking', Boolean(busy));
+        retry.disabled = Boolean(busy);
+      }
+
+      /*
+       * The probe asks for this very page over the network. It is a static file
+       * with no login behind it, so it is the cheapest honest answer to "is the
+       * server up?" — and because this request is not a navigation and lives
+       * outside the paths the worker caches, it always goes to the real network
+       * rather than being answered from the cache we are currently looking at.
+       */
+      function probe() {
+        if (checking) return;
+        checking = true;
+        setStatus('Checking…', true);
+
+        fetch('/offline.html?probe=' + Date.now(), { method: 'HEAD', cache: 'no-store' })
+          .then(function (response) {
+            if (!response || !response.ok) throw new Error('not ok');
+            // The server is answering again — go back to whatever was being
+            // opened. `replace` keeps this page out of the back button.
+            setStatus('Back online — reloading…', true);
+            location.replace(location.href);
+          })
+          .catch(function () {
+            checking = false;
+            render();
+            scheduleNext();
+          });
+      }
+
+      function scheduleNext() {
+        clearTimeout(timer);
+
+        if (deviceIsOffline()) {
+          // Nothing to poll for: the `online` event below is the reliable signal.
+          setStatus('Waiting for your connection…', false);
+          return;
+        }
+
+        var wait = DELAYS_MS[Math.min(attempt, DELAYS_MS.length - 1)];
+        attempt += 1;
+
+        var remaining = Math.round(wait / 1000);
+        setStatus('Trying again in ' + remaining + 's…', false);
+
+        var countdown = setInterval(function () {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(countdown);
+            return;
+          }
+          setStatus('Trying again in ' + remaining + 's…', false);
+        }, 1000);
+
+        timer = setTimeout(function () {
+          clearInterval(countdown);
+          probe();
+        }, wait);
+      }
+
+      retry.addEventListener('click', function () {
+        clearTimeout(timer);
+        attempt = 0;
+        probe();
+      });
+
+      // A device coming back on the network is worth checking immediately
+      // rather than waiting out whatever backoff we happened to be in.
+      window.addEventListener('online', function () {
+        clearTimeout(timer);
+        attempt = 0;
+        render();
+        probe();
+      });
+
+      window.addEventListener('offline', function () {
+        clearTimeout(timer);
+        render();
+        setStatus('Waiting for your connection…', false);
+      });
+
+      // Coming back to a tab that was left open on this page should feel like
+      // the app noticed, not like it had given up hours ago.
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        clearTimeout(timer);
+        attempt = 0;
+        probe();
+      });
+
+      render();
+      probe();
+    })();
   </script>
 </body>
 </html>
