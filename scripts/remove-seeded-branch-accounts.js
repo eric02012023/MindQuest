@@ -39,11 +39,25 @@ function parseArgs(argv) {
 async function findReferencingColumns() {
   return query(`
     SELECT OBJECT_NAME(fk.parent_object_id) AS table_name,
-           COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS column_name
+           COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS column_name,
+           COLUMNPROPERTY(fkc.parent_object_id, COL_NAME(fkc.parent_object_id, fkc.parent_column_id), 'AllowsNull') AS nullable
       FROM sys.foreign_keys fk
       JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
      WHERE fk.referenced_object_id = OBJECT_ID('dbo.users')
   `);
+}
+
+/**
+ * How to let go of one reference. A NOT NULL column is the row's owner (the
+ * student a bill belongs to) and the row goes with the account. A nullable one
+ * is someone the row merely mentions — the tutor on an enrolment, whoever
+ * recorded a payment — and is cleared instead: deleting on it would take a REAL
+ * student's enrolment with it the moment an admin had given them a seeded tutor.
+ */
+function releaseStatement({ table_name: table, column_name: column, nullable }, idList) {
+  return Number(nullable) === 1
+    ? `UPDATE [${table}] SET [${column}] = NULL WHERE [${column}] IN (${idList})`
+    : `DELETE FROM [${table}] WHERE [${column}] IN (${idList})`;
 }
 
 async function main() {
@@ -92,11 +106,11 @@ async function main() {
   // children are not gone yet. Repeat until a pass clears nothing new.
   for (let pass = 1; pass <= 5 && remaining.length; pass++) {
     const blocked = [];
-    for (const { table_name: table, column_name: column } of remaining) {
+    for (const reference of remaining) {
       try {
-        await query(`DELETE FROM [${table}] WHERE [${column}] IN (${idList})`);
+        await query(releaseStatement(reference, idList));
       } catch (_error) {
-        blocked.push({ table_name: table, column_name: column });
+        blocked.push(reference);
       }
     }
     if (blocked.length === remaining.length) break;
