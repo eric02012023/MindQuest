@@ -1320,7 +1320,8 @@ body {
 
 .result-bar-container {
   position: relative;
-  min-width: 110px;
+  /* 110px pushed the eight-column results table past its card at 1024px. */
+  min-width: 80px;
   height: 22px;
   border-radius: 999px;
   background: var(--surface-muted, #eef4f8);

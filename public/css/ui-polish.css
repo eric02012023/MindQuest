@@ -21,6 +21,103 @@
 }
 
 /* -------------------------------------------------------------------------
+   0. Nothing is wider than the screen
+   Every dashboard page is a stack of cards in a CSS grid (.page-stack) inside
+   .dashboard-content, which scrolls. A grid or flex item defaults to
+   `min-width: auto` — it may not be narrower than its widest content — so one
+   table with `min-width: 680px` widened its card, the card widened the stack,
+   and the WHOLE page slid sideways on a phone: on My Subject the second column
+   of subject cards ran off the right edge showing "READ", "FILIPI", "ARAL".
+   Letting the layout containers shrink puts the sideways scroll back where it
+   belongs — inside .table-wrap / .mq-table, around the wide table only.
+   ---------------------------------------------------------------------- */
+
+.dashboard-content,
+.page-wrapper,
+.page-stack,
+.page-stack > *,
+.mq-page > *,
+.panel-card,
+.toolbar-card,
+.stat-card,
+.list-card,
+.list-card > *,
+.panel-card-head > * {
+  min-width: 0;
+}
+
+.page-stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.table-wrap {
+  max-width: 100%;
+}
+
+/* A long unbroken value — an email, a reference number — wraps rather than
+   running out of its card. Only breaks inside a word when the word alone
+   cannot fit on the line. */
+.dashboard-content {
+  overflow-wrap: break-word;
+}
+
+/* Tables on a phone or tablet.
+   A desktop table on a 390px screen showed its first two or three columns and
+   hid the rest behind a sideways scroll. public/js/main.js labels each cell
+   with its column heading and marks the table .is-stackable; here each row
+   becomes a small record, one labelled value per line — at the same 900px
+   point where the .mq-table lists already do it. Without JavaScript the table
+   simply scrolls, as before. */
+@media (max-width: 900px) {
+  .table-wrap table.is-stackable {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  .table-wrap table.is-stackable thead {
+    display: none;
+  }
+
+  .table-wrap table.is-stackable,
+  .table-wrap table.is-stackable tbody,
+  .table-wrap table.is-stackable tr,
+  .table-wrap table.is-stackable td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-wrap table.is-stackable tr {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border, #d7e2ea);
+  }
+
+  .table-wrap table.is-stackable tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table-wrap table.is-stackable td {
+    padding: 3px 0;
+    border: 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .table-wrap table.is-stackable td[data-label]::before {
+    content: attr(data-label) ": ";
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--text-soft, #5f7084);
+  }
+
+  .table-wrap table.is-stackable td .row-actions {
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+}
+
+/* -------------------------------------------------------------------------
    1. Typography rhythm
    Headings inside cards and modals were inheriting the browser default
    margins, which fought with the card padding.
@@ -596,10 +693,13 @@ fieldset {
   overflow: auto;
 }
 
+/* Headings may wrap onto two lines. Kept on one, an eight-column table's
+   headings alone were wider than its card, so the last column scrolled out of
+   sight on a small laptop. */
 thead th {
   z-index: 2;
   font-weight: 700;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 th,
@@ -614,6 +714,12 @@ tbody tr:last-child td {
 
 td .row-actions {
   justify-content: flex-start;
+}
+
+/* A small button in a cramped column takes a second line rather than pushing
+   the table wider than its card. */
+td .btn-sm {
+  white-space: normal;
 }
 
 .table-note {

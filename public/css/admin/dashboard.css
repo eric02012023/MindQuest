@@ -1059,3 +1059,61 @@ body {
 .admin-dashboard-page .table-wrap table tbody tr:hover {
   background: rgba(16, 183, 205, .05);
 }
+
+/* The dashboard is two columns — the branch picker with its counts, and Recent
+   Submissions — laid out as a flex ROW with no size given to either side. The
+   left card shrank below its own 220px stat cards, which then stuck out past
+   its edge on a laptop; on a phone both columns squeezed to ~170px, the branch
+   picker read "All branc" and the heading broke as "Submission / s".
+   The left column now has a width of its own, and below 900px the two stack. */
+.admin-dashboard-page .page-stack {
+  align-items: flex-start;
+}
+
+.admin-dashboard-page .page-stack > .toolbar-card {
+  flex: 0 0 280px;
+  min-width: 0;
+}
+
+.admin-dashboard-page .page-stack > .panel-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.admin-dashboard-page .toolbar-card .inline-form label,
+.admin-dashboard-page .toolbar-card .inline-form select {
+  width: 100%;
+}
+
+.admin-dashboard-page .toolbar-card .stat-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Five short columns fit the Recent Submissions card as they are; the base
+   sheet's 680px table minimum made it scroll sideways beside the branch card. */
+.admin-dashboard-page .panel-card .table-wrap table {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .admin-dashboard-page .page-stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-dashboard-page .page-stack > .toolbar-card {
+    flex-basis: auto;
+  }
+
+  /* Side by side once the column is the full width of the screen. */
+  .admin-dashboard-page .toolbar-card .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-dashboard-page .stat-card {
+    min-height: 120px;
+    padding: 18px;
+  }
+}

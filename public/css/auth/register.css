@@ -1364,3 +1364,32 @@ body {
   .top-upload-block { justify-content: stretch; }
   .upload-block-top { width: 100%; }
 }
+
+/* The photo / name / birthdate block was three fixed-ratio columns at every
+   width. On a phone that left the photo box about 40px wide ("Add phot here"),
+   cut the date to "dd/mm/yy" and pushed Age off the right edge of the card.
+   It now folds: photo beside the names on a tablet, everything stacked on a
+   phone, with Birthdate and Age sharing one row underneath. */
+@media (max-width: 960px) {
+  .top-upload-block {
+    grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .top-upload-block > .double-field-row {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .top-upload-block {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .upload-block-top .fake-upload-box {
+    max-width: none;
+    min-height: 128px;
+  }
+}

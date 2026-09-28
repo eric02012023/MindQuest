@@ -307,6 +307,38 @@ function showSimpleModal(title, message) {
 })();
 
 // ============================================================================
+// Tables that fit a phone
+//
+// A plain <table> keeps its desktop width on a phone and scrolls sideways, so
+// only the first two or three columns are on screen and the rest — a status, a
+// date, the button to open the record — are simply not seen. On narrow screens
+// the CSS (ui-polish.css, "Tables on a phone") lays each row out as a small
+// record instead; this copies every column heading onto its cells so each value
+// is still labelled once the header row is gone.
+//
+// A table opts out with data-no-stack. Rows whose only cell spans the whole
+// table (an empty-state line) are left unlabelled.
+// ============================================================================
+(function () {
+  document.querySelectorAll('.table-wrap table').forEach((table) => {
+    if (table.hasAttribute('data-no-stack')) return;
+    const headings = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent.trim());
+    if (!headings.length) return;
+    table.querySelectorAll('tbody tr').forEach((row) => {
+      let column = 0;
+      Array.from(row.children).forEach((cell) => {
+        const span = Number(cell.getAttribute('colspan')) || 1;
+        if (span < headings.length && !cell.hasAttribute('data-label') && headings[column]) {
+          cell.setAttribute('data-label', headings[column]);
+        }
+        column += span;
+      });
+    });
+    table.classList.add('is-stackable');
+  });
+})();
+
+// ============================================================================
 // Real-time Assessment Request Notifications (Socket.IO)
 // ============================================================================
 (function () {

@@ -192,8 +192,15 @@
   box-shadow: 0 0 0 3px rgba(22, 168, 200, 0.18);
 }
 
+/* Wide enough for its own hint — "Name, ID, email or contact number" was cut
+   off mid-word at 240px, and Student Bill's "... or SLIP-000042" at 300. */
+.mq-field-search {
+  flex: 1 1 320px;
+}
+
 .mq-field-search input {
-  min-width: 240px;
+  min-width: 320px;
+  width: 100%;
   padding-left: 34px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f7084' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -355,11 +362,16 @@
   color: var(--mq-text-soft);
 }
 
+/* NOTHING IN A ROW IS CUT SHORT.
+   Headers, names, emails and sub-lines used to be one line with an ellipsis, so
+   a long email read "rafaeleulalz+mariannejimenez.bawing40…" and a narrow
+   column lost the end of its own heading. A record list is read for exactly
+   those details, so text now wraps inside its column instead: a row grows a
+   line taller rather than hiding letters. `anywhere` only breaks inside a word
+   (an email, a long code) when that one word cannot fit on a line by itself. */
 .mq-head > span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .mq-row {
@@ -387,8 +399,7 @@ a.mq-row {
 
 .mq-cell {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 /* The identity cell: a strong name over a quiet secondary line. */
@@ -404,17 +415,43 @@ a.mq-row {
   font-weight: 650;
   font-size: var(--mq-font);
   color: var(--mq-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .mq-sub {
   font-size: var(--mq-font-sm);
   color: var(--mq-text-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+/* Two related values sharing one column — a level over its type, a score over
+   its percentage — so a wide list fits without scrolling sideways. */
+.mq-cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.mq-cell-stack .mq-meter {
+  width: 100%;
+  max-width: 110px;
+}
+
+/* The reason a roster entry ended, under its status pill. */
+.mq-roster-reason {
+  display: block;
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+/* A status pill or chip keeps to one line when it fits, and wraps rather than
+   being cut when its column is narrower than the words inside it. */
+.mq-cell .mq-status,
+.mq-cell .mq-chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .mq-num {
@@ -1174,6 +1211,11 @@ a.mq-row {
 
   .mq-field {
     flex: 1 1 140px;
+  }
+
+  /* The search box gets a line of its own, so its hint is not halved. */
+  .mq-field-search {
+    flex-basis: 100%;
   }
 
   .mq-summary-item {

@@ -57,15 +57,16 @@
       <span class="mq-count"><%= rows.length %></span>
     </div>
 
-    <div class="mq-table" style="--mq-min-width: 1238px; --mq-cols: minmax(160px, 2fr) minmax(160px, 2fr) minmax(120px, 1fr) 120px 90px 100px minmax(140px, 1fr) 110px 110px;">
+    <%# Nine columns needed 1,238px and scrolled sideways on every laptop, so the
+        score and the level were off-screen until the reader went looking.
+        Related values now share a column — subject under the assessment, type
+        under the level, the percentage under the score — and the list fits. %>
+    <div class="mq-table" style="--mq-min-width: 840px; --mq-cols: minmax(140px, 1.6fr) minmax(150px, 2fr) 130px 130px 100px 110px;">
       <div class="mq-head">
         <span>Student</span>
         <span>Assessment</span>
-        <span>Subject</span>
-        <span>Level</span>
-        <span>Type</span>
-        <span class="mq-num">Score</span>
-        <span>Percentage</span>
+        <span>Level &amp; type</span>
+        <span>Score</span>
         <span>Submitted</span>
         <span style="text-align:right;">Actions</span>
       </div>
@@ -83,16 +84,16 @@
             <span class="mq-name"><%= titleCaseName(r.first_name) %> <%= titleCaseName(r.last_name || '') %></span>
             <% if (r.student_code) { %><span class="mq-sub"><%= r.student_code %></span><% } %>
           </span>
-          <span class="mq-cell" data-label="Assessment"><%= r.assessment_title %></span>
-          <span class="mq-cell mq-sub" data-label="Subject"><%= r.subject_name %></span>
-          <span class="mq-cell" data-label="Level">
-            <span class="mq-status mq-status-<%= levelStatus(r.level) %>"><%= r.level || '—' %></span>
+          <span class="mq-cell mq-cell-primary" data-label="Assessment">
+            <span><%= r.assessment_title %></span>
+            <span class="mq-sub"><%= r.subject_name %></span>
           </span>
-          <span class="mq-cell" data-label="Type">
+          <span class="mq-cell mq-cell-stack" data-label="Level &amp; type">
+            <span class="mq-status mq-status-<%= levelStatus(r.level) %>"><%= r.level || '—' %></span>
             <span class="mq-chip"><%= purposeLabel(r.purpose || r.assessment_kind) %></span>
           </span>
-          <span class="mq-cell mq-num" data-label="Score"><%= r.score %>/<%= r.total_points %></span>
-          <span class="mq-cell" data-label="Percentage">
+          <span class="mq-cell mq-cell-stack" data-label="Score">
+            <strong><%= r.score %>/<%= r.total_points %></strong>
             <span class="mq-meter <%= meterClass(Number(r.percentage)) %>">
               <i style="width: <%= Math.max(0, Math.min(100, Number(r.percentage))) %>%;"></i>
             </span>
@@ -117,13 +118,11 @@
       <span class="mq-count"><%= sets.length %></span>
     </div>
 
-    <div class="mq-table" style="--mq-min-width: 1116px; --mq-cols: minmax(180px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) 120px 90px minmax(140px, 1fr) 80px 110px;">
+    <div class="mq-table" style="--mq-min-width: 800px; --mq-cols: minmax(170px, 2fr) minmax(120px, 1fr) 130px minmax(120px, 1fr) 60px 100px;">
       <div class="mq-head">
         <span>Title</span>
         <span>Subject</span>
-        <span>Module</span>
-        <span>Level</span>
-        <span>Type</span>
+        <span>Level &amp; type</span>
         <span>Tutor</span>
         <span class="mq-num">Items</span>
         <span>Created</span>
@@ -140,13 +139,11 @@
         <div class="mq-row">
           <span class="mq-cell mq-cell-primary" data-label="Title">
             <span class="mq-name"><%= a.title %></span>
+            <span class="mq-sub"><%= a.module_title || 'No module' %></span>
           </span>
           <span class="mq-cell mq-sub" data-label="Subject"><%= a.subject_name %></span>
-          <span class="mq-cell mq-sub" data-label="Module"><%= a.module_title || '—' %></span>
-          <span class="mq-cell" data-label="Level">
+          <span class="mq-cell mq-cell-stack" data-label="Level &amp; type">
             <span class="mq-status mq-status-<%= levelStatus(a.level) %>"><%= a.level || '—' %></span>
-          </span>
-          <span class="mq-cell" data-label="Type">
             <span class="mq-chip"><%= purposeLabel(a.purpose) %></span>
           </span>
           <span class="mq-cell" data-label="Tutor"><%= titleCaseName(a.first_name) %> <%= titleCaseName(a.last_name || '') %></span>

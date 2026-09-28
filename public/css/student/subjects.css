@@ -803,6 +803,15 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
 }
+/* A card as narrow as its 260px column cannot hold the name, the status and
+   the button on one line; the button used to stick out past the card's edge.
+   They wrap onto a second line instead. */
+.student-subjects-page .subject-list-card {
+  flex-wrap: wrap;
+}
+.student-subjects-page .subject-list-card > * {
+  min-width: 0;
+}
 .student-subjects-page .bubble-row {
   display: flex;
   flex-wrap: wrap;
