@@ -76,8 +76,11 @@
   overflow: hidden;
 }
 
+/* Wraps, so a button beside a long heading drops below it on a phone instead
+   of being squeezed. */
 .mq-panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--mq-3);

@@ -1,0 +1,37 @@
+<%# File: views/partials/hero-art.ejs
+    Purpose: The welcome banner's illustration — an open book with an idea (a
+    lightbulb) rising out of it, for "Unlocking Minds, One Quest At A Time".
+    Drawn in white, with the filament and page lines in the page's own primary
+    colour, so it sits on any role's banner. Animated by css/mq-brand.css:
+    the bulb floats and glows, the sparkles twinkle, A+ and π drift. %>
+<svg viewBox="0 0 260 190" role="presentation" aria-hidden="true" focusable="false">
+  <circle class="mq-art-glow" cx="130" cy="70" r="58" fill="#fff" opacity=".2" />
+
+  <g fill="#fff">
+    <path class="mq-art-twinkle" d="M34 27L36.88 33.12L43 36L36.88 38.88L34 45L31.12 38.88L25 36L31.12 33.12Z" />
+    <path class="mq-art-twinkle" style="animation-delay:-.8s" d="M226 39L228.24 43.76L233 46L228.24 48.24L226 53L223.76 48.24L219 46L223.76 43.76Z" />
+    <path class="mq-art-twinkle" style="animation-delay:-1.6s" d="M24 112L25.92 116.08L30 118L25.92 119.92L24 124L22.08 119.92L18 118L22.08 116.08Z" />
+    <path class="mq-art-twinkle" style="animation-delay:-.4s" d="M236 120L238.56 125.44L244 128L238.56 130.56L236 136L233.44 130.56L228 128L233.44 125.44Z" />
+    <path class="mq-art-twinkle" style="animation-delay:-2s" d="M196 9L197.6 12.4L201 14L197.6 15.6L196 19L194.4 15.6L191 14L194.4 12.4Z" />
+  </g>
+
+  <g class="mq-art-float is-slow" fill="#fff" opacity=".6" font-family="Inter, Arial, sans-serif" font-weight="800">
+    <text x="52" y="92" font-size="22">A+</text>
+    <text x="190" y="100" font-size="24">&#960;</text>
+  </g>
+
+  <g class="mq-art-float">
+    <path d="M130 30c-19 0-32 14-32 31 0 12 7 19 13 25 3 3 5 7 5 12h28c0-5 2-9 5-12 6-6 13-13 13-25 0-17-13-31-32-31z" fill="#fff" />
+    <path d="M121 64l9 11 9-11" fill="none" style="stroke: var(--primary-700, #0f7ea0)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M130 75v22" style="stroke: var(--primary-700, #0f7ea0)" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M118 106h24M121 114h18" stroke="#fff" stroke-width="5" stroke-linecap="round" />
+    <path d="M130 8v10M92 24l7 7M168 24l-7 7M76 60h10M174 60h10" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".75" />
+  </g>
+
+  <g>
+    <path d="M130 150c-18-10-46-12-72-4v32c26-8 54-6 72 4z" fill="#fff" opacity=".95" />
+    <path d="M130 150c18-10 46-12 72-4v32c-26-8-54-6-72 4z" fill="#fff" opacity=".82" />
+    <path d="M72 156c14-4 30-4 46 1M72 165c14-4 30-4 46 1M142 157c16-5 32-5 46-1M142 166c16-5 32-5 46-1"
+          fill="none" style="stroke: var(--primary-500, #16a8c8)" stroke-width="2.2" stroke-linecap="round" opacity=".45" />
+  </g>
+</svg>

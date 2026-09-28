@@ -1,0 +1,686 @@
+/* =============================================================================
+   MindQuest — brand layer: the centre's motifs, and motion
+   -----------------------------------------------------------------------------
+   Loaded LAST by views/partials/head.ejs, on every page.
+
+   Two things, and no new colours:
+
+   1. MindQuest's own imagery — open books, a graduation cap, a lightbulb, a
+      pencil, A+ and π — as a faint pattern behind the dashboard, across the
+      sidebar and in the welcome banners. Every motif is painted in the page's
+      own --primary-* colour (white on the dark gradients) through a CSS mask,
+      so Admin stays teal, Tutor stays green, and there is no second palette.
+
+   2. Motion. Cards rise in one after another, rows slide in, dialogs pop and
+      menus drop. Buttons lift on hover, press down on click and ripple from
+      where they were touched (public/js/mq-motion.js adds the ripple), and the
+      numbers on the summary cards count up. All of it switches off for anyone
+      whose device asks for reduced motion.
+
+   Nothing here changes a width, a column or a breakpoint: every animation ends
+   at `transform: none`, so a finished page lays out exactly as before.
+
+   Clipping is `overflow: clip`, not `hidden` (hidden stays as the fallback for
+   older browsers). `hidden` makes a flex or grid item a scroll container, which
+   lets it shrink below its own text — a button given it for the ripple would
+   squeeze to "Open Paym" in a narrow row. `clip` contains the ripple without
+   changing how small the button may get.
+   ========================================================================== */
+
+:root {
+  --mq-motif: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%27240%27%20viewBox%3D%270%200%20240%20240%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23000%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M20%2040c10-7%2022-7%2030%200v30c-8-7-20-7-30%200zM50%2040c8-7%2020-7%2030%200v30c-10-7-22-7-30%200z%27%2F%3E%3Cpath%20d%3D%27M104%2038l28-12%2028%2012-28%2012zM115%2043v12c9%206%2025%206%2034%200V43M160%2038v14%27%2F%3E%3Ccircle%20cx%3D%27204%27%20cy%3D%2744%27%20r%3D%2712%27%2F%3E%3Cpath%20d%3D%27M199%2060h10M200%2065h8M204%2036v8%27%2F%3E%3Cpath%20d%3D%27M30%20214l6-16%2038-38%2010%2010-38%2038zM68%20162l10%2010%27%2F%3E%3Cpolygon%20points%3D%27132.0%2C186.0%20134.9%2C194.0%20143.4%2C194.3%20136.8%2C199.5%20139.1%2C207.7%20132.0%2C203.0%20124.9%2C207.7%20127.2%2C199.5%20120.6%2C194.3%20129.1%2C194.0%27%2F%3E%3Cpath%20d%3D%27M198%20122h14M205%20115v14M196%20194l14%2014M210%20194l-14%2014%27%2F%3E%3Ccircle%20cx%3D%2792%27%20cy%3D%2796%27%20r%3D%272.4%27%2F%3E%3Ccircle%20cx%3D%27178%27%20cy%3D%2794%27%20r%3D%272.4%27%2F%3E%3Ccircle%20cx%3D%27100%27%20cy%3D%27176%27%20r%3D%272.4%27%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%27%23000%27%20font-family%3D%27Arial%2CHelvetica%2Csans-serif%27%20font-weight%3D%27700%27%3E%3Ctext%20x%3D%2722%27%20y%3D%27134%27%20font-size%3D%2724%27%3EA%2B%3C%2Ftext%3E%3Ctext%20x%3D%27120%27%20y%3D%27130%27%20font-size%3D%2726%27%3E%CF%80%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  --mq-icon-cap: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2064%2064%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23000%27%20stroke-width%3D%273%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M4%2024l28-12%2028%2012-28%2012z%27%2F%3E%3Cpath%20d%3D%27M16%2030v14c8%207%2024%207%2032%200V30%27%2F%3E%3Cpath%20d%3D%27M60%2024v16%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  --mq-icon-book: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2064%2064%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23000%27%20stroke-width%3D%273%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M6%2016c9-6%2019-6%2026%200v34c-7-6-17-6-26%200zM32%2016c7-6%2017-6%2026%200v34c-9-6-19-6-26%200z%27%2F%3E%3Cpath%20d%3D%27M40%208l2%204%204%201-4%201-2%204-2-4-4-1%204-1z%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  --mq-ease-out: cubic-bezier(.2, .7, .2, 1);
+  --mq-ease-spring: cubic-bezier(.2, .9, .3, 1.25);
+  --mq-brand-a: var(--primary-500, #16a8c8);
+  --mq-brand-b: var(--primary-700, #0f7ea0);
+}
+
+/* -------------------------------------------------------------------------
+   1. Motion vocabulary
+   Every entrance ends at `transform: none` — never translate(0) — so once a
+   card has arrived it is not a containing block for anything fixed inside it
+   and lays out exactly as it did before this file existed.
+   ---------------------------------------------------------------------- */
+
+@keyframes mqRise    { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes mqSlideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+@keyframes mqFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mqPop     { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes mqDrop    { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes mqGrowX   { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes mqGrowY   { from { transform: scaleY(0); } to { transform: none; } }
+@keyframes mqRipple  { from { transform: scale(0); opacity: .32; } to { transform: scale(1); opacity: 0; } }
+@keyframes mqFloat   { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes mqTwinkle { 0%, 100% { opacity: .25; transform: scale(.75); } 50% { opacity: 1; transform: scale(1.1); } }
+@keyframes mqDot     { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.65); } }
+@keyframes mqGlow    { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); } 50% { box-shadow: 0 0 0 7px rgba(255, 255, 255, .1); } }
+@keyframes mqBulb    { 0%, 100% { opacity: .16; } 50% { opacity: .38; } }
+@keyframes mqShine   { from { transform: translateX(-130%) skewX(-18deg); } to { transform: translateX(330%) skewX(-18deg); } }
+@keyframes mqDrift   { from { transform: translate(0, 0); } to { transform: translate(240px, 240px); } }
+@keyframes mqPulseRing {
+  0%   { box-shadow: 0 0 0 0 rgba(213, 76, 76, .45); }
+  70%  { box-shadow: 0 0 0 7px rgba(213, 76, 76, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(213, 76, 76, 0); }
+}
+
+/* -------------------------------------------------------------------------
+   2. The centre's motifs behind the dashboard
+   Books, a cap, a lightbulb, a pencil, A+ and π, very faint, in the page's
+   own primary colour. Drawn through a mask so the colour is a variable, not
+   baked into the image. Static: a moving background behind text is a
+   distraction, and it would cost a repaint of the whole screen every frame.
+   ---------------------------------------------------------------------- */
+
+.dashboard-main {
+  position: relative;
+  isolation: isolate;
+}
+
+.dashboard-main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--mq-brand-a);
+  -webkit-mask-image: var(--mq-motif);
+          mask-image: var(--mq-motif);
+  -webkit-mask-size: 240px 240px;
+          mask-size: 240px 240px;
+  -webkit-mask-repeat: repeat;
+          mask-repeat: repeat;
+  opacity: .055;
+}
+
+/* The same motif in white across the dark sidebar. */
+.sidebar {
+  isolation: isolate;
+}
+
+.sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #fff;
+  -webkit-mask-image: var(--mq-motif);
+          mask-image: var(--mq-motif);
+  -webkit-mask-size: 200px 200px;
+          mask-size: 200px 200px;
+  opacity: .05;
+}
+
+/* The logo breathes. */
+.sidebar-brand img {
+  animation: mqGlow 4.5s ease-in-out infinite;
+}
+
+/* -------------------------------------------------------------------------
+   3. Sidebar navigation
+   ---------------------------------------------------------------------- */
+
+.sidebar-nav a {
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+  transition: transform .2s var(--mq-ease-out), background-color .2s ease, color .2s ease;
+}
+
+.sidebar-nav a:hover {
+  transform: translateX(4px);
+}
+
+.sidebar-nav a:active {
+  transform: translateX(4px) scale(.98);
+}
+
+/* The page you are on is marked with a bar that grows in. */
+.sidebar-nav a.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 24%;
+  bottom: 24%;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: currentColor;
+  transform-origin: center;
+  animation: mqGrowY .4s var(--mq-ease-out) both;
+}
+
+/* A count waiting on you pulses, so it is noticed without being shouted. */
+.sidebar-badge {
+  animation: mqPop .45s var(--mq-ease-spring) .2s both, mqPulseRing 2.4s ease-out 1.2s infinite;
+}
+
+/* -------------------------------------------------------------------------
+   4. The page title gets an accent that draws itself in
+   ---------------------------------------------------------------------- */
+
+.dashboard-topbar-title h1 {
+  position: relative;
+  padding-bottom: 8px;
+}
+
+.dashboard-topbar-title h1::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 46px;
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--mq-brand-a), var(--mq-brand-b));
+  transform-origin: left;
+  animation: mqGrowX .6s var(--mq-ease-out) .15s both;
+}
+
+/* -------------------------------------------------------------------------
+   5. Cards arrive one after another
+   The children of a page rise in with a short stagger. Dialogs are left out:
+   they are hidden until opened and have an entrance of their own.
+   ---------------------------------------------------------------------- */
+
+.page-stack > :not(.global-modal):not(script),
+.mq-page > :not(.global-modal):not(script),
+.page-wrapper > :not(.page-stack):not(.mq-page):not(.global-modal):not(script) {
+  animation: mqRise .5s var(--mq-ease-out) both;
+}
+
+.page-stack > :nth-child(2), .mq-page > :nth-child(2), .page-wrapper > :nth-child(2) { animation-delay: .06s; }
+.page-stack > :nth-child(3), .mq-page > :nth-child(3), .page-wrapper > :nth-child(3) { animation-delay: .12s; }
+.page-stack > :nth-child(4), .mq-page > :nth-child(4) { animation-delay: .18s; }
+.page-stack > :nth-child(5), .mq-page > :nth-child(5) { animation-delay: .24s; }
+.page-stack > :nth-child(6), .mq-page > :nth-child(6) { animation-delay: .3s; }
+.page-stack > :nth-child(n+7), .mq-page > :nth-child(n+7) { animation-delay: .36s; }
+
+/* A short accent at the top of every panel, which stretches on hover. */
+.mq-panel,
+.panel-card {
+  position: relative;
+}
+
+.mq-panel::before,
+.panel-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 22px;
+  z-index: 1;
+  width: 46px;
+  height: 3px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(90deg, var(--mq-brand-a), var(--mq-brand-b));
+  pointer-events: none;
+  transition: width .35s var(--mq-ease-out);
+}
+
+.mq-panel:hover::before,
+.panel-card:hover::before {
+  width: 92px;
+}
+
+/* Cards that are things you can pick up respond to the pointer. */
+.stat-card,
+.list-card,
+.subject-list-card,
+.mini-bubble,
+.mq-summary-item,
+.mq-kpi {
+  transition: transform .22s var(--mq-ease-out), box-shadow .22s ease, background-color .2s ease;
+}
+
+.stat-card:hover,
+.list-card:hover,
+a.subject-list-card:hover,
+.mini-bubble:hover,
+.mq-kpi:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md, 0 18px 48px rgba(16, 32, 51, .12));
+}
+
+.mq-summary-item:hover {
+  background-color: var(--mq-surface-soft, #f7fafc);
+}
+
+/* The dark count cards carry a watermark — a cap, then a book — that floats. */
+.stat-card.gradient {
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+}
+
+.stat-card.gradient::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: -1;
+  width: 96px;
+  height: 96px;
+  background-color: #fff;
+  -webkit-mask: var(--mq-icon-cap) center / contain no-repeat;
+          mask: var(--mq-icon-cap) center / contain no-repeat;
+  opacity: .13;
+  pointer-events: none;
+  animation: mqFloat 5s ease-in-out infinite;
+}
+
+.stat-card.gradient:nth-child(even)::after {
+  -webkit-mask-image: var(--mq-icon-book);
+          mask-image: var(--mq-icon-book);
+  animation-delay: -2.5s;
+}
+
+/* -------------------------------------------------------------------------
+   6. Rows slide in, and show which one the pointer is on
+   ---------------------------------------------------------------------- */
+
+.mq-table > .mq-row {
+  animation: mqSlideIn .4s var(--mq-ease-out) both;
+  transition: background-color .15s ease, box-shadow .2s ease;
+}
+
+.mq-table > .mq-row:nth-child(3)  { animation-delay: .03s; }
+.mq-table > .mq-row:nth-child(4)  { animation-delay: .06s; }
+.mq-table > .mq-row:nth-child(5)  { animation-delay: .09s; }
+.mq-table > .mq-row:nth-child(6)  { animation-delay: .12s; }
+.mq-table > .mq-row:nth-child(7)  { animation-delay: .15s; }
+.mq-table > .mq-row:nth-child(8)  { animation-delay: .18s; }
+.mq-table > .mq-row:nth-child(9)  { animation-delay: .21s; }
+.mq-table > .mq-row:nth-child(10) { animation-delay: .24s; }
+.mq-table > .mq-row:nth-child(n+11) { animation-delay: .27s; }
+
+.mq-row:hover {
+  box-shadow: inset 3px 0 0 var(--mq-brand-a);
+}
+
+.table-wrap tbody tr {
+  transition: background-color .15s ease, box-shadow .2s ease;
+}
+
+.table-wrap tbody tr:hover {
+  background-color: color-mix(in srgb, var(--mq-brand-a) 6%, transparent);
+  box-shadow: inset 3px 0 0 var(--mq-brand-a);
+}
+
+/* A status still waiting on someone has a slow pulse on its dot. */
+.mq-status-pending::before,
+.mq-status-partial::before {
+  animation: mqDot 1.6s ease-in-out infinite;
+}
+
+/* -------------------------------------------------------------------------
+   7. Buttons: lift on hover, press on click, ripple from the finger
+   The ripple itself is added by public/js/mq-motion.js; this gives it a box
+   to live in. isolation keeps it behind the label.
+   ---------------------------------------------------------------------- */
+
+.btn,
+.mq-btn,
+.menu-toggle,
+.sidebar-mobile-toggle,
+.login-submit-btn,
+.next-gradient-btn,
+.registration-submit-btn,
+.create-account-submit-btn,
+.mq-gradient-btn,
+.mq-login-btn,
+.mq-pager-links a {
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+  transition: transform .18s var(--mq-ease-out), box-shadow .2s ease, background-color .2s ease,
+              border-color .2s ease, color .2s ease, filter .2s ease;
+}
+
+:is(.btn, .mq-btn, .menu-toggle, .sidebar-mobile-toggle, .login-submit-btn, .next-gradient-btn,
+    .registration-submit-btn, .create-account-submit-btn, .mq-gradient-btn, .mq-login-btn,
+    .mq-pager-links a):not(:disabled):not([disabled]):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(16, 32, 51, .14);
+}
+
+:is(.btn, .mq-btn, .menu-toggle, .sidebar-mobile-toggle, .login-submit-btn, .next-gradient-btn,
+    .registration-submit-btn, .create-account-submit-btn, .mq-gradient-btn, .mq-login-btn,
+    .mq-pager-links a):not(:disabled):not([disabled]):active {
+  transform: translateY(0) scale(.96);
+  box-shadow: 0 3px 8px rgba(16, 32, 51, .12);
+  transition-duration: .07s;
+}
+
+/* The main action of a view catches the light when pointed at. */
+.btn-primary::after,
+.mq-btn-primary::after,
+.login-submit-btn::after,
+.next-gradient-btn::after,
+.registration-submit-btn::after,
+.create-account-submit-btn::after,
+.mq-gradient-btn::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent);
+  transform: translateX(-130%) skewX(-18deg);
+  pointer-events: none;
+}
+
+.btn-primary:not(:disabled):hover::after,
+.mq-btn-primary:not(:disabled):hover::after,
+.login-submit-btn:hover::after,
+.next-gradient-btn:hover::after,
+.registration-submit-btn:hover::after,
+.create-account-submit-btn:hover::after,
+.mq-gradient-btn:hover::after {
+  animation: mqShine .8s ease-out;
+}
+
+/* Row icons: the glyph grows a little under the pointer, the button dips
+   when pressed. */
+.mq-icon {
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+  transition: transform .18s var(--mq-ease-out), background .12s, color .12s, border-color .12s;
+}
+
+.mq-icon svg {
+  transition: transform .22s var(--mq-ease-spring);
+}
+
+.mq-icon:not([disabled]):hover svg {
+  transform: scale(1.18);
+}
+
+.mq-icon:not([disabled]):active {
+  transform: scale(.88);
+}
+
+.mq-ripple {
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  background: currentColor;
+  pointer-events: none;
+  transform: scale(0);
+  animation: mqRipple .6s ease-out forwards;
+}
+
+/* -------------------------------------------------------------------------
+   8. Dialogs pop, menus drop
+   ---------------------------------------------------------------------- */
+
+.global-modal.is-open {
+  animation: mqFadeIn .2s ease-out both;
+}
+
+.global-modal.is-open > .global-modal-card {
+  animation: mqPop .34s var(--mq-ease-spring) both;
+}
+
+.menu-panel.is-open,
+.multi-select.is-open .multi-select-menu {
+  transform-origin: top right;
+  animation: mqDrop .2s var(--mq-ease-out) both;
+}
+
+/* -------------------------------------------------------------------------
+   9. Welcome banners
+   The tutor and student dashboards already open with one; admin and
+   assistant get theirs in views/content/admin-dashboard.ejs. All of them get
+   the motif drifting slowly behind the text (moved with transform, so it is
+   cheap), a soft light, and the avatar floating.
+   ---------------------------------------------------------------------- */
+
+.hero-dashboard-card.gradient,
+.mq-hero {
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+}
+
+.hero-dashboard-card.gradient::before,
+.mq-hero::before {
+  content: "";
+  position: absolute;
+  top: -240px;
+  left: -240px;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #fff;
+  -webkit-mask-image: var(--mq-motif);
+          mask-image: var(--mq-motif);
+  -webkit-mask-size: 240px 240px;
+          mask-size: 240px 240px;
+  opacity: .08;
+  animation: mqDrift 70s linear infinite;
+}
+
+.hero-dashboard-card.gradient::after,
+.mq-hero::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  right: 0;
+  z-index: -1;
+  /* Sized from the banner's height, so it ends exactly at the bottom edge. */
+  height: 140%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .18), transparent 62%);
+  pointer-events: none;
+  animation: mqFloat 8s ease-in-out infinite;
+}
+
+.hero-dashboard-card .profile-avatar.large {
+  animation: mqFloat 6s ease-in-out infinite;
+}
+
+.mq-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 24px;
+  padding: 26px 30px;
+  border-radius: 24px;
+  color: #fff;
+  background: var(--gradient-dark, linear-gradient(145deg, #0d1b2a, #14354a 48%, #1db5bd 100%));
+  box-shadow: var(--shadow-md, 0 18px 48px rgba(16, 32, 51, .12));
+}
+
+.mq-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .76);
+}
+
+.mq-hero-kicker::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, .18);
+  animation: mqDot 2s ease-in-out infinite;
+}
+
+.mq-hero h2 {
+  margin: 8px 0 6px;
+  font-size: clamp(22px, 2.4vw, 30px);
+  line-height: 1.2;
+  color: #fff;
+}
+
+.mq-hero p {
+  margin: 0;
+  max-width: 560px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, .84);
+}
+
+.mq-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.mq-btn.mq-btn-light {
+  background: rgba(255, 255, 255, .14);
+  border-color: rgba(255, 255, 255, .3);
+  color: #fff;
+}
+
+.mq-btn.mq-btn-light:hover {
+  background: rgba(255, 255, 255, .24);
+  border-color: rgba(255, 255, 255, .55);
+  color: #fff;
+}
+
+.mq-hero-art {
+  width: 250px;
+  max-width: 32vw;
+}
+
+.mq-hero-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.mq-art-float {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mqFloat 5s ease-in-out infinite;
+}
+
+.mq-art-float.is-slow {
+  animation-duration: 7s;
+  animation-delay: -2s;
+}
+
+.mq-art-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mqTwinkle 2.6s ease-in-out infinite;
+}
+
+.mq-art-glow {
+  animation: mqBulb 3.2s ease-in-out infinite;
+}
+
+@media (max-width: 720px) {
+  .mq-hero {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 22px 20px;
+  }
+
+  .mq-hero-art {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   10. Empty lists get a small book instead of a blank box
+   ---------------------------------------------------------------------- */
+
+.mq-empty::before {
+  content: "";
+  display: block;
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 10px;
+  background-color: var(--mq-brand-a);
+  -webkit-mask: var(--mq-icon-book) center / contain no-repeat;
+          mask: var(--mq-icon-book) center / contain no-repeat;
+  opacity: .55;
+  animation: mqFloat 4s ease-in-out infinite;
+}
+
+/* -------------------------------------------------------------------------
+   11. Between pages: the loading screen shows the MindQuest logo
+   ---------------------------------------------------------------------- */
+
+.mqtc-loading-content::before {
+  content: "";
+  display: block;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #fff url("/assets/logo.jpeg") center / cover no-repeat;
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, .16), 0 18px 40px rgba(0, 0, 0, .25);
+  animation: mqFloat 2.4s ease-in-out infinite;
+}
+
+/* -------------------------------------------------------------------------
+   12. Sign-in and registration cards arrive the same way
+   ---------------------------------------------------------------------- */
+
+.login-shell,
+.registration-design-card,
+.create-account-card-design,
+.done-card-design,
+.auth-card {
+  animation: mqPop .55s var(--mq-ease-out) both;
+}
+
+/* -------------------------------------------------------------------------
+   13. Keyboard focus is always visible, in the page's own colour
+   Zero specificity, so every field that already styles its own focus keeps it.
+   ---------------------------------------------------------------------- */
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--mq-brand-a) 45%, transparent);
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------------------
+   14. Anyone whose system asks for less motion gets none of the above
+   Everything lands in its finished state at once; nothing floats or pulses.
+   ---------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .dashboard-main::before,
+  .sidebar::after,
+  .mq-hero::before,
+  .mq-hero::after,
+  .hero-dashboard-card.gradient::before,
+  .hero-dashboard-card.gradient::after,
+  .mq-empty::before {
+    display: none !important;
+  }
+}

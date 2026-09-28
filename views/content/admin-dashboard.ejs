@@ -1,4 +1,31 @@
 <%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-dashboard.ejs | Purpose: UI template/view used by the system. %>
+<%
+  // The server runs in UTC; the centre is in Manila (UTC+8).
+  const manilaNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const manilaHour = manilaNow.getUTCHours();
+  const greeting = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
+  const todayLabel = manilaNow.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const heroBranch = (branches || []).find((branch) => Number(branch.id) === Number(effectiveBranchId));
+  const waitingCount = (typeof inboxNotifications === 'undefined' ? [] : inboxNotifications).length;
+%>
+<%# The admin and assistant dashboards now open like the tutor and student ones
+    do: a welcome banner with the centre's motto, and the three places an admin
+    goes next. It sits above the page-stack because that row is laid out as
+    two columns of its own. %>
+<article class="mq-hero">
+  <div class="mq-hero-text">
+    <span class="mq-hero-kicker"><%= greeting %> · <%= todayLabel %></span>
+    <h2>Welcome back, <%= titleCaseName(currentUser.first_name) %>!</h2>
+    <p>Unlocking minds, one quest at a time. Here is <%= heroBranch ? titleCaseName(heroBranch.name) : 'every branch' %> at a glance.</p>
+    <div class="mq-hero-actions">
+      <a class="mq-btn mq-btn-light" href="<%= basePath %>/notifications#inbox"><%- icon('bell') %> <%= waitingCount %> waiting on you</a>
+      <a class="mq-btn mq-btn-light" href="<%= basePath %>/users"><%- icon('user') %> User management</a>
+      <a class="mq-btn mq-btn-light" href="<%= basePath %>/billing"><%- icon('money') %> Student bill</a>
+    </div>
+  </div>
+  <div class="mq-hero-art"><%- include('../partials/hero-art') %></div>
+</article>
+
 <section class="page-stack">
   <div class="toolbar-card">
     <form class="inline-form" method="get" action="<%= basePath %>">
