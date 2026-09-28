@@ -516,8 +516,18 @@ async function main() {
     return;
   }
 
-  // ------------------------------------------------------------ write: tutors
+  // ------------------------------------------------------------ write: year levels
+  // First, before any tutor is saved: saving a tutor re-checks every student
+  // already assigned to them, and a student still carrying the first batch's
+  // blank year level fails that check and loses their tutor.
   const problems = [];
+  let repaired = 0;
+  await inBatches(studentPlan.filter((p) => p.repairLevel), 4, async (plan) => {
+    await query('UPDATE users SET year_level = ?, grade_level = ? WHERE id = ?', [plan.level, plan.grade, plan.student.id]);
+    repaired++;
+  });
+
+  // ------------------------------------------------------------ write: tutors
   let tutorSaves = 0;
   await inBatches(tutorPlan.filter((p) => p.needsSave), 3, async (plan) => {
     try {
@@ -537,7 +547,6 @@ async function main() {
 
   // ------------------------------------------------------------ write: students
   let enrolled = 0;
-  let repaired = 0;
   let tutored = 0;
   let billedNow = 0;
   let done = 0;
@@ -555,11 +564,7 @@ async function main() {
         enrolled++;
       } else {
         // Already enrolled: their subjects — and any request they have pending —
-        // are theirs, so only the missing year level is written, directly.
-        if (plan.repairLevel) {
-          await query('UPDATE users SET year_level = ?, grade_level = ? WHERE id = ?', [plan.level, plan.grade, student.id]);
-          repaired++;
-        }
+        // are theirs; the year level was repaired above.
         if (plan.needsBilling) {
           // Enrolled before anything opened a billing account for them (the
           // gap fixed in recalculateStudentBilling); open it, priced from what
@@ -582,7 +587,7 @@ async function main() {
   });
 
   console.log(`Students enrolled: ${enrolled}`);
-  console.log(`Year level repaired on already-enrolled students: ${repaired}`);
+  console.log(`Year levels repaired: ${repaired}`);
   console.log(`Tutors assigned  : ${tutored}`);
   console.log(`Billing opened for already-enrolled students: ${billedNow}`);
   if (problems.length) {
