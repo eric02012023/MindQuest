@@ -42,6 +42,7 @@ async function clearUsers() {
       'assessments',
       'subject_enrollment_requests',
       'tutor_schedule_applications',
+      'assistant_rosters',
       'tutor_subjects',
       'tutor_year_levels',
       'otps',

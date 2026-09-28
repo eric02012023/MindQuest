@@ -35,7 +35,8 @@ const db = {
   subjectCount: 0,   // active user_subject_assignments
   nextEndDate: null, // MIN(end_date) across them
   ledgerPaid: 0,
-  updates: []        // every UPDATE billing, as its parameter list
+  updates: [],       // every UPDATE billing, as its parameter list
+  inserts: []        // every INSERT INTO billing, as its parameter list
 };
 
 const dbPath = require.resolve('../config/db');
@@ -50,6 +51,11 @@ require.cache[dbPath] = {
     withTransaction: async (work) => work({ query: async () => [[]] }),
     query: async (text, params = []) => {
       const sql = String(text).replace(/\s+/g, ' ').trim();
+      if (/^INSERT INTO billing/i.test(sql)) {
+        db.inserts.push(params);
+        db.bill = { id: 99, full_bill: params[1], partial_payment: 0 };
+        return { insertId: 99, rowsAffected: [1] };
+      }
       if (/^UPDATE billing/i.test(sql)) { db.updates.push(params); return []; }
       if (/FROM billing/i.test(sql)) return db.bill ? [db.bill] : [];
       if (/COUNT\(\*\) AS subject_count/i.test(sql)) {
@@ -111,6 +117,28 @@ async function reprice({ subjects, fullBill = 1800, partialPayment = 0, ledgerPa
   const none = await reprice({ subjects: 0, fullBill: 1800 });
   ok('nothing is written', none.wrote === null);
   ok('the bill is not zeroed', none.result === null);
+
+  console.log('\n== an enrolled student with no account gets one ==');
+  // Enrolled from the profile (or created by staff) without ever passing
+  // through registration acceptance: there was no billing row, so the student
+  // was enrolled and never billed.
+  db.bill = null;
+  db.subjectCount = 2;
+  db.ledgerPaid = 0;
+  db.nextEndDate = '2026-10-28';
+  db.updates = [];
+  db.inserts = [];
+  const opened = await recalculateStudentBilling(null, 42, 1);
+  ok('a billing row is opened', db.inserts.length === 1, `${db.inserts.length} insert(s)`);
+  ok('it is recorded as posted by whoever enrolled them', db.inserts[0] && db.inserts[0][4] === 1);
+  ok('and priced from the enrolments, like any other account',
+    opened && opened.fullBill === 3600, opened ? `${opened.fullBill}` : 'nothing returned');
+
+  db.bill = null;
+  db.subjectCount = 0;
+  db.inserts = [];
+  const nothing = await recalculateStudentBilling(null, 42, 1);
+  ok('no subjects -> no account is opened', db.inserts.length === 0 && nothing === null);
 
   console.log('\n== status follows the money ==');
   ok('nothing paid -> unpaid', (await reprice({ subjects: 1 })).result.status === 'unpaid');

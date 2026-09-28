@@ -10,16 +10,31 @@
     it is still pending), so two people pressing Complete at the same moment
     produce one payment, and the second is told someone got there first.
 
-    Locals: requests, alerts, summary, search, selectedStatus, openRequestId %>
+    The inbox — registrations and students asking to add a subject — sits at the
+    top. It used to live only in the topbar bell, and when the bell was retired
+    for Admin and Assistant Admin the list went with it: the sidebar badge still
+    counted those requests, but nothing showed them or let anyone accept them.
+
+    Locals: requests, alerts, summary, search, selectedStatus, openRequestId,
+            inboxItems (the inbox after the search box) %>
 <%
   const currentQuery = typeof query === 'undefined' ? {} : query;
   const nameOf = (row) => `${titleCaseName(row.first_name)} ${titleCaseName(row.middle_name || '')} ${titleCaseName(row.last_name)}`.replace(/\s+/g, ' ').trim();
+  const inbox = typeof inboxItems === 'undefined' ? [] : inboxItems;
+  const isSubjectRequest = (item) => item.notification_type === 'subject_enrollment_request';
+  const inboxModalId = (item) => `${isSubjectRequest(item) ? 'subject-request' : 'registration'}-${item.id}`;
+  const inboxLabel = (item) => (isSubjectRequest(item)
+    ? 'Subject request'
+    : item.submission_type === 'tutor' ? 'Tutor application' : 'Learner registration');
 %>
 <section class="mq-page">
 
   <div class="mq-summary">
     <div class="mq-summary-item is-negative">
-      <span>Pending requests</span><strong><%= summary.pending %></strong>
+      <span>Waiting on you</span><strong><%= summary.waiting || 0 %></strong>
+    </div>
+    <div class="mq-summary-item is-negative">
+      <span>Pending slips</span><strong><%= summary.pending %></strong>
     </div>
     <div class="mq-summary-item is-positive">
       <span>Completed</span><strong><%= summary.completed %></strong>
@@ -33,7 +48,7 @@
     <div class="mq-filters">
       <label class="mq-field mq-field-search">
         <span>Search</span>
-        <input type="search" name="search" value="<%= search || '' %>" placeholder="Student, ID, branch or message" />
+        <input type="search" name="search" value="<%= search || '' %>" placeholder="Student, ID, subject, branch or message" />
       </label>
       <label class="mq-field">
         <span>Status</span>
@@ -48,9 +63,73 @@
     </div>
     <div class="mq-toolbar-actions">
       <a class="mq-btn" href="<%= basePath %>/billing"><%- icon('money') %> Student billing</a>
-      <a class="mq-btn" href="<%= basePath %>/notifications/history">Registration inbox</a>
+      <a class="mq-btn" href="<%= basePath %>/notifications/history">Registration history</a>
     </div>
   </form>
+
+  <%# ------------------------------------------ registrations & subject requests %>
+  <section class="mq-panel" id="inbox">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Registrations &amp; subject requests</h2>
+        <p>New learners and tutors waiting to be accepted, and students asking to add a subject.
+           Either Admin or Assistant Admin can decide — whoever gets to it first.</p>
+      </div>
+      <span class="mq-count"><%= inbox.length %> waiting</span>
+    </div>
+
+    <div class="mq-table" style="--mq-min-width: 900px; --mq-cols: 130px minmax(150px, 2fr) minmax(140px, 1.6fr) minmax(95px, 1fr) 125px 180px;">
+      <div class="mq-head">
+        <span>Type</span>
+        <span>Who</span>
+        <span>Request</span>
+        <span>Branch</span>
+        <span>Submitted</span>
+        <span style="text-align:right;">Actions</span>
+      </div>
+
+      <% if (!inbox.length) { %>
+        <div class="mq-empty">
+          <strong><%= search ? 'Nothing matches that search' : 'Nothing waiting' %></strong>
+          <%= search ? 'Clear the search to see every request.' : 'New registrations and subject requests appear here as soon as they are sent.' %>
+        </div>
+      <% } %>
+
+      <% inbox.forEach((item) => { %>
+        <div class="mq-row">
+          <span class="mq-cell" data-label="Type">
+            <span class="mq-status <%= isSubjectRequest(item) ? 'mq-status-info' : 'mq-status-pending' %>"><%= inboxLabel(item) %></span>
+          </span>
+          <span class="mq-cell mq-cell-primary" data-label="Who">
+            <span class="mq-name"><%= nameOf(item) %></span>
+            <span class="mq-sub"><%= isSubjectRequest(item) ? (item.user_id || '—') : (item.email || item.extra?.email || '—') %></span>
+          </span>
+          <span class="mq-cell" data-label="Request">
+            <% if (isSubjectRequest(item)) { %>
+              Add <strong><%= item.subject_name %></strong>
+            <% } else { %>
+              <%= (item.subjects || []).join(', ') || (item.submission_type === 'tutor' ? 'Tutor application' : 'New learner') %>
+            <% } %>
+          </span>
+          <span class="mq-cell" data-label="Branch"><%= item.branch_name || '—' %></span>
+          <span class="mq-cell mq-sub" data-label="Submitted"><%= formatDateTime(item.created_at) %></span>
+          <span class="mq-cell mq-cell-actions">
+            <button type="button" class="mq-icon" data-modal-target="#<%= inboxModalId(item) %>" title="Open" aria-label="Open"><%- icon('view') %></button>
+            <form method="post"
+                  action="<%= basePath %>/<%= isSubjectRequest(item) ? `subject-requests/${item.id}/accept` : `notifications/${item.id}/accept` %>"
+                  data-confirm-message="<%= isSubjectRequest(item) ? `Enrol ${nameOf(item)} in ${item.subject_name}?` : `Accept ${nameOf(item)}'s registration?` %>">
+              <button class="mq-btn mq-btn-sm mq-btn-primary" type="submit"><%- icon('check') %> Accept</button>
+            </form>
+            <form method="post"
+                  action="<%= basePath %>/<%= isSubjectRequest(item) ? `subject-requests/${item.id}/cancel` : `notifications/${item.id}/decline` %>"
+                  data-confirm-message="<%= isSubjectRequest(item) ? 'Decline this subject request?' : 'Decline this registration?' %>">
+              <button class="mq-icon mq-icon-danger" type="submit" title="Decline" aria-label="Decline"><%- icon('close') %></button>
+            </form>
+          </span>
+        </div>
+      <% }) %>
+    </div>
+  </section>
 
   <section class="mq-panel">
     <div class="mq-panel-head">
@@ -62,7 +141,7 @@
       <span class="mq-count"><%= requests.length %> slip<%= requests.length === 1 ? '' : 's' %></span>
     </div>
 
-    <div class="mq-table" style="--mq-min-width: 970px; --mq-cols: 150px minmax(170px, 2fr) 1fr 110px 130px 110px 96px;">
+    <div class="mq-table" style="--mq-min-width: 890px; --mq-cols: 140px minmax(150px, 2fr) minmax(90px, 1fr) 95px 120px 105px 80px;">
       <div class="mq-head">
         <span>Submitted</span>
         <span>Student</span>
@@ -174,6 +253,65 @@
       <% } %>
     </div>
   </section>
+
+  <%# ------------------------------------------ one dialog per inbox request %>
+  <% inbox.forEach((item) => { %>
+    <div class="global-modal" id="<%= inboxModalId(item) %>">
+      <div class="global-modal-card wide">
+        <button type="button" class="modal-close" data-close-modal>&times;</button>
+        <h3><%= inboxLabel(item) %></h3>
+
+        <div class="mq-detail">
+          <div class="mq-detail-item"><span><%= item.submission_type === 'tutor' ? 'Applicant' : 'Student' %></span><strong><%= nameOf(item) %></strong></div>
+          <% if (isSubjectRequest(item)) { %>
+            <div class="mq-detail-item"><span>Student ID</span><strong><%= item.user_id || '—' %></strong></div>
+            <div class="mq-detail-item"><span>Subject requested</span><strong><%= item.subject_name || '—' %></strong></div>
+          <% } %>
+          <div class="mq-detail-item"><span>Branch</span><strong><%= item.branch_name || '—' %></strong></div>
+          <div class="mq-detail-item"><span>Year level</span><strong><%= item.year_level || '—' %></strong></div>
+          <% if (item.grade_level) { %>
+            <div class="mq-detail-item"><span>Grade level</span><strong><%= item.grade_level %></strong></div>
+          <% } %>
+          <div class="mq-detail-item"><span>Email</span><strong><%= item.email || item.extra?.email || item.parent_email || '—' %></strong></div>
+          <div class="mq-detail-item"><span>Contact number</span><strong><%= item.contact_number || item.parent_contact_number || '—' %></strong></div>
+          <div class="mq-detail-item"><span>Submitted</span><strong><%= formatDateTime(item.created_at) %></strong></div>
+          <% if (!isSubjectRequest(item)) { %>
+            <div class="mq-detail-item"><span>Birth date</span><strong><%= item.birth_date ? formatDate(item.birth_date) : '—' %></strong></div>
+            <div class="mq-detail-item"><span>Age</span><strong><%= item.age || '—' %></strong></div>
+            <div class="mq-detail-item"><span>Gender</span><strong><%= item.gender || '—' %></strong></div>
+            <div class="mq-detail-item"><span>Facebook</span><strong><%= item.facebook_account || item.parent_facebook || '—' %></strong></div>
+            <% if (item.parent_guardian_name) { %>
+              <div class="mq-detail-item"><span>Parent / guardian</span><strong><%= item.parent_guardian_name %></strong></div>
+            <% } %>
+            <div class="mq-detail-item is-wide"><span>Address</span><strong><%= item.address || '—' %></strong></div>
+            <div class="mq-detail-item is-wide"><span>Subjects</span><strong><%= (item.subjects || []).join(', ') || '—' %></strong></div>
+            <div class="mq-detail-item is-wide"><span>Additional academic support</span><strong><%= (item.supports || []).join(', ') || '—' %></strong></div>
+          <% } %>
+        </div>
+
+        <div class="mq-form-foot" style="padding: 0 16px 16px;">
+          <% if (isSubjectRequest(item)) { %>
+            <form method="post" action="<%= basePath %>/subject-requests/<%= item.id %>/cancel" data-confirm-message="Decline this subject request?">
+              <button class="mq-btn mq-btn-danger" type="submit"><%- icon('close') %> Decline</button>
+            </form>
+            <form method="post" action="<%= basePath %>/subject-requests/<%= item.id %>/accept" data-confirm-message="Enrol <%= nameOf(item) %> in <%= item.subject_name %>? Their bill goes up by one subject.">
+              <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Accept &amp; enrol</button>
+            </form>
+          <% } else { %>
+            <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/archive" data-confirm-message="Archive this registration? You can recover it from the archive.">
+              <button class="mq-btn" type="submit"><%- icon('archive') %> Archive</button>
+            </form>
+            <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/decline" data-confirm-message="Decline this registration?">
+              <button class="mq-btn mq-btn-danger" type="submit"><%- icon('close') %> Decline</button>
+            </form>
+            <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/accept" data-confirm-message="Accept this registration and create the account?">
+              <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Accept</button>
+            </form>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  <% }) %>
 
   <%# ------------------------------------------------ one dialog per request %>
   <% requests.forEach((request) => { %>

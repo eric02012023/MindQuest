@@ -108,7 +108,7 @@ async function runSql(text, params = []) {
 
 const {
   setStudentTutorAndSchedule, getAssignedTutorFor, FIXED_TIME_SLOTS, TUTOR_LOCKED_MESSAGE,
-  createTutorScheduleApplicationForAllSubjects
+  createTutorScheduleApplicationForAllSubjects, normalizeTutorYearLevels
 } = require('../lib/data');
 
 const reset = () => {
@@ -200,6 +200,19 @@ const refuse = async (fn) => { try { await fn(); return null; } catch (e) { retu
   const allowed = await refuse(() => createTutorScheduleApplicationForAllSubjects(30, 28, '5:00-6:00 PM'));
   ok('the apply is NOT blocked by the tutor lock',
     allowed === null || !/Only an admin/.test(allowed), allowed || 'allowed');
+
+  console.log('\n== a tutor\'s year levels survive either spelling ==');
+  // Tutors register with "Preschool / Primary School / ...". The admin profile
+  // editor used to offer the student form's "Pre School Level / Primary Level",
+  // which the normaliser dropped — so saving a tutor emptied their levels.
+  ok('the registration spelling is kept',
+    normalizeTutorYearLevels(['Preschool', 'Senior High School']).join('|') === 'Preschool|Senior High School');
+  ok('the student-form spelling is mapped, not dropped',
+    normalizeTutorYearLevels(['Pre School Level', 'Primary Level', 'Junior High Level', 'Senior High Level']).join('|')
+      === 'Preschool|Primary School|Junior High School|Senior High School');
+  ok('a stored comma list is split and de-duplicated',
+    normalizeTutorYearLevels('Primary School, Primary Level, Junior High School').join('|') === 'Primary School|Junior High School');
+  ok('anything else is still refused', normalizeTutorYearLevels(['College', '']).length === 0);
 
   console.log('\n== the slots offered are the centre\'s own ==');
   ok('there are nine fixed slots', FIXED_TIME_SLOTS.length === 9, `${FIXED_TIME_SLOTS.length}`);

@@ -1555,3 +1555,60 @@ IF COL_LENGTH('dbo.user_subject_assignments', 'start_date') IS NOT NULL
     UPDATE dbo.user_subject_assignments
        SET end_date = DATEADD(month, 1, start_date)
      WHERE end_date IS NULL AND start_date IS NOT NULL;';
+
+
+-- 39. NEW TABLE: assistant_rosters
+--
+-- Which tutors and students were under which Assistant Admin, and when. A
+-- branch's membership only says who is there NOW; once an assistant is replaced,
+-- nothing else records who the old one was responsible for. Rows are opened and
+-- closed, never deleted, by lib/assistantRoster.js.
+--
+-- member_id cascades (a deleted person has no history left to show); the
+-- assistant side does not, because SQL Server refuses two cascade paths from
+-- users into one table — deleteUserPermanently clears it explicitly instead.
+IF OBJECT_ID('dbo.assistant_rosters', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.assistant_rosters (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    assistant_id INT NOT NULL,
+    member_id INT NOT NULL,
+    branch_id INT NULL,
+    member_role NVARCHAR(30) NOT NULL,
+    linked_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    released_at DATETIME2 NULL,
+    release_reason NVARCHAR(40) NULL,
+    CONSTRAINT fk_roster_assistant FOREIGN KEY (assistant_id) REFERENCES dbo.users(id) ON DELETE NO ACTION,
+    CONSTRAINT fk_roster_member FOREIGN KEY (member_id) REFERENCES dbo.users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_roster_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id) ON DELETE SET NULL
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_assistant_rosters_assistant' AND object_id = OBJECT_ID('dbo.assistant_rosters'))
+  CREATE INDEX IX_assistant_rosters_assistant ON dbo.assistant_rosters(assistant_id, released_at);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_assistant_rosters_member' AND object_id = OBJECT_ID('dbo.assistant_rosters'))
+  CREATE INDEX IX_assistant_rosters_member ON dbo.assistant_rosters(member_id);
+
+-- One open stint per assistant and member.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'uq_assistant_rosters_open' AND object_id = OBJECT_ID('dbo.assistant_rosters'))
+  CREATE UNIQUE INDEX uq_assistant_rosters_open ON dbo.assistant_rosters(assistant_id, member_id) WHERE released_at IS NULL;
+
+-- First run only: record who is under each active assistant today, dated from
+-- whichever came later — the assistant's account or the member joining. Through
+-- sp_executesql for the same single-batch compile reason as the backfill above.
+IF OBJECT_ID('dbo.assistant_rosters', 'U') IS NOT NULL
+  EXEC sp_executesql N'
+    IF NOT EXISTS (SELECT 1 FROM dbo.assistant_rosters)
+      INSERT INTO dbo.assistant_rosters (assistant_id, member_id, branch_id, member_role, linked_at)
+      SELECT a.id, m.id, a.assistant_scope_branch_id, m.role,
+             CASE WHEN COALESCE(m.accepted_at, m.created_at) > a.created_at
+                  THEN COALESCE(m.accepted_at, m.created_at) ELSE a.created_at END
+        FROM dbo.users a
+        INNER JOIN dbo.users m
+                ON m.branch_id = a.assistant_scope_branch_id
+               AND m.role IN (''student'', ''tutor'')
+               AND m.is_archived = 0
+       WHERE a.role = ''admin_assistant''
+         AND a.is_archived = 0
+         AND a.assistant_scope_branch_id IS NOT NULL;';

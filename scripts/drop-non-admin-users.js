@@ -41,6 +41,8 @@ async function dropNonAdminUsers() {
     ['Billing',                     `DELETE FROM billing`],
     ['Submissions',                 `DELETE FROM submissions`],
     ['Subject resources',           `DELETE FROM subject_resources`],
+    // Points at users on both sides; the assistant side does not cascade.
+    ['Assistant rosters',           `DELETE FROM assistant_rosters`],
   ];
 
   for (const [label, sql] of steps) {

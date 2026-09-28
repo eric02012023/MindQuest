@@ -28,11 +28,23 @@ const activeBranches = (branches || []).filter((branch) => Number(branch.is_arch
 const selectedBranchIds = [...new Set((isTutor ? [profileUser.branch_id, ...safeJsonArray(profileUser.extra?.branch_ids || [])] : [profileUser.branch_id]).map((id) => Number(id)).filter(Boolean))];
 const selectedBranchNames = activeBranches.filter((branch) => selectedBranchIds.includes(Number(branch.id))).map((branch) => branch.name);
 const branchLabel = selectedBranchNames.join(', ') || profileUser.branch_name || '';
-const yearLevelOptions = ['Pre School Level', 'Primary Level', 'Junior High Level', 'Senior High Level'];
-const selectedYearLevels = isTutor ? [...new Set([...(profileUser.year_level || '').split(','), ...safeJsonArray(profileUser.extra?.year_levels || [])].map((item) => String(item || '').trim()).filter(Boolean))] : [profileUser.year_level || ''].filter(Boolean);
+// Tutors registered with "Preschool / Primary School / ...", so that is what the
+// editor offers; the route has already mapped any older "Pre School Level"
+// spelling onto it, so a tutor's real levels show up ticked.
+const yearLevelOptions = (typeof tutorYearLevelOptions !== 'undefined' && tutorYearLevelOptions.length)
+  ? tutorYearLevelOptions
+  : ['Preschool', 'Primary School', 'Junior High School', 'Senior High School'];
+const selectedYearLevels = isTutor
+  ? ((typeof tutorYearLevels !== 'undefined' && tutorYearLevels.length)
+      ? tutorYearLevels
+      : [...new Set([...(profileUser.year_level || '').split(','), ...safeJsonArray(profileUser.extra?.year_levels || [])].map((item) => String(item || '').trim()).filter(Boolean))])
+  : [profileUser.year_level || ''].filter(Boolean);
 const fullName = [profileUser.first_name, profileUser.middle_name, profileUser.last_name].filter(Boolean).join(' ');
 const assignments = isStudent ? (studentAssignments || []) : (tutorAssignments || []);
 const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
+// The admin's own record: an account, not a learner — no subjects, year level,
+// support or "who they work with" to manage.
+const isLearnerRecord = isStudent || isTutor;
 %>
 <section class="mq-page">
 
@@ -59,10 +71,12 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
           in its own header chip. Two places showing the same number is two
           places to disagree, so this one went. `assignments` is still read by
           that panel — it is not dead. %>
-      <div class="mq-detail-item">
-        <span>Subjects</span>
-        <strong><%= userSubjects.length %></strong>
-      </div>
+      <% if (isLearnerRecord) { %>
+        <div class="mq-detail-item">
+          <span>Subjects</span>
+          <strong><%= userSubjects.length %></strong>
+        </div>
+      <% } %>
       <div class="mq-detail-item">
         <span>Joined</span>
         <strong><%= formatDate(profileUser.created_at) %></strong>
@@ -79,7 +93,9 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
       </div>
       <div class="mq-panel-head-actions">
         <button type="button" class="mq-btn mq-btn-sm" data-profile-edit-toggle="#profile-form">Edit</button>
-        <button type="button" class="mq-btn mq-btn-sm mq-btn-primary" data-modal-target="#manage-subjects-modal">Manage subjects</button>
+        <% if (isLearnerRecord) { %>
+          <button type="button" class="mq-btn mq-btn-sm mq-btn-primary" data-modal-target="#manage-subjects-modal">Manage subjects</button>
+        <% } %>
       </div>
     </div>
 
@@ -125,6 +141,7 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
         <label>Facebook account<input data-profile-editable type="text" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" readonly /></label>
       <% } %>
 
+      <% if (isLearnerRecord) { %>
       <label>Year level
         <% if (isTutor) { %>
           <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select year level(s)">
@@ -141,12 +158,15 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
         <% } %>
       </label>
 
+      <% } %>
+
       <% if (isStudent) { %>
         <label>Grade level<input data-profile-editable type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" readonly /></label>
       <% } %>
 
       <label>Address<input data-profile-editable type="text" name="address" value="<%= profileUser.address || '' %>" readonly /></label>
 
+      <% if (isLearnerRecord) { %>
       <label>Subjects
         <% if (isTutor) { %>
           <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select subject(s)">
@@ -163,6 +183,7 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
       </label>
 
       <label>Additional academic support<textarea class="expanding-display" data-auto-expand rows="<%= supportRows %>" readonly><%= userSupports.join('\n') %></textarea></label>
+      <% } %>
 
       <label>Profile image<input data-profile-editable type="file" name="image" accept="image/*" disabled /></label>
 
@@ -177,6 +198,7 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
   </section>
 
   <%# ---------------------------------------------------------- assignments %>
+  <% if (isLearnerRecord) { %>
   <section class="mq-panel">
     <div class="mq-panel-head">
       <div>
@@ -221,6 +243,7 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
       <% }) %>
     </div>
   </section>
+  <% } %>
 
   <%# ------------------------------------------------ tutor & schedule (Phase 5)
       Admin-only, and deliberately ONE control for the whole student rather than
@@ -349,6 +372,7 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
   <% } %>
 
   <%# ------------------------------------------------- manage subjects modal %>
+  <% if (isLearnerRecord) { %>
   <div class="global-modal" id="manage-subjects-modal">
     <div class="global-modal-card wide modal-scroll-box" style="max-height:85vh;overflow:auto;">
       <button type="button" class="modal-close" data-close-modal>&times;</button>
@@ -417,5 +441,6 @@ const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
       </form>
     </div>
   </div>
+  <% } %>
 
 </section>

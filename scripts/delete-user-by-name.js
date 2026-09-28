@@ -47,6 +47,11 @@ async function deleteUserByName(firstName, lastName) {
         await connection.query('DELETE FROM subject_enrollment_requests WHERE student_id = ? OR decided_by = ?', [userId, userId]);
         await connection.query('DELETE FROM tutor_schedule_applications WHERE student_id = ? OR tutor_id = ? OR decided_by = ?', [userId, userId, userId]);
         await connection.query('DELETE FROM ai_generation_logs WHERE student_id = ?', [userId]);
+        await connection.query(
+          `IF OBJECT_ID('dbo.assistant_rosters', 'U') IS NOT NULL
+             DELETE FROM assistant_rosters WHERE assistant_id = ? OR member_id = ?`,
+          [userId, userId]
+        );
         
         // 7. Finally, the user
         await connection.query('DELETE FROM users WHERE id = ?', [userId]);

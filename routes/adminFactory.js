@@ -31,6 +31,7 @@ const {
   acceptSubjectEnrollmentRequest,
   cancelSubjectEnrollmentRequest,
   markNotificationRead,
+  declineNotification,
   archiveNotification,
   recoverNotification,
   acceptNotification,
@@ -143,7 +144,13 @@ const {
   // Phase 5: one tutor per student, and an admin-only schedule
   setStudentTutorAndSchedule,
   getAssignedTutorFor,
-  FIXED_TIME_SLOTS
+  FIXED_TIME_SLOTS,
+  // Tutor year levels, in the registration form's wording
+  TUTOR_YEAR_LEVEL_OPTIONS,
+  normalizeTutorYearLevels,
+  // Who was under which Assistant Admin
+  getAssistantRoster,
+  getAssistantRosterCounts
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { normalizeAmount } = require('../lib/billing');
@@ -314,8 +321,10 @@ function createAdminRouter(role) {
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not add subject.');
-      res.redirect(`${basePath}/subjects`);
+      // This used to flash "Could not add subject." and redirect to All
+      // Subjects — copied from the add-subject handler — so a dashboard that
+      // failed to load sent the admin somewhere unrelated with a wrong reason.
+      next(error);
     }
   });
 
@@ -363,14 +372,30 @@ function createAdminRouter(role) {
 
   // Purpose: Processes this endpoint and returns the correct view or action result.
 
+  // Registrations and enrolment requests are worked through on the
+  // Notifications page, so every decision taken there returns to it — landing
+  // on the dashboard after each one meant finding the inbox again every time.
+  const inboxPath = `${basePath}/notifications`;
+
   router.post('/notifications/:id/read', async (req, res, next) => {
     try {
       await markNotificationRead(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
       setFlash(req, 'success', 'Notification marked as read.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     } catch (error) {
       next(error);
     }
+  });
+
+  /** Turn a registration down: it leaves the inbox and is filed under history. */
+  router.post('/notifications/:id/decline', async (req, res) => {
+    try {
+      const declined = await declineNotification(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
+      setFlash(req, declined ? 'success' : 'error', declined ? 'Registration declined.' : 'Registration not found.');
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not decline this registration.');
+    }
+    res.redirect(inboxPath);
   });
 
   // Route handler: POST request
@@ -381,7 +406,7 @@ function createAdminRouter(role) {
     try {
       await archiveNotification(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
       setFlash(req, 'success', 'Notification archived successfully.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     } catch (error) {
       next(error);
     }
@@ -409,10 +434,10 @@ function createAdminRouter(role) {
     try {
       await acceptNotification(req.params.id, req.session.user);
       setFlash(req, 'success', 'Registration accepted successfully.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not accept submission.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     }
   });
 
@@ -424,10 +449,10 @@ function createAdminRouter(role) {
     try {
       await acceptSubjectEnrollmentRequest(req.params.id, req.session.user);
       setFlash(req, 'success', 'Subject enrollment request accepted successfully.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not accept enrollment request.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     }
   });
 
@@ -439,10 +464,10 @@ function createAdminRouter(role) {
     try {
       await cancelSubjectEnrollmentRequest(req.params.id, req.session.user);
       setFlash(req, 'success', 'Subject enrollment request cancelled successfully.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not cancel enrollment request.');
-      res.redirect(basePath);
+      res.redirect(inboxPath);
     }
   });
 
@@ -460,7 +485,7 @@ function createAdminRouter(role) {
       // Paged, not "render everything": the page has to stay usable at two
       // thousand users, and the browser cannot lay out two thousand rows quickly.
       // The archive stays unpaged — it is a lookup, opened from a modal.
-      const [page, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches] = await Promise.all([
+      const [page, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts] = await Promise.all([
         getUsersPaged({
           scopeBranchId,
           role: selectedRole,
@@ -473,7 +498,10 @@ function createAdminRouter(role) {
         getUsers({ scopeBranchId, role: selectedRole, archived: true, search }),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, false) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, true) : Promise.resolve([]),
-        req.session.user.role === 'admin' ? getAvailableAssistantBranches() : Promise.resolve([])
+        req.session.user.role === 'admin' ? getAvailableAssistantBranches() : Promise.resolve([]),
+        // How many tutors and students each assistant has today — and has ever
+        // had, which is what survives the assistant being replaced.
+        req.session.user.role === 'admin' ? getAssistantRosterCounts().catch(() => new Map()) : Promise.resolve(new Map())
       ]);
 
       const shell = await buildShellData(req, {
@@ -487,6 +515,7 @@ function createAdminRouter(role) {
         assistantAccounts,
         archivedAssistantAccounts,
         availableAssistantBranches,
+        rosterCounts,
         selectedRole,
         selectedStatus: status,
         search
@@ -520,6 +549,46 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'User not found.');
         return res.redirect(`${basePath}/users`);
       }
+
+      /*
+       * An Assistant Admin's profile is an account plus a ROSTER: every tutor and
+       * student who has been under them, current and former, with the dates.
+       * The former half is the point — once an assistant is replaced, their
+       * branch belongs to someone else, and this is the only place left that
+       * says who they were responsible for. It used to render the student/tutor
+       * form (year level, subjects, "Manage subjects") and be titled "Tutor
+       * Profile".
+       *
+       * The admin can open any assistant, archived or not. An assistant can open
+       * only their own.
+       */
+      if (user.role === 'admin_assistant') {
+        const isSelf = Number(user.id) === Number(req.session.user.id);
+        if (req.session.user.role !== 'admin' && !isSelf) {
+          setFlash(req, 'error', 'You can only view your own account.');
+          return res.redirect(`${basePath}/users`);
+        }
+        const [roster, allBranches] = await Promise.all([
+          getAssistantRoster(user, {
+            role: req.query.role,
+            period: req.query.period,
+            search: req.query.search,
+            page: req.query.page
+          }),
+          getBranches()
+        ]);
+        const shell = await buildShellData(req, {
+          pageTitle: isSelf ? 'My Profile' : 'Assistant Admin Profile',
+          section: isSelf ? 'profile' : 'users',
+          contentView: '../content/admin-assistant-profile',
+          profileUser: user,
+          roster,
+          assistantBranches: allBranches,
+          query: req.query
+        });
+        return res.render('shells/dashboard', shell);
+      }
+
       const isOwnAdminProfile = Number(user.id) === Number(req.session.user.id) && ['admin', 'admin_assistant'].includes(user.role);
       if (!isOwnAdminProfile && req.session.user.role === 'admin_assistant' && Number(user.branch_id) !== Number(req.session.user.assistant_scope_branch_id)) {
         setFlash(req, 'error', 'You can only view profiles from your branch.');
@@ -557,6 +626,13 @@ function createAdminRouter(role) {
         assignableTutors,
         currentTutor,
         tutorSlotUsage,
+        // A tutor's levels are offered in the words the tutor registered with,
+        // and whatever is stored is read through the same normaliser, so an
+        // older "Pre School Level" still shows up ticked as "Preschool".
+        tutorYearLevelOptions: TUTOR_YEAR_LEVEL_OPTIONS,
+        tutorYearLevels: user.role === 'tutor'
+          ? normalizeTutorYearLevels([user.year_level || '', ...normalizeArray(user.extra?.year_levels || [])])
+          : [],
         timeSlots: FIXED_TIME_SLOTS,
         supportOptions: ['Exam Preparation & Reviews','Homework Assistance','Project Guidance']
       });
@@ -662,6 +738,12 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'You can only update users from your branch.');
         return res.redirect(`${basePath}/users`);
       }
+      // An assistant account is not a learner record: it is edited through
+      // /assistant-accounts/:id/update, which keeps its branch scope in step.
+      if (profileUser.role === 'admin_assistant') {
+        setFlash(req, 'error', 'Assistant accounts are edited from the Account panel on their profile.');
+        return res.redirect(`${basePath}/profile/${profileUser.id}`);
+      }
       const archivedSubjects = normalizeArray(profileUser.extra?.archived_subjects || []);
       const existingSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : normalizeArray(profileUser.subjects_json || '');
       const existingSupports = Array.isArray(profileUser.supports) ? profileUser.supports : normalizeArray(profileUser.support_json || '');
@@ -755,38 +837,52 @@ function createAdminRouter(role) {
 
   // Purpose: Processes this endpoint and returns the correct view or action result.
 
-  router.post('/assistant-accounts/:id/update', async (req, res, next) => {
+  /*
+   * The three actions below change an assistant account, and only the main admin
+   * manages those. They had no role check at all, so an assistant could post
+   * here to move their own account to another branch — widening what they are
+   * allowed to see — or archive another branch's assistant.
+   *
+   * Each returns to the assistant's profile when that is where it was sent from,
+   * so an edit made there lands back on the roster rather than the user list.
+   */
+  function assistantAccountReturn(req) {
+    return req.body?.return_to === 'profile' ? `${basePath}/profile/${Number(req.params.id)}` : `${basePath}/users`;
+  }
+
+  function refuseUnlessAdmin(req, res) {
+    if (req.session.user.role === 'admin') return false;
+    setFlash(req, 'error', 'Only the main admin can manage assistant accounts.');
+    res.redirect(`${basePath}/users`);
+    return true;
+  }
+
+  router.post('/assistant-accounts/:id/update', async (req, res) => {
+    if (refuseUnlessAdmin(req, res)) return;
     try {
       await updateAssistantAccount(req.params.id, req.body);
       setFlash(req, 'success', 'Assistant account updated.');
-      res.redirect(`${basePath}/users`);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not update assistant account.');
-      res.redirect(`${basePath}/users`);
     }
+    res.redirect(assistantAccountReturn(req));
   });
 
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
   router.post('/assistant-accounts/:id/archive', async (req, res, next) => {
+    if (refuseUnlessAdmin(req, res)) return;
     try {
       await archiveUser(req.params.id);
-      setFlash(req, 'success', 'Assistant account archived successfully.');
-      res.redirect(`${basePath}/users`);
+      setFlash(req, 'success', 'Assistant account archived. Their tutors and students stay on record in their profile.');
+      res.redirect(assistantAccountReturn(req));
     } catch (error) { next(error); }
   });
 
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
   router.post('/assistant-accounts/:id/recover', async (req, res, next) => {
+    if (refuseUnlessAdmin(req, res)) return;
     try {
       await recoverUser(req.params.id);
       setFlash(req, 'success', 'Assistant account recovered successfully.');
-      res.redirect(`${basePath}/users`);
+      res.redirect(assistantAccountReturn(req));
     } catch (error) { next(error); }
   });
 
@@ -1397,6 +1493,23 @@ function createAdminRouter(role) {
           unreadAlerts: allAlerts.filter((a) => !a.is_read).length
         }
       });
+
+      // The registration and subject-enrolment inbox. The sidebar badge has
+      // always counted it, but when the topbar bell was retired (Phase 7.1) its
+      // list went with it and nothing on this page rendered it — so a student's
+      // request to add a subject raised the badge and could not be found or
+      // accepted anywhere. It is listed here now, first, because it is the part
+      // of this page that is waiting on a decision. The search box applies to it
+      // as well; the badge and the summary count stay unfiltered.
+      const needle = search.toLowerCase();
+      shell.inboxItems = !needle
+        ? shell.inboxNotifications
+        : shell.inboxNotifications.filter((item) => [
+          item.first_name, item.middle_name, item.last_name, item.user_id, item.email,
+          item.subject_name, item.branch_name
+        ].some((value) => String(value || '').toLowerCase().includes(needle)));
+      shell.summary.waiting = shell.inboxNotifications.length;
+
       res.render('shells/dashboard', shell);
     } catch (error) {
       next(error);

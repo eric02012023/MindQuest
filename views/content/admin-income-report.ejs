@@ -108,7 +108,7 @@
       <span class="mq-count"><%= summary.transactionCount %> record<%= summary.transactionCount === 1 ? '' : 's' %></span>
     </div>
 
-    <div class="mq-table" style="--mq-min-width: 974px; --mq-cols: 150px minmax(170px, 2fr) 1fr 110px 110px 110px minmax(120px, 1fr);">
+    <div class="mq-table" style="--mq-min-width: 890px; --mq-cols: 140px minmax(150px, 2fr) minmax(90px, 1fr) 100px 90px 100px minmax(110px, 1fr);">
       <div class="mq-head">
         <span>Date &amp; time</span>
         <span>Student</span>
@@ -191,11 +191,14 @@
              // Phase 7.4: the old "Cash payment request" alert is gone with the
              // flow it belonged to. Two POS-shaped alerts replace it — a slip
              // waiting to be paid, and a payment actually recorded.
-             const label = alert.type === 'payment_slip' ? 'Pending payment slip'
-               : alert.type === 'pos_payment' ? 'POS payment recorded'
-               : alert.type === 'payment_request' ? 'Pending payment slip'
-               : String(alert.type || 'Alert').replace(/_/g, ' ');
-             const tone = alert.type === 'pos_payment' ? 'mq-status-paid'
+             // The column is notification_type; reading `alert.type` (which does
+             // not exist) labelled every row a generic "Alert".
+             const alertType = alert.notification_type || alert.type;
+             const label = alertType === 'payment_slip' ? 'Pending payment slip'
+               : alertType === 'pos_payment' ? 'POS payment recorded'
+               : alertType === 'payment_request' ? 'Pending payment slip'
+               : String(alertType || 'Alert').replace(/_/g, ' ');
+             const tone = alertType === 'pos_payment' ? 'mq-status-paid'
                : alert.severity === 'warning' ? 'mq-status-partial' : 'mq-status-unpaid'; %>
           <div class="mq-row">
             <span class="mq-cell" data-label="Type"><span class="mq-status <%= tone %>"><%= label %></span></span>
@@ -219,7 +222,7 @@
 
     <% if ((inboxNotifications || []).length) { %>
       <div class="mq-form-foot" style="padding:12px 16px;">
-        <a class="mq-btn" href="<%= basePath %>/notifications">
+        <a class="mq-btn" href="<%= basePath %>/notifications#inbox">
           <%- icon('view') %>
           <%= inboxNotifications.length %> registration/enrolment request<%= inboxNotifications.length === 1 ? '' : 's' %> waiting
         </a>

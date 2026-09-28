@@ -11,6 +11,8 @@
 <%
   const pagerState = typeof pager === 'undefined' ? null : pager;
   const currentQuery = typeof query === 'undefined' ? {} : query;
+  const rosterOf = (assistant) => (typeof rosterCounts !== 'undefined' && rosterCounts && rosterCounts.get(Number(assistant.id)))
+    || { currentTutors: 0, currentStudents: 0, ever: 0 };
 %>
 <section class="mq-page">
 
@@ -131,11 +133,12 @@
         <span class="mq-count"><%= assistantAccounts.length %> account<%= assistantAccounts.length === 1 ? '' : 's' %></span>
       </div>
 
-      <div class="mq-table" style="--mq-cols: minmax(160px, 2fr) minmax(160px, 2fr) 1fr 110px 96px;">
+      <div class="mq-table" style="--mq-min-width: 860px; --mq-cols: minmax(160px, 2fr) minmax(170px, 2fr) 1fr minmax(150px, 1fr) 110px 96px;">
         <div class="mq-head">
           <span>Assistant</span>
           <span>Email</span>
           <span>Branch</span>
+          <span>Handles now</span>
           <span>Created</span>
           <span style="text-align:right;">Actions</span>
         </div>
@@ -144,17 +147,18 @@
           <div class="mq-empty"><strong>No assistant accounts yet</strong>Create one with the button above.</div>
         <% } %>
 
-        <% assistantAccounts.forEach((assistant) => { %>
+        <% assistantAccounts.forEach((assistant) => { const counts = rosterOf(assistant); %>
           <div class="mq-row">
             <span class="mq-cell mq-cell-primary" data-label="Assistant">
-              <span class="mq-name"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></span>
+              <a class="mq-name" href="<%= basePath %>/profile/<%= assistant.id %>"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></a>
               <span class="mq-sub">Admin Assistant</span>
             </span>
             <span class="mq-cell mq-sub" data-label="Email"><%= assistant.email %></span>
             <span class="mq-cell" data-label="Branch"><%= assistant.branch_name || '—' %></span>
+            <span class="mq-cell mq-sub" data-label="Handles now"><%= counts.currentTutors %> tutor<%= counts.currentTutors === 1 ? '' : 's' %> · <%= counts.currentStudents %> student<%= counts.currentStudents === 1 ? '' : 's' %></span>
             <span class="mq-cell mq-sub" data-label="Created"><%= formatDate(assistant.created_at) %></span>
             <span class="mq-cell mq-cell-actions">
-              <a class="mq-icon" href="<%= basePath %>/profile/<%= assistant.id %>" title="View account" aria-label="View account"><%- icon('view') %></a>
+              <a class="mq-icon" href="<%= basePath %>/profile/<%= assistant.id %>" title="View account and roster" aria-label="View account and roster"><%- icon('view') %></a>
               <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/archive" data-confirm-message="Archive this assistant account?">
                 <button class="mq-icon mq-icon-danger" type="submit" title="Archive account" aria-label="Archive account"><%- icon('archive') %></button>
               </form>
@@ -199,20 +203,24 @@
       <div class="global-modal-card wide">
         <button type="button" class="modal-close" data-close-modal>&times;</button>
         <h3>Archived assistant accounts</h3>
-        <div class="mq-table" style="--mq-cols: minmax(150px,2fr) minmax(150px,2fr) 1fr 96px;">
+        <p class="mq-form-note">Open one to see every tutor and student who was under them.</p>
+        <div class="mq-table" style="--mq-cols: minmax(150px,2fr) minmax(150px,2fr) 1fr minmax(110px, 1fr) 96px;">
           <div class="mq-head">
-            <span>Assistant</span><span>Email</span><span>Branch</span><span style="text-align:right;">Recover</span>
+            <span>Assistant</span><span>Email</span><span>Branch</span><span>Handled</span><span style="text-align:right;">Actions</span>
           </div>
           <% if (!(archivedAssistantAccounts || []).length) { %>
             <div class="mq-empty">No archived assistant accounts.</div>
           <% } %>
-          <% (archivedAssistantAccounts || []).forEach((assistant) => { %>
+          <% (archivedAssistantAccounts || []).forEach((assistant) => { const counts = rosterOf(assistant); %>
             <div class="mq-row">
-              <span class="mq-cell mq-name" data-label="Assistant"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></span>
+              <span class="mq-cell mq-cell-primary" data-label="Assistant">
+                <a class="mq-name" href="<%= basePath %>/profile/<%= assistant.id %>"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></a>
+              </span>
               <span class="mq-cell mq-sub" data-label="Email"><%= assistant.email %></span>
               <span class="mq-cell" data-label="Branch"><%= assistant.branch_name || '—' %></span>
+              <span class="mq-cell mq-sub" data-label="Handled"><%= counts.ever %> <%= counts.ever === 1 ? 'person' : 'people' %></span>
               <span class="mq-cell mq-cell-actions">
-                <a class="mq-icon" href="<%= basePath %>/profile/<%= assistant.id %>" title="View account" aria-label="View account"><%- icon('view') %></a>
+                <a class="mq-icon" href="<%= basePath %>/profile/<%= assistant.id %>" title="View account and roster" aria-label="View account and roster"><%- icon('view') %></a>
                 <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/recover" data-confirm-message="Recover this archived assistant account?">
                   <button class="mq-icon" type="submit" title="Recover account" aria-label="Recover account"><%- icon('restore') %></button>
                 </form>

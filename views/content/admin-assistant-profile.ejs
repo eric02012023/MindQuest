@@ -1,0 +1,231 @@
+<%# File: views/content/admin-assistant-profile.ejs
+    Purpose: An Assistant Admin's account and ROSTER — every tutor and student who
+    has been under them, with when it started and, for those no longer with
+    them, when and why it ended.
+
+    The former half is why this page exists. An assistant runs one branch, so
+    while they are active "their" people are just the branch. The day they are
+    replaced the branch belongs to the new account, and this record — opened and
+    closed by lib/assistantRoster.js, never deleted — is the only place left
+    that says who the previous assistant was responsible for.
+
+    Main admin: can open any assistant, archived or not, and edit or archive the
+    account from here. The assistant: sees their own roster and can change their
+    password.
+
+    Locals: profileUser, roster { rows, pager, summary, since, until, filters },
+            assistantBranches, query %>
+<%
+  const currentQuery = typeof query === 'undefined' ? {} : query;
+  const isAdminViewer = currentUser.role === 'admin';
+  const isSelf = Number(currentUser.id) === Number(profileUser.id);
+  const isArchived = Number(profileUser.is_archived) === 1;
+  const displayName = titleCaseName(profileUser.extra?.assistant_name || profileUser.first_name || profileUser.email);
+  const branchName = profileUser.branch_name || 'No branch';
+  const summary = roster.summary;
+  const filters = roster.filters;
+  const profileUrl = `${basePath}/profile/${profileUser.id}`;
+  const personName = (row) => [row.first_name, row.middle_name, row.last_name]
+    .map((part) => titleCaseName(part || '')).filter(Boolean).join(' ');
+  // Former members may be in another branch now; an assistant cannot open
+  // those profiles, so only the admin gets a link on them.
+  const canOpenMember = (row) => isAdminViewer
+    || Number(row.current_branch_id) === Number(profileUser.assistant_scope_branch_id);
+%>
+<section class="mq-page">
+
+  <%# ------------------------------------------------------------- identity %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2><%= displayName %></h2>
+        <p><%= profileUser.user_id || '—' %> · Assistant Admin · <%= branchName %></p>
+      </div>
+      <span class="mq-status <%= isArchived ? 'mq-status-cancelled' : 'mq-status-active' %>"><%= isArchived ? 'Archived' : 'Active' %></span>
+    </div>
+
+    <div class="mq-detail">
+      <div class="mq-detail-item"><span>Email</span><strong><%= profileUser.email || '—' %></strong></div>
+      <div class="mq-detail-item"><span>Branch</span><strong><%= branchName %></strong></div>
+      <div class="mq-detail-item"><span>Account created</span><strong><%= formatDate(profileUser.created_at) %></strong></div>
+      <div class="mq-detail-item">
+        <span>Handling tutors &amp; students</span>
+        <strong>
+          <% if (roster.since) { %>
+            <%= formatDate(roster.since) %> &ndash; <%= roster.until ? formatDate(roster.until) : 'present' %>
+          <% } else { %>
+            No one yet
+          <% } %>
+        </strong>
+      </div>
+    </div>
+  </section>
+
+  <div class="mq-summary">
+    <div class="mq-summary-item is-accent"><span>Current tutors</span><strong><%= summary.currentTutors %></strong></div>
+    <div class="mq-summary-item is-accent"><span>Current students</span><strong><%= summary.currentStudents %></strong></div>
+    <div class="mq-summary-item"><span>Former tutors</span><strong><%= summary.formerTutors %></strong></div>
+    <div class="mq-summary-item"><span>Former students</span><strong><%= summary.formerStudents %></strong></div>
+  </div>
+
+  <%# --------------------------------------------------------------- roster %>
+  <form class="mq-toolbar" method="get" action="<%= profileUrl %>">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= filters.search %>" placeholder="Name, ID or email" />
+      </label>
+      <label class="mq-field">
+        <span>Role</span>
+        <select name="role" onchange="this.form.submit()">
+          <option value="all" <%= filters.role === 'all' ? 'selected' : '' %>>All roles</option>
+          <option value="tutor" <%= filters.role === 'tutor' ? 'selected' : '' %>>Tutors</option>
+          <option value="student" <%= filters.role === 'student' ? 'selected' : '' %>>Students</option>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Period</span>
+        <select name="period" onchange="this.form.submit()">
+          <option value="all" <%= filters.period === 'all' ? 'selected' : '' %>>All</option>
+          <option value="current" <%= filters.period === 'current' ? 'selected' : '' %>>Current</option>
+          <option value="former" <%= filters.period === 'former' ? 'selected' : '' %>>Former</option>
+        </select>
+      </label>
+      <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
+    </div>
+  </form>
+
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Tutors &amp; students under this assistant</h3>
+        <p>Kept after the assistant is replaced or archived, so you can always see who was theirs.</p>
+      </div>
+      <span class="mq-count"><%= roster.pager.total %> record<%= roster.pager.total === 1 ? '' : 's' %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-min-width: 900px; --mq-cols: minmax(200px, 2fr) 90px minmax(130px, 1fr) minmax(200px, 1.4fr) minmax(170px, 1.2fr) 48px;">
+      <div class="mq-head">
+        <span>Name</span>
+        <span>Role</span>
+        <span>Branch</span>
+        <span>Under this assistant</span>
+        <span>Status</span>
+        <span style="text-align:right;">View</span>
+      </div>
+
+      <% if (!roster.rows.length) { %>
+        <div class="mq-empty">
+          <strong><%= filters.search || filters.role !== 'all' || filters.period !== 'all' ? 'No one matches these filters' : 'No tutors or students yet' %></strong>
+          <%= filters.search || filters.role !== 'all' || filters.period !== 'all'
+            ? 'Try a different search, or clear the filters above.'
+            : 'Tutors and students in this branch are listed here as soon as they join it.' %>
+        </div>
+      <% } %>
+
+      <% roster.rows.forEach((row) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-cell-primary" data-label="Name">
+            <% if (canOpenMember(row)) { %>
+              <a class="mq-name" href="<%= basePath %>/profile/<%= row.id %>"><%= personName(row) %></a>
+            <% } else { %>
+              <span class="mq-name"><%= personName(row) %></span>
+            <% } %>
+            <span class="mq-sub"><%= row.user_id %><%= row.grade_level ? ` · ${row.grade_level}` : '' %></span>
+          </span>
+          <span class="mq-cell" data-label="Role"><span class="mq-chip mq-chip-role"><%= row.member_role %></span></span>
+          <span class="mq-cell" data-label="Branch"><%= row.roster_branch_name || '—' %></span>
+          <span class="mq-cell mq-sub" data-label="Under this assistant">
+            <%= formatDate(row.linked_at) %> &ndash; <%= row.released_at ? formatDate(row.released_at) : 'present' %>
+          </span>
+          <span class="mq-cell" data-label="Status">
+            <% if (row.is_current) { %>
+              <span class="mq-status mq-status-active">Current</span>
+            <% } else { %>
+              <span class="mq-status mq-status-pending">Former</span>
+              <span class="mq-sub mq-roster-reason"><%= row.release_label %></span>
+            <% } %>
+            <% if (Number(row.is_archived) === 1) { %><span class="mq-sub mq-roster-reason">Account archived</span><% } %>
+          </span>
+          <span class="mq-cell mq-cell-actions">
+            <% if (canOpenMember(row)) { %>
+              <a class="mq-icon" href="<%= basePath %>/profile/<%= row.id %>" title="View profile" aria-label="View profile"><%- icon('view') %></a>
+            <% } %>
+          </span>
+        </div>
+      <% }) %>
+
+      <%- include('../partials/mq-pager', {
+        pager: roster.pager, baseUrl: profileUrl, params: currentQuery, noun: 'record'
+      }) %>
+    </div>
+  </section>
+
+  <%# -------------------------------------------------- account (admin only) %>
+  <% if (isAdminViewer) { %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h3>Account</h3>
+          <p>Leave the password blank to keep the current one.</p>
+        </div>
+        <div class="mq-panel-head-actions">
+          <% if (isArchived) { %>
+            <form method="post" action="<%= basePath %>/assistant-accounts/<%= profileUser.id %>/recover" data-confirm-message="Recover this assistant account? They will be able to log in again.">
+              <input type="hidden" name="return_to" value="profile" />
+              <button class="mq-btn mq-btn-sm" type="submit"><%- icon('restore') %> Recover account</button>
+            </form>
+          <% } else { %>
+            <form method="post" action="<%= basePath %>/assistant-accounts/<%= profileUser.id %>/archive" data-confirm-message="Archive this assistant? They can no longer log in. Everyone listed above stays on record here.">
+              <input type="hidden" name="return_to" value="profile" />
+              <button class="mq-btn mq-btn-sm mq-btn-danger" type="submit"><%- icon('archive') %> Archive account</button>
+            </form>
+          <% } %>
+        </div>
+      </div>
+
+      <form class="mq-form mq-form-rows" method="post" action="<%= basePath %>/assistant-accounts/<%= profileUser.id %>/update"
+            data-confirm-message="Save the changes to this assistant account?">
+        <input type="hidden" name="return_to" value="profile" />
+        <label>Assistant name<input type="text" name="assistant_name" value="<%= displayName %>" required /></label>
+        <label>Email<input type="email" name="email" value="<%= profileUser.email || '' %>" required /></label>
+        <label>Branch
+          <select name="branch_id" required>
+            <% (assistantBranches || []).forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= Number(branch.id) === Number(profileUser.assistant_scope_branch_id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label>New password<input type="password" name="password" minlength="8" autocomplete="new-password" placeholder="Unchanged" /></label>
+        <p class="mq-form-note" style="padding: 0 16px;">
+          Moving the assistant to another branch ends their current roster today and starts a new one
+          for the new branch. The old roster stays listed above as former.
+        </p>
+        <div class="mq-form-foot">
+          <button class="mq-btn mq-btn-primary" type="submit">Save account</button>
+        </div>
+      </form>
+    </section>
+  <% } %>
+
+  <%# ------------------------------------------------------- password (own) %>
+  <% if (isSelf) { %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h3>Change password</h3>
+          <p>Applies to your own account only.</p>
+        </div>
+      </div>
+      <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/password" class="mq-form mq-form-rows">
+        <label>Current password<input type="password" name="current_password" autocomplete="current-password" required /></label>
+        <label>New password<input type="password" name="new_password" minlength="8" autocomplete="new-password" required /></label>
+        <label>Confirm new password<input type="password" name="confirm_password" minlength="8" autocomplete="new-password" required /></label>
+        <div class="mq-form-foot">
+          <button class="mq-btn mq-btn-primary" type="submit">Save new password</button>
+        </div>
+      </form>
+    </section>
+  <% } %>
+
+</section>
