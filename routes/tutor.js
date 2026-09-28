@@ -315,6 +315,11 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       setFlash(req, 'error', 'Subject not found in your assigned subjects.');
       return res.redirect('/tutor/subjects');
     }
+    // Results and readiness are about THIS tutor's learners. They used to list
+    // every student taking the subject in every branch — 86 rows under a list
+    // of two "Enrolled Students" — including other tutors' students.
+    const myStudentIds = new Set(students.map((s) => Number(s.student_id)));
+    const onlyMine = (rows) => (rows || []).filter((row) => myStudentIds.has(Number(row.student_id)));
     const shell = await buildShell(req, {
       pageTitle: currentSubject.subject_name || 'Subject Details',
       section: 'subjects',
@@ -325,11 +330,11 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       // Module system (overhaul Phase 6): the modules Admin set up, and how each
       // student did on the generated Pre-Assessment.
       modules: await getSubjectModules(req.params.subjectId),
-      preResults: await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' }),
+      preResults: onlyMine(await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' })),
       // Post-Assessment (Phase 8): who is ready for it, and pre-vs-post once taken.
       postAssessment: await getPostAssessment(req.params.subjectId),
-      comparisons: await getSubjectPrePostComparison(req.params.subjectId),
-      readiness: await getSubjectPostReadiness(req.params.subjectId)
+      comparisons: onlyMine(await getSubjectPrePostComparison(req.params.subjectId)),
+      readiness: await getSubjectPostReadiness(req.params.subjectId, { studentIds: [...myStudentIds] })
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -460,7 +465,9 @@ router.post('/subjects/:subjectId/create-post-assessment', async (req, res, next
     // At least one student must have finished the cycle. Opening it for a class
     // where nobody is done would let a student sit the same questions again
     // before doing any of the material in between.
-    const readiness = await getSubjectPostReadiness(subjectId);
+    // Ready means one of THIS tutor's students has finished the cycle.
+    const mine = await getTutorStudentsBySubject(req.session.user.id, subjectId);
+    const readiness = await getSubjectPostReadiness(subjectId, { studentIds: mine.map((s) => Number(s.student_id)) });
     if (!readiness.readyCount) {
       setFlash(req, 'error', 'No student has finished all the modules and activities yet.');
       return res.redirect(`/tutor/subjects/${subjectId}`);
