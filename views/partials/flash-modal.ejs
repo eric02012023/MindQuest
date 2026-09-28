@@ -1,10 +1,23 @@
 <%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/partials/flash-modal.ejs | Purpose: UI template/view used by the system. %>
+<%# The result of an action. The icon draws itself — a tick for done, a cross
+    for an error, an "i" for a notice — in place of the emoji it used to be,
+    which rendered differently on every phone. Animated by css/mq-brand.css. %>
 <% if (flash) { %>
+<% const flashTone = flash.type === 'success' ? 'success' : flash.type === 'error' ? 'error' : 'info'; %>
 <div class="global-modal is-open" data-flash-modal>
-  <div class="global-modal-card small">
+  <div class="global-modal-card small mq-flash mq-flash-<%= flashTone %>">
     <button type="button" class="modal-close" data-close-modal>&times;</button>
-    <div style="font-size:42px;line-height:1;margin-bottom:8px;">
-      <% if (flash.type === 'success') { %>✅<% } else if (flash.type === 'error') { %>❌<% } else { %>ℹ️<% } %>
+    <div class="mq-flash-icon" aria-hidden="true">
+      <svg viewBox="0 0 52 52" width="64" height="64">
+        <circle class="mq-flash-ring" cx="26" cy="26" r="23" fill="none" stroke-width="3" />
+        <% if (flashTone === 'success') { %>
+          <path class="mq-flash-mark" d="M15 27l7 7 15-16" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+        <% } else if (flashTone === 'error') { %>
+          <path class="mq-flash-mark" d="M18 18l16 16M34 18L18 34" fill="none" stroke-width="4" stroke-linecap="round" />
+        <% } else { %>
+          <path class="mq-flash-mark" d="M26 23v12M26 16.5v.5" fill="none" stroke-width="4" stroke-linecap="round" />
+        <% } %>
+      </svg>
     </div>
     <h3><% if (flash.type === 'success') { %>Done<% } else if (flash.type === 'error') { %>Error<% } else { %>Notice<% } %></h3>
     <p><%= flash.message %></p>

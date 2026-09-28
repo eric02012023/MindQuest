@@ -557,12 +557,12 @@ a.subject-list-card:hover,
   color: #fff;
 }
 
-.mq-hero-art {
+.mq-hero .mq-hero-art {
   width: 250px;
   max-width: 32vw;
 }
 
-.mq-hero-art svg {
+.mq-hero .mq-hero-art svg {
   display: block;
   width: 100%;
   height: auto;
@@ -596,7 +596,7 @@ a.subject-list-card:hover,
     padding: 22px 20px;
   }
 
-  .mq-hero-art {
+  .mq-hero .mq-hero-art {
     display: none;
   }
 }
@@ -619,8 +619,13 @@ a.subject-list-card:hover,
 }
 
 /* -------------------------------------------------------------------------
-   11. Between pages: the loading screen shows the MindQuest logo
+   11. Between pages: the MindQuest logo inside a spinning ring, and a progress
+   bar that runs along the top of the screen while the next page loads.
    ---------------------------------------------------------------------- */
+
+.mqtc-loading-content {
+  position: relative;
+}
 
 .mqtc-loading-content::before {
   content: "";
@@ -631,7 +636,36 @@ a.subject-list-card:hover,
   border-radius: 50%;
   background: #fff url("/assets/logo.jpeg") center / cover no-repeat;
   box-shadow: 0 0 0 6px rgba(255, 255, 255, .16), 0 18px 40px rgba(0, 0, 0, .25);
-  animation: mqFloat 2.4s ease-in-out infinite;
+  animation: mqBreatheScale 1.6s ease-in-out infinite;
+}
+
+.mqtc-loading-content::after {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 94px;
+  height: 94px;
+  margin-left: -47px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #fff;
+  border-right-color: rgba(255, 255, 255, .45);
+  animation: mqSpin .9s linear infinite;
+}
+
+#mqtc-loading-overlay::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 100%;
+  height: 3px;
+  transform-origin: left;
+  background: linear-gradient(90deg, var(--mq-brand-a), #fff, var(--mq-brand-b));
+  box-shadow: 0 0 14px rgba(255, 255, 255, .6);
+  animation: mqProgress 2.6s cubic-bezier(.1, .7, .2, 1) forwards;
 }
 
 /* -------------------------------------------------------------------------
@@ -656,8 +690,418 @@ a.subject-list-card:hover,
   outline-offset: 2px;
 }
 
+/* =============================================================================
+   SECOND PASS — more life
+   ========================================================================== */
+
+@keyframes mqBreathe      { from { opacity: .55; } to { opacity: 1; } }
+@keyframes mqBreatheScale { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes mqSpin         { to { transform: rotate(360deg); } }
+@keyframes mqProgress     { from { transform: scaleX(0); } to { transform: scaleX(.92); } }
+@keyframes mqSlideLine    { from { background-position: 0% 0; } to { background-position: 200% 0; } }
+@keyframes mqWiggle       { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 50% { transform: rotate(10deg); } 75% { transform: rotate(-5deg); } }
+@keyframes mqRing         { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(16deg); } 30% { transform: rotate(-14deg); } 45% { transform: rotate(9deg); } 60% { transform: rotate(-5deg); } 75% { transform: rotate(2deg); } }
+@keyframes mqBlink        { 0%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.12); } }
+@keyframes mqHop          { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-4px); } 60% { transform: translateY(0); } 80% { transform: translateY(-1.5px); } }
+@keyframes mqDraw         { to { stroke-dashoffset: 0; } }
+@keyframes mqShake        { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+@keyframes mqCheck        { 0% { transform: scale(.7); } 60% { transform: scale(1.18); } 100% { transform: none; } }
+@keyframes mqShimmerText  { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes mqGlowPulse    { 0% { box-shadow: 0 0 0 0 rgba(22, 168, 200, .45); } 70% { box-shadow: 0 0 0 14px rgba(22, 168, 200, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 168, 200, 0); } }
+@keyframes mqRingGlow     { 0%, 100% { box-shadow: 0 0 0 4px rgba(255, 255, 255, .14), 0 0 0 0 rgba(255, 255, 255, .25); } 50% { box-shadow: 0 0 0 4px rgba(255, 255, 255, .22), 0 0 0 16px rgba(255, 255, 255, 0); } }
+
 /* -------------------------------------------------------------------------
-   14. Anyone whose system asks for less motion gets none of the above
+   15. Light that breathes behind the dashboard
+   Two soft pools of the page's own colour, fading in and out. Opacity only,
+   so it is composited, costs no repaint, and never widens anything.
+   ---------------------------------------------------------------------- */
+
+.dashboard-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 12% 18%, color-mix(in srgb, var(--mq-brand-a) 15%, transparent), transparent 72%),
+    radial-gradient(38% 34% at 88% 86%, color-mix(in srgb, var(--mq-brand-b) 13%, transparent), transparent 72%);
+  animation: mqBreathe 7s ease-in-out infinite alternate;
+}
+
+/* -------------------------------------------------------------------------
+   16. Topbar: a line of the page's colour that slowly travels along its foot,
+   and the signed-in person as a chip with a glowing ring.
+   ---------------------------------------------------------------------- */
+
+.dashboard-topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--mq-brand-a), var(--mq-brand-b), transparent, transparent);
+  background-size: 200% 100%;
+  opacity: .7;
+  animation: mqSlideLine 7s linear infinite;
+}
+
+.topbar-user {
+  padding: 4px 14px 4px 4px;
+  border: 1px solid var(--mq-line, #d7e2ea);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .75);
+  transition: box-shadow .2s ease, transform .2s var(--mq-ease-out);
+}
+
+.topbar-user:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(16, 32, 51, .1);
+}
+
+.topbar-user img {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--mq-brand-a) 55%, transparent);
+}
+
+@media (max-width: 760px) {
+  .topbar-user {
+    padding: 3px;
+  }
+}
+
+/* A new notification makes the bell ring — three times, not forever. */
+.notification-pill.has-new .bell {
+  display: inline-block;
+  transform-origin: 50% 0;
+  animation: mqRing 1s ease-in-out .8s 3;
+}
+
+.notification-pill.has-new .count {
+  animation: mqPop .45s var(--mq-ease-spring) .3s both;
+}
+
+/* -------------------------------------------------------------------------
+   17. Sidebar: every destination has an icon on its own tile; the tile tilts
+   when pointed at and turns white for the page you are on. On a phone the
+   links slide in one after another when the menu opens.
+   ---------------------------------------------------------------------- */
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-icon {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .1);
+  transition: transform .35s var(--mq-ease-spring), background-color .2s ease, color .2s ease, box-shadow .2s ease;
+}
+
+.sidebar-icon svg {
+  display: block;
+}
+
+.sidebar-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-nav a:hover .sidebar-icon {
+  transform: rotate(-8deg) scale(1.1);
+  background: rgba(255, 255, 255, .22);
+}
+
+.sidebar-nav a.active .sidebar-icon {
+  background: #fff;
+  color: var(--mq-brand-b);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .18);
+}
+
+body.dashboard-sidebar-open .sidebar-nav a {
+  animation: mqSlideIn .4s var(--mq-ease-out) both;
+}
+
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(2)  { animation-delay: .04s; }
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(3)  { animation-delay: .08s; }
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(4)  { animation-delay: .12s; }
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(5)  { animation-delay: .16s; }
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(6)  { animation-delay: .2s; }
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(7)  { animation-delay: .24s; }
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(8)  { animation-delay: .28s; }
+body.dashboard-sidebar-open .sidebar-nav a:nth-child(n+9) { animation-delay: .32s; }
+
+/* -------------------------------------------------------------------------
+   18. Every icon has a small motion of its own when its button is pointed at
+   ---------------------------------------------------------------------- */
+
+.mq-i {
+  transform-origin: center;
+  transition: transform .3s var(--mq-ease-spring);
+}
+
+:is(a, button):hover .mq-i-add,
+:is(a, button):hover .mq-i-close   { transform: rotate(90deg); }
+:is(a, button):hover .mq-i-restore { transform: rotate(-200deg); }
+:is(a, button):hover .mq-i-edit    { transform: rotate(-14deg) translateY(-1px); }
+:is(a, button):hover .mq-i-archive,
+:is(a, button):hover .mq-i-download { transform: translateY(2px); }
+:is(a, button):hover .mq-i-print   { transform: translateY(-2px); }
+:is(a, button):hover .mq-i-search  { animation: mqWiggle .55s ease-in-out; }
+:is(a, button):hover .mq-i-bell    { transform-origin: 50% 10%; animation: mqRing .9s ease-in-out; }
+:is(a, button):hover .mq-i-view    { animation: mqBlink .5s ease-in-out; }
+:is(a, button):hover .mq-i-check   { animation: mqCheck .45s var(--mq-ease-spring); }
+:is(a, button):hover :is(.mq-i-money, .mq-i-wallet, .mq-i-receipt, .mq-i-chart, .mq-i-trend,
+                         .mq-i-user, .mq-i-users, .mq-i-book, .mq-i-grid, .mq-i-layers,
+                         .mq-i-clipboard, .mq-i-calendar, .mq-i-award, .mq-i-building,
+                         .mq-i-target, .mq-i-message) { animation: mqHop .55s ease-in-out; }
+
+/* -------------------------------------------------------------------------
+   19. Spotlight and tilt
+   public/js/mq-motion.js marks a card .mq-has-spot the first time the pointer
+   crosses it and keeps --mq-mx/--mq-my on the pointer; the light is the card's
+   own ::before, behind its content. No element is added to the card, so no
+   :first-child rule inside it changes. Count cards also tilt (--mq-rx/--mq-ry).
+   ---------------------------------------------------------------------- */
+
+.mq-has-spot {
+  position: relative;
+  isolation: isolate;
+}
+
+.mq-has-spot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s ease;
+  background: radial-gradient(240px circle at var(--mq-mx, 50%) var(--mq-my, 50%),
+              color-mix(in srgb, var(--mq-brand-a) 13%, transparent), transparent 70%);
+}
+
+.mq-has-spot:hover::before {
+  opacity: 1;
+}
+
+.stat-card.mq-has-spot::before,
+.mq-gradient-card.mq-has-spot::before {
+  background: radial-gradient(260px circle at var(--mq-mx, 50%) var(--mq-my, 50%),
+              rgba(255, 255, 255, .18), transparent 70%);
+}
+
+.mq-tilt {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.mq-tilt:hover {
+  transform: perspective(800px) rotateX(var(--mq-rx, 0deg)) rotateY(var(--mq-ry, 0deg)) translateY(-3px);
+  transition: transform .12s ease-out, box-shadow .22s ease;
+}
+
+/* The welcome banner's illustration leans toward the pointer. */
+.mq-hero .mq-hero-art svg {
+  transform: translate(var(--mq-px, 0px), var(--mq-py, 0px));
+  transition: transform .35s var(--mq-ease-out);
+}
+
+/* -------------------------------------------------------------------------
+   20. Content further down the page rises in as it is scrolled to
+   Only what starts BELOW the fold is hidden (mq-motion.js decides), so nothing
+   the reader can already see ever blinks out.
+   ---------------------------------------------------------------------- */
+
+.mq-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  animation: none !important;
+  transition: opacity .6s var(--mq-ease-out), transform .6s var(--mq-ease-out) !important;
+  transition-delay: var(--mq-reveal-delay, 0s) !important;
+}
+
+.mq-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* -------------------------------------------------------------------------
+   21. Result messages: the icon draws itself
+   ---------------------------------------------------------------------- */
+
+.mq-flash-success { --mq-flash: var(--success, #32a65a); }
+.mq-flash-error   { --mq-flash: var(--danger, #d54c4c); }
+.mq-flash-info    { --mq-flash: var(--mq-brand-a); }
+
+.mq-flash-icon {
+  display: grid;
+  place-items: center;
+  margin: 2px auto 12px;
+}
+
+.mq-flash-icon svg {
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mq-flash) 10%, transparent);
+  animation: mqPop .5s var(--mq-ease-spring) .1s both;
+}
+
+.mq-flash-error .mq-flash-icon svg {
+  animation: mqPop .5s var(--mq-ease-spring) .1s both, mqShake .45s ease-in-out 1s;
+}
+
+.mq-flash-ring {
+  stroke: var(--mq-flash);
+  stroke-dasharray: 145;
+  stroke-dashoffset: 145;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: mqDraw .6s ease-out .2s forwards;
+}
+
+.mq-flash-mark {
+  stroke: var(--mq-flash);
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+  animation: mqDraw .45s ease-out .7s forwards;
+}
+
+/* -------------------------------------------------------------------------
+   22. Fields: a smooth focus glow, and ticks and choices that pop
+   ---------------------------------------------------------------------- */
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+  transition: border-color .2s ease, box-shadow .25s ease, background-color .2s ease;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--mq-brand-b);
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  animation: mqCheck .32s var(--mq-ease-spring);
+}
+
+/* -------------------------------------------------------------------------
+   23. Scrollbars and text selection in the page's colour
+   ---------------------------------------------------------------------- */
+
+.dashboard-content {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--mq-brand-a) 45%, transparent) transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--mq-brand-a) 26%, transparent);
+}
+
+/* -------------------------------------------------------------------------
+   24. The public site: landing page, login, registration
+   ---------------------------------------------------------------------- */
+
+/* The header lifts off the page once the visitor scrolls. */
+.mq-sticky-header {
+  transition: box-shadow .3s ease, background-color .3s ease;
+}
+
+.mq-sticky-header.is-scrolled {
+  box-shadow: 0 12px 30px rgba(16, 32, 51, .12);
+}
+
+/* The hero's words arrive in order, and its picture floats. */
+.mq-hero-section .mq-copy-block > * {
+  animation: mqRise .7s var(--mq-ease-out) both;
+}
+
+.mq-hero-section .mq-copy-block > :nth-child(2) { animation-delay: .1s; }
+.mq-hero-section .mq-copy-block > :nth-child(3) { animation-delay: .2s; }
+.mq-hero-section .mq-copy-block > :nth-child(n+4) { animation-delay: .3s; }
+
+.mq-hero-section img.mq-hero-art {
+  animation: mqFloat 6s ease-in-out infinite;
+}
+
+/* "Enroll now!" and the other main calls to action keep a slow pulse. */
+.mq-gradient-btn {
+  animation: mqGlowPulse 2.8s ease-out 1.2s infinite;
+}
+
+.step-circle {
+  transition: transform .35s var(--mq-ease-spring);
+}
+
+.step-item:hover .step-circle {
+  transform: scale(1.08) rotate(-6deg);
+}
+
+.step-item,
+.mq-feature-grid article,
+.branch-grid article,
+.mq-gradient-card {
+  transition: box-shadow .25s ease;
+}
+
+.step-item:hover,
+.mq-feature-grid article:hover,
+.branch-grid article:hover {
+  box-shadow: 0 22px 44px rgba(16, 32, 51, .12);
+}
+
+/* Login: the logo glows, and WELCOME catches the light. */
+.login-page .login-info-panel img {
+  animation: mqFloat 5s ease-in-out infinite, mqRingGlow 3.5s ease-in-out infinite;
+}
+
+.login-page .login-info-panel h1 {
+  background: linear-gradient(100deg, #fff 35%, #bff6ff 50%, #fff 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: mqShimmerText 5s linear infinite;
+}
+
+/* Registration: the photo box invites a click, the fields arrive in order. */
+.fake-upload-box {
+  transition: transform .25s var(--mq-ease-out), box-shadow .25s ease, border-color .2s ease;
+}
+
+.fake-upload-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(16, 32, 51, .12);
+}
+
+.upload-plus {
+  transition: transform .35s var(--mq-ease-spring);
+}
+
+.fake-upload-box:hover .upload-plus {
+  transform: rotate(90deg) scale(1.1);
+}
+
+.registration-design-card .field-block,
+.registration-design-card .top-upload-block {
+  animation: mqRise .5s var(--mq-ease-out) both;
+}
+
+.registration-design-card .field-block:nth-of-type(2) { animation-delay: .05s; }
+.registration-design-card .field-block:nth-of-type(3) { animation-delay: .1s; }
+.registration-design-card .field-block:nth-of-type(4) { animation-delay: .15s; }
+.registration-design-card .field-block:nth-of-type(n+5) { animation-delay: .2s; }
+
+/* -------------------------------------------------------------------------
+   25. Anyone whose system asks for less motion gets none of the above
    Everything lands in its finished state at once; nothing floats or pulses.
    ---------------------------------------------------------------------- */
 
@@ -675,12 +1119,21 @@ a.subject-list-card:hover,
 
 @media print {
   .dashboard-main::before,
+  .dashboard-main::after,
+  .dashboard-topbar::after,
   .sidebar::after,
   .mq-hero::before,
   .mq-hero::after,
   .hero-dashboard-card.gradient::before,
   .hero-dashboard-card.gradient::after,
-  .mq-empty::before {
+  .mq-empty::before,
+  .mq-has-spot::before {
     display: none !important;
+  }
+
+  /* Anything not scrolled to yet must still print. */
+  .mq-reveal {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

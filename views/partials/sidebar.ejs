@@ -13,66 +13,66 @@
   <div class="sidebar-scroll-area">
   <% if (basePath === '/admin' || basePath === '/assistant') { %>
     <nav class="sidebar-nav">
-      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="<%= basePath %>">Dashboard</a>
+      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="<%= basePath %>"><span class="sidebar-icon"><%- icon('grid', 18) %></span><span class="sidebar-label">Dashboard</span></a>
       <%# One entry. Student Profiles and Tutor Profiles were the same list with
           the role pinned, and User Management already filters by role. %>
-      <a class="<%= section === 'users' ? 'active' : '' %>" href="<%= basePath %>/users">User Management</a>
-      <% if (currentUser.role === 'admin') { %><a class="<%= section === 'branches' ? 'active' : '' %>" href="<%= basePath %>/branches">Branch Management</a><% } %>
+      <a class="<%= section === 'users' ? 'active' : '' %>" href="<%= basePath %>/users"><span class="sidebar-icon"><%- icon('users', 18) %></span><span class="sidebar-label">User Management</span></a>
+      <% if (currentUser.role === 'admin') { %><a class="<%= section === 'branches' ? 'active' : '' %>" href="<%= basePath %>/branches"><span class="sidebar-icon"><%- icon('building', 18) %></span><span class="sidebar-label">Branch Management</span></a><% } %>
       <%# Cash is taken on this page now (the POS counter is a section of it),
           so there is no separate POS entry. Badged with the payment slips still
           waiting to be paid at the counter. %>
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="<%= basePath %>/billing">
-        Student Bill<% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
+        <span class="sidebar-icon"><%- icon('receipt', 18) %></span><span class="sidebar-label">Student Bill</span><% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
       </a>
       <%# Phase 7.3: renamed from "Income Report". The URL is unchanged so old
           links still resolve. Notifications now live as a section on this page
           (7.2), which is why the bell is gone from the topbar. %>
       <a class="<%= section === 'income' ? 'active' : '' %>" href="<%= basePath %>/income-report">
-        Payment Collection<% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
+        <span class="sidebar-icon"><%- icon('wallet', 18) %></span><span class="sidebar-label">Payment Collection</span><% if (typeof pendingPaymentCount !== 'undefined' && pendingPaymentCount > 0) { %> <span class="sidebar-badge"><%= pendingPaymentCount %></span><% } %>
       </a>
       <%# The full inbox — registrations, enrolment requests, archive and history.
           Payment Collection carries the same alerts as a summary; this is where
           they are worked through. %>
       <a class="<%= section === 'notifications' ? 'active' : '' %>" href="<%= basePath %>/notifications">
-        Notifications<% if (typeof notificationCount !== 'undefined' && notificationCount > 0) { %> <span class="sidebar-badge"><%= notificationCount %></span><% } %>
+        <span class="sidebar-icon"><%- icon('bell', 18) %></span><span class="sidebar-label">Notifications</span><% if (typeof notificationCount !== 'undefined' && notificationCount > 0) { %> <span class="sidebar-badge"><%= notificationCount %></span><% } %>
       </a>
-      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects">All Subjects</a>
+      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects"><span class="sidebar-icon"><%- icon('book', 18) %></span><span class="sidebar-label">All Subjects</span></a>
       <%# One entry, not two: Student Results is now a section of this page. %>
-      <a class="<%= section === 'assessment_monitoring' ? 'active' : '' %>" href="<%= basePath %>/assessment-monitoring">Assessment Monitoring</a>
-      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics">Analytics &amp; Reports</a>
-      <a class="<%= section === 'profile' ? 'active' : '' %>" href="<%= basePath %>/profile/<%= currentUser.id %>">My Profile</a>
+      <a class="<%= section === 'assessment_monitoring' ? 'active' : '' %>" href="<%= basePath %>/assessment-monitoring"><span class="sidebar-icon"><%- icon('clipboard', 18) %></span><span class="sidebar-label">Assessment Monitoring</span></a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics"><span class="sidebar-icon"><%- icon('chart', 18) %></span><span class="sidebar-label">Analytics &amp; Reports</span></a>
+      <a class="<%= section === 'profile' ? 'active' : '' %>" href="<%= basePath %>/profile/<%= currentUser.id %>"><span class="sidebar-icon"><%- icon('user', 18) %></span><span class="sidebar-label">My Profile</span></a>
     </nav>
   <% } %>
 
   <% if (basePath === '/student') { %>
     <nav class="sidebar-nav">
-      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/student">Dashboard</a>
-      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/student/subjects">My Subject</a>
-      <a class="<%= section === 'billing' ? 'active' : '' %>" href="/student/billing">Billing Data</a>
-      <a class="<%= section === 'progress' ? 'active' : '' %>" href="/student/progress">My Progress</a>
+      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/student"><span class="sidebar-icon"><%- icon('grid', 18) %></span><span class="sidebar-label">Dashboard</span></a>
+      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/student/subjects"><span class="sidebar-icon"><%- icon('book', 18) %></span><span class="sidebar-label">My Subject</span></a>
+      <a class="<%= section === 'billing' ? 'active' : '' %>" href="/student/billing"><span class="sidebar-icon"><%- icon('receipt', 18) %></span><span class="sidebar-label">Billing Data</span></a>
+      <a class="<%= section === 'progress' ? 'active' : '' %>" href="/student/progress"><span class="sidebar-icon"><%- icon('trend', 18) %></span><span class="sidebar-label">My Progress</span></a>
       <%# Analytics & Reports is a required section for all four roles. It is the
           scored view — trends, weak topics, module completion — where My Progress
           is the per-subject checklist. %>
-      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/student/analytics">Analytics &amp; Reports</a>
-      <a class="<%= section === 'profile' ? 'active' : '' %>" href="/student/profile">Profile</a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/student/analytics"><span class="sidebar-icon"><%- icon('chart', 18) %></span><span class="sidebar-label">Analytics &amp; Reports</span></a>
+      <a class="<%= section === 'profile' ? 'active' : '' %>" href="/student/profile"><span class="sidebar-icon"><%- icon('user', 18) %></span><span class="sidebar-label">Profile</span></a>
     </nav>
   <% } %>
 
   <% if (basePath === '/tutor') { %>
     <nav class="sidebar-nav">
-      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/tutor">Dashboard</a>
-      <a class="<%= section === 'students' ? 'active' : '' %>" href="/tutor/students">My Students</a>
-      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/tutor/subjects">My Subject</a>
-      <a class="<%= section === 'modules' ? 'active' : '' %>" href="/tutor/modules">Modules &amp; Assessments</a>
+      <a class="<%= section === 'dashboard' ? 'active' : '' %>" href="/tutor"><span class="sidebar-icon"><%- icon('grid', 18) %></span><span class="sidebar-label">Dashboard</span></a>
+      <a class="<%= section === 'students' ? 'active' : '' %>" href="/tutor/students"><span class="sidebar-icon"><%- icon('users', 18) %></span><span class="sidebar-label">My Students</span></a>
+      <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/tutor/subjects"><span class="sidebar-icon"><%- icon('book', 18) %></span><span class="sidebar-label">My Subject</span></a>
+      <a class="<%= section === 'modules' ? 'active' : '' %>" href="/tutor/modules"><span class="sidebar-icon"><%- icon('layers', 18) %></span><span class="sidebar-label">Modules &amp; Assessments</span></a>
       <%# Auto-generated from a student's Pre-Assessment: the topics to teach
           first. Badged with the ones the tutor has not opened yet. %>
       <a class="<%= section === 'focus' ? 'active' : '' %>" href="/tutor/focus-handouts">
-        Focus Areas<% if (typeof focusHandoutCount !== 'undefined' && focusHandoutCount > 0) { %> <span class="sidebar-badge"><%= focusHandoutCount %></span><% } %>
+        <span class="sidebar-icon"><%- icon('target', 18) %></span><span class="sidebar-label">Focus Areas</span><% if (typeof focusHandoutCount !== 'undefined' && focusHandoutCount > 0) { %> <span class="sidebar-badge"><%= focusHandoutCount %></span><% } %>
       </a>
-      <a class="<%= section === 'attendance' ? 'active' : '' %>" href="/tutor/attendance">Attendance</a>
-      <a class="<%= section === 'student_results' ? 'active' : '' %>" href="/tutor/student-results">Student Results</a>
-      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/tutor/analytics">Analytics &amp; Reports</a>
-      <a class="<%= section === 'profile' ? 'active' : '' %>" href="/tutor/profile">Profile</a>
+      <a class="<%= section === 'attendance' ? 'active' : '' %>" href="/tutor/attendance"><span class="sidebar-icon"><%- icon('calendar', 18) %></span><span class="sidebar-label">Attendance</span></a>
+      <a class="<%= section === 'student_results' ? 'active' : '' %>" href="/tutor/student-results"><span class="sidebar-icon"><%- icon('award', 18) %></span><span class="sidebar-label">Student Results</span></a>
+      <a class="<%= section === 'analytics' ? 'active' : '' %>" href="/tutor/analytics"><span class="sidebar-icon"><%- icon('chart', 18) %></span><span class="sidebar-label">Analytics &amp; Reports</span></a>
+      <a class="<%= section === 'profile' ? 'active' : '' %>" href="/tutor/profile"><span class="sidebar-icon"><%- icon('user', 18) %></span><span class="sidebar-label">Profile</span></a>
     </nav>
   <% } %>
   </div>
