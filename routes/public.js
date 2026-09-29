@@ -15,7 +15,7 @@ const {
   createSubmission,
   isDuplicatePersonName
 } = require('../lib/data');
-const { validateStrongPassword } = require('../lib/utils');
+const { validateStrongPassword, validateGmailAddress } = require('../lib/utils');
 
 const router = express.Router();
 const profileUpload = createUploader('profiles');
@@ -224,13 +224,15 @@ router.post('/register/:type/details', ensureGuest, profileUpload.single('image'
       req.session.flash = { type: 'error', message: 'A student or tutor with the same complete name already exists. Please use a different complete name.' };
       return res.redirect(`/register/${type}`);
     }
-    if (await isEmailTaken(email)) {
-      req.session.flash = { type: 'error', message: 'Email already exists. Please use another email.' };
+    // An address Gmail would never have given out is turned away here, before
+    // it reaches the admin — otherwise the login code could never be delivered.
+    const gmail = validateGmailAddress(email);
+    if (!gmail.ok) {
+      req.session.flash = { type: 'error', message: gmail.message };
       return res.redirect(`/register/${type}`);
     }
-
-    if (!email.endsWith('@gmail.com')) {
-      req.session.flash = { type: 'error', message: 'Please use a valid Gmail address ending in @gmail.com.' };
+    if (await isEmailTaken(email)) {
+      req.session.flash = { type: 'error', message: 'Email already exists. Please use another email.' };
       return res.redirect(`/register/${type}`);
     }
 

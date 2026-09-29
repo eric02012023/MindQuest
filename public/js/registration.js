@@ -205,6 +205,61 @@ document.querySelectorAll('[data-registration-form]').forEach((form) => {
   });
 });
 
+// The Gmail rules lib/utils.js validateGmailAddress checks on the server, run
+// here too so the warning shows while the address is typed. Returns '' when
+// the address could be a real Gmail account.
+function gmailProblem(value) {
+  const email = String(value || '').trim().toLowerCase();
+  if (!email) return '';
+  const at = email.lastIndexOf('@');
+  if (at < 1 || email.slice(at + 1) !== 'gmail.com') return 'Please use a Gmail address ending in @gmail.com.';
+  const username = email.slice(0, at).split('+')[0];
+  const valid = /^[a-z0-9.]+$/.test(username)
+    && !username.startsWith('.')
+    && !username.endsWith('.')
+    && !username.includes('..')
+    && username.length >= 6
+    && username.replace(/\./g, '').length <= 30;
+  return valid ? '' : 'This is not a registered Gmail account. A Gmail username has 6 to 30 letters, numbers or periods. '
+    + 'Create your Gmail account first at accounts.google.com, then register with it.';
+}
+
+document.querySelectorAll('[data-registration-form]').forEach((form) => {
+  const emailInput = form.querySelector('input[name="email"]');
+  if (!emailInput) return;
+  const note = document.createElement('p');
+  note.className = 'gmail-check-note';
+  note.setAttribute('role', 'alert');
+  note.style.margin = '6px 0 0';
+  note.style.fontSize = '13px';
+  note.style.fontWeight = '600';
+  note.style.lineHeight = '1.45';
+  note.style.color = '#b91c1c';
+  (emailInput.closest('.account-input-wrap') || emailInput).insertAdjacentElement('afterend', note);
+
+  // Not while the first characters go in — only once they leave the box, or
+  // when they come back to fix it.
+  let touched = false;
+  const show = () => {
+    const problem = touched ? gmailProblem(emailInput.value) : '';
+    note.textContent = problem;
+    emailInput.setAttribute('aria-invalid', problem ? 'true' : 'false');
+    emailInput.style.borderColor = problem ? '#d54c4c' : '';
+  };
+  emailInput.addEventListener('blur', () => { touched = true; show(); });
+  emailInput.addEventListener('input', show);
+
+  form.addEventListener('submit', (event) => {
+    const problem = gmailProblem(emailInput.value);
+    if (!problem) return;
+    event.preventDefault();
+    touched = true;
+    show();
+    showValidationMessage(problem);
+    emailInput.focus();
+  });
+});
+
 document.querySelectorAll('[data-password-toggle]').forEach((btn) => {
   btn.addEventListener('click', () => {
     const key = btn.getAttribute('data-password-toggle');
