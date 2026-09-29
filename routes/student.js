@@ -38,6 +38,7 @@ const {
   getAntiCheatViolationCount,
   createOnlinePayment,
   completeOnlinePayment,
+  reconcilePayMongoPayments,
   // Phase 3: Assessment requests, PayMongo
   createPayMongoPayment,
   getAdminSubjectResources,
@@ -323,6 +324,28 @@ router.post('/notifications/:id/read', async (req, res, next) => {
  */
 router.get('/billing', async (req, res, next) => {
   try {
+    // Back from PayMongo (or with a checkout still open): ask PayMongo whether
+    // it was paid and record it now, rather than waiting on the webhook. Done
+    // before the page's figures are read, so the balance shown is the new one.
+    const returning = req.query.payment === 'success';
+    let paymentCheck = null;
+    try {
+      paymentCheck = await reconcilePayMongoPayments(req.session.user.id);
+    } catch (error) {
+      console.error('[PayMongo] reconcile failed:', error.message);
+    }
+    if (paymentCheck && paymentCheck.completed.length) {
+      const total = paymentCheck.completed.reduce((sum, value) => sum + value, 0);
+      res.locals.flash = { type: 'success', message: `Payment received — ₱${total.toFixed(2)} is now recorded on your account. Thank you!` };
+    } else if (returning) {
+      res.locals.flash = {
+        type: 'info',
+        message: 'PayMongo has not confirmed your payment yet. It is recorded here automatically as soon as it is — open Billing Data again in a minute.'
+      };
+    } else if (req.query.payment === 'cancelled') {
+      res.locals.flash = { type: 'info', message: 'Payment cancelled. Nothing was charged.' };
+    }
+
     const [billingData, branches] = await Promise.all([
       getStudentBillingData(req.session.user.id),
       getBranches()
@@ -795,10 +818,13 @@ router.post('/billing/pay-online', async (req, res, next) => {
       return res.redirect('/student/billing');
     }
     const student = await getUserById(req.session.user.id);
+    const studentName = `${student.first_name} ${student.last_name}`.replace(/\s+/g, ' ').trim();
     const result = await createPayMongoPayment(req.session.user.id, amount, {
-      name: `${student.first_name} ${student.last_name}`,
-      email: student.email || '',
-      phone: student.contact_number || ''
+      name: studentName,
+      // The login email, or the parent's when a student has none of their own.
+      email: student.email || student.parent_email || '',
+      phone: student.contact_number || student.parent_contact_number || '',
+      label: `${studentName} (${student.user_id})`
     });
 
     // If PayMongo returned a checkout URL, redirect to it

@@ -33,10 +33,18 @@ router.post('/paymongo', async (req, res) => {
         if (rows && rows.length > 0) {
           const paymentId = rows[0].id;
 
-          // Call the existing completeOnlinePayment logic to deduct bill
-          await completeOnlinePayment(paymentId, { transactionReference });
-          console.log(`[PayMongo Webhook] Payment ${paymentId} completed successfully for session ${checkoutSessionId}`
-            + `${transactionReference ? ` (transaction ${transactionReference})` : ''}.`);
+          // Call the existing completeOnlinePayment logic to deduct bill. The
+          // student's return to Billing Data may have recorded it a moment
+          // earlier (reconcilePayMongoPayments); that is a success, not an error
+          // for PayMongo to keep retrying.
+          try {
+            await completeOnlinePayment(paymentId, { transactionReference });
+            console.log(`[PayMongo Webhook] Payment ${paymentId} completed successfully for session ${checkoutSessionId}`
+              + `${transactionReference ? ` (transaction ${transactionReference})` : ''}.`);
+          } catch (error) {
+            if (!/already completed/i.test(error.message)) throw error;
+            console.log(`[PayMongo Webhook] Payment ${paymentId} was already recorded.`);
+          }
         } else {
           console.log(`[PayMongo Webhook] No pending payment found for session: ${checkoutSessionId}`);
         }

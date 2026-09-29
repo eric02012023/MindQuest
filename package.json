@@ -8,7 +8,7 @@
     "dev": "node server.js",
     "init-db": "node scripts/init-db.js",
     "apply-schema": "node scripts/apply-schema.js",
-    "test": "node scripts/test-anti-cheat-client.js && node scripts/test-assessment-types.js && node scripts/test-payment-minimum.js && node scripts/test-subject-pricing.js && node scripts/test-tutor-assignment.js && node scripts/test-page-styles.js && node scripts/test-storage-fallback.js"
+    "test": "node scripts/test-anti-cheat-client.js && node scripts/test-assessment-types.js && node scripts/test-payment-minimum.js && node scripts/test-subject-pricing.js && node scripts/test-tutor-assignment.js && node scripts/test-page-styles.js && node scripts/test-storage-fallback.js && node scripts/test-profile-save.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

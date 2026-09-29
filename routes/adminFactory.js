@@ -1571,8 +1571,23 @@ function createAdminRouter(role) {
           return res.redirect(backTo);
         }
 
+        // One-click "Take payment" from the slip queue sends no amount: the
+        // cash received is what the slip says — capped at what is still owed,
+        // the same figure the full form offers, since a slip issued before
+        // another payment landed can be stale.
+        let amountToRecord = amount;
+        if (req.body.quick === '1') {
+          const ledger = await getBillingLedger(request.student_id);
+          const remaining = Number(ledger?.totals?.remaining || 0);
+          if (!ledger || remaining <= 0) {
+            setFlash(req, 'error', `${slipCode(requestId)} cannot be taken: this student's account has nothing left to pay. Void the slip instead.`);
+            return res.redirect(backTo);
+          }
+          amountToRecord = Math.min(Number(request.amount || 0), remaining).toFixed(2);
+        }
+
         const { request: updated, entry } = await completePaymentRequest(requestId, req.session.user, {
-          amount,
+          amount: amountToRecord,
           note: [referenceNo ? `OR/Ref ${referenceNo}` : '', note].filter(Boolean).join(' — ')
         });
 
