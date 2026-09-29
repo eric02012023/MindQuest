@@ -1,7 +1,7 @@
 /**
  * File: scripts/test-payment-minimum.js
- * Purpose: Pin down the payment floor — ₱500 down, then a THIRD of whatever is
- *          still owed on each payment after it.
+ * Purpose: Pin down the payment floor — ₱500 down, then at most three more
+ *          payments, each at least a THIRD of the bill (the last: the rest).
  *
  * Run:  node scripts/test-payment-minimum.js       (needs no database, no keys)
  *
@@ -20,6 +20,8 @@
  *   4. Letting the instalment third round UP past the balance. On the last few
  *      pesos that would again leave no amount that is both "at least the floor"
  *      and "at most what is owed".
+ *   5. Taking the third of what is STILL owed. That floor shrinks after every
+ *      payment (434, 289, 193 ...) and the account never finishes in three.
  *
  * `config/db` is replaced in the require cache before lib/billing.js loads, so
  * createPaymentRequest runs its REAL code path against a scripted database. The
@@ -78,15 +80,24 @@ ok('and says so because it is the down payment', paymentFloorFor(fresh, 0).kind 
 
 console.log("\n== the office's own example: 1800 billed, 500 down ==");
 ok('1300 is left', remainingFor(fresh, 500) === 1300, `${remainingFor(fresh, 500)}`);
-ok('the next payment must be 434 (1300/3, rounded up)',
-  minimumPaymentFor(fresh, 500) === 434, `${minimumPaymentFor(fresh, 500)}`);
+ok('the next payment must be 600 (a third of the 1800 bill)',
+  minimumPaymentFor(fresh, 500) === 600, `${minimumPaymentFor(fresh, 500)}`);
 ok('and it is an instalment, not a down payment', paymentFloorFor(fresh, 500).kind === 'instalment');
 ok('a 20-peso top-up is now BELOW the floor', 20 < minimumPaymentFor(fresh, 500));
 ok('paying the whole balance is still legal', 1300 >= minimumPaymentFor(fresh, 500));
 
-console.log('\n== the third is recomputed from what is left, every time ==');
-ok('after 500 + 434 the floor drops', minimumPaymentFor(fresh, 934) === 289, `${minimumPaymentFor(fresh, 934)}`);
-ok('866 left splits into 289', remainingFor(fresh, 934) === 866);
+console.log('\n== the floor stays a third of the bill, so the account finishes ==');
+ok('after 500 + 600 the floor is still 600', minimumPaymentFor(fresh, 1100) === 600, `${minimumPaymentFor(fresh, 1100)}`);
+ok('after 500 + 600 + 600 only 100 is left', remainingFor(fresh, 1700) === 100);
+ok('and the last instalment is exactly the rest', minimumPaymentFor(fresh, 1700) === 100, `${minimumPaymentFor(fresh, 1700)}`);
+for (const [billed, down] of [[1800, 500], [3600, 500], [5400, 1000], [10800, 500], [1900, 777]]) {
+  const bill = { id: 5, full_bill: billed, partial_payment: 0 };
+  let paid = down;
+  let payments = 0;
+  while (remainingFor(bill, paid) > 0 && payments < 10) { paid += minimumPaymentFor(bill, paid); payments++; }
+  ok(`₱${billed} with ₱${down} down is paid off in at most three minimum payments`,
+    payments <= 3 && remainingFor(bill, paid) === 0, `${payments} payments`);
+}
 
 console.log('\n== the third never rounds past the balance ==');
 for (const left of [1, 2, 3, 4, 5, 7, 10, 100]) {
@@ -101,7 +112,7 @@ const migrated = { id: 1, full_bill: 1800, partial_payment: 500 };
 ok('counts as having paid', hasPaidBefore(migrated, 0) === true);
 ok('is NOT asked for another down payment', paymentFloorFor(migrated, 0).kind === 'instalment');
 ok('its ₱500 is not charged twice', remainingFor(migrated, 0) === 1300, `${remainingFor(migrated, 0)}`);
-ok('so its floor is the instalment third', minimumPaymentFor(migrated, 0) === 434,
+ok('so its floor is the instalment third', minimumPaymentFor(migrated, 0) === 600,
   `${minimumPaymentFor(migrated, 0)}`);
 
 console.log('\n== a bill smaller than the down payment ==');
@@ -118,7 +129,7 @@ console.log('\n== the wording a student actually sees ==');
 ok('the first payment is explained', /first payment/i.test(minimumPaymentError(500)));
 ok('it names the instalments that follow', /three instalments/i.test(minimumPaymentError(500)));
 const instalmentMsg = minimumPaymentError(paymentFloorFor(fresh, 500));
-ok('the instalment refusal names the amount', /434\.00/.test(instalmentMsg), instalmentMsg);
+ok('the instalment refusal names the amount', /600\.00/.test(instalmentMsg), instalmentMsg);
 ok('and explains it is a third', /one third/i.test(instalmentMsg));
 ok('afterwards it just asks for a real number', minimumPaymentError(1) === 'Enter an amount greater than zero.');
 
@@ -160,11 +171,15 @@ const refuse = async (amount) => {
 
   const tooSmall = await refuse(20);
   ok('20 is refused — it is under the third', tooSmall !== null, tooSmall || 'it went through');
-  ok('the refusal names 434', /434/.test(tooSmall || ''), tooSmall || '');
+  ok('the refusal names 600', /600/.test(tooSmall || ''), tooSmall || '');
 
+  const underFloor = await refuse(434);
+  ok('434 — a third of what is left — is no longer enough', underFloor !== null, underFloor || 'it went through');
+
+  db.pending = [];
   db.inserted = [];
-  const instalment = await request(434);
-  ok('434 is accepted', instalment.amount === 434, `${instalment.amount}`);
+  const instalment = await request(600);
+  ok('600 is accepted', instalment.amount === 600, `${instalment.amount}`);
   ok('it was really written', db.inserted.length === 1);
 
   db.pending = [];

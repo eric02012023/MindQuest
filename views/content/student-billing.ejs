@@ -42,8 +42,8 @@
     <div class="mq-summary-item">
       <span>Payment due</span><strong><%= bill && bill.payment_due ? formatDate(bill.payment_due) : '—' %></strong>
     </div>
-    <%# Phase 2.4: the balance after the down payment is cleared in three
-        instalments, so the floor on the next one is a third of what is left.
+    <%# Phase 2.4: after the first payment the account is cleared in at most three
+        more, so the floor on each is a third of the BILL (the last one: the rest).
         It sits here, as a fact about the account, rather than as a note stapled
         to the amount field — that note now appears only when a payment is
         actually short. %>
@@ -57,9 +57,13 @@
 
   <% if (totals.remaining > 0 && floor.kind === 'instalment' && floor.amount > 1) { %>
     <p class="mq-form-note">
-      Your down payment is in. The remaining <strong><%= money(floor.remaining) %></strong> is paid in
-      <%= floor.split %> instalments, so the next payment must be at least
-      <strong><%= money(floor.amount) %></strong> — you can always pay more, up to the full balance.
+      <% if (floor.remaining <= floor.amount) { %>
+        Your last instalment: pay the remaining <strong><%= money(floor.remaining) %></strong> and this account is fully paid.
+      <% } else { %>
+        Your down payment is in. The remaining <strong><%= money(floor.remaining) %></strong> is cleared in at most
+        <%= floor.split %> payments of at least <strong><%= money(floor.amount) %></strong> each (a third of the
+        <%= money(floor.billed) %> bill) — you can always pay more, up to the full balance.
+      <% } %>
     </p>
   <% } %>
 
@@ -338,14 +342,17 @@
   // what this warns about and what the server refuses are the same rule — the
   // form is not re-deriving it. The server still has the last word; this only
   // saves the student a round trip.
-  var PAY_FLOOR = <%- JSON.stringify({ amount: floor.amount, kind: floor.kind, remaining: floor.remaining, split: floor.split }) %>;
+  var PAY_FLOOR = <%- JSON.stringify({ amount: floor.amount, kind: floor.kind, remaining: floor.remaining, billed: floor.billed, split: floor.split }) %>;
 
   function payShortfallMessage(entered) {
     var min = Number(PAY_FLOOR.amount || 0);
     var peso = function (n) { return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     if (PAY_FLOOR.kind === 'instalment') {
+      if (Number(PAY_FLOOR.remaining || 0) <= min) {
+        return 'Short by ' + peso(min - entered) + '. This is your last instalment — pay the full ' + peso(min) + '.';
+      }
       return 'Short by ' + peso(min - entered) + '. The next payment must be at least ' + peso(min)
-        + ' — one third of the ' + peso(PAY_FLOOR.remaining) + ' still owed.';
+        + ' — one third of the ' + peso(PAY_FLOOR.billed) + ' bill.';
     }
     return 'Short by ' + peso(min - entered) + '. The first payment on your account must be at least '
       + peso(min) + '.';

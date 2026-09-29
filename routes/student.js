@@ -7,6 +7,7 @@
 
 const express = require('express');
 const { authorize, setFlash } = require('../middleware/auth');
+const { query } = require('../config/db');
 const { createUploader } = require('../lib/uploads');
 const {
   getStudentDashboardData,
@@ -334,13 +335,30 @@ router.get('/billing', async (req, res, next) => {
     } catch (error) {
       console.error('[PayMongo] reconcile failed:', error.message);
     }
-    if (paymentCheck && paymentCheck.completed.length) {
-      const total = paymentCheck.completed.reduce((sum, value) => sum + value, 0);
-      res.locals.flash = { type: 'success', message: `Payment received — ₱${total.toFixed(2)} is now recorded on your account. Thank you!` };
+    // PayMongo's webhook usually records the payment before the student is even
+    // back on this page, so "nothing new to complete" does NOT mean "not paid":
+    // the student's most recent online payment says which it is.
+    let latestOnline = null;
+    if (returning) {
+      const rows = await query(
+        'SELECT TOP 1 id, amount, status FROM online_payments WHERE student_id = ? ORDER BY id DESC',
+        [req.session.user.id]
+      );
+      latestOnline = rows[0] || null;
+    }
+    const paidNow = paymentCheck && paymentCheck.completed.length
+      ? paymentCheck.completed.reduce((sum, value) => sum + value, 0)
+      : (latestOnline && latestOnline.status === 'completed' ? Number(latestOnline.amount || 0) : 0);
+
+    if (paidNow > 0) {
+      res.locals.flash = {
+        type: 'success',
+        message: `Payment successful! ₱${paidNow.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been received and recorded on your account. Thank you!`
+      };
     } else if (returning) {
       res.locals.flash = {
         type: 'info',
-        message: 'PayMongo has not confirmed your payment yet. It is recorded here automatically as soon as it is — open Billing Data again in a minute.'
+        message: 'PayMongo is still confirming your payment. It is recorded here automatically as soon as it is — open Billing Data again in a minute.'
       };
     } else if (req.query.payment === 'cancelled') {
       res.locals.flash = { type: 'info', message: 'Payment cancelled. Nothing was charged.' };
