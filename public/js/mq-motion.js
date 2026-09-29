@@ -77,7 +77,7 @@
     window.requestAnimationFrame(step);
   }
 
-  var figures = document.querySelectorAll('.stat-card strong, .mq-summary-item strong, .mq-kpi strong, .huge-number, .mq-profile-stat strong');
+  var figures = document.querySelectorAll('.stat-card strong, .mq-summary-item strong, .mq-kpi strong, .huge-number, .mq-profile-stat strong, .mq-hero-stat strong');
   if (figures.length) {
     if ('IntersectionObserver' in window) {
       var figureObserver = new IntersectionObserver(function (entries) {
@@ -103,7 +103,7 @@
     '.subject-list-card', '.mq-row', '.table-wrap tbody tr', '.mq-item', '.mq-kpi',
     '.mq-landing-main .mq-copy-block', '.mq-landing-main .mq-image-block', '.step-item',
     '.mq-feature-grid article', '.mq-gradient-card', '.branch-grid article',
-    '.mq-centered-title', '.mq-centered-subtitle', '.mq-centered-green', '.mq-card'
+    '.mq-centered-title', '.mq-centered-subtitle', '.mq-centered-green', '.mq-card', '.mq-student-card'
   ].join(',');
 
   if ('IntersectionObserver' in window) {
@@ -147,7 +147,7 @@
   // toward it. Mouse and pen only — on a touch screen there is no hover.
   var SPOT_TARGETS = '.stat-card, .list-card, .subject-list-card, .mq-kpi, .mini-bubble, '
     + '.mq-summary-item, .mq-gradient-card, .step-item, .mq-feature-grid article, .branch-grid article, '
-    + '.mq-profile-stat, .mq-tutor-feature';
+    + '.mq-profile-stat, .mq-tutor-feature, .mq-student-card';
   var TILT_TARGETS = '.stat-card, .mq-kpi, .step-item, .mq-feature-grid article';
   // The welcome banner is followed too, for its illustration's parallax.
   var TRACK_TARGETS = SPOT_TARGETS + ', .mq-hero';

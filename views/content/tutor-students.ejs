@@ -1,15 +1,122 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-students.ejs | Purpose: UI template/view used by the system. %>
-<section class="panel-card">
-  <div class="panel-card-head"><h2>My Students</h2></div>
-  <div class="list-stack">
-    <% if (!students.length) { %><p class="empty-state">No students assigned yet.</p><% } %>
-    <% students.forEach((student) => { %>
-      <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>">
-        <div>
-          <strong><%= student.full_name %></strong>
-          <span><%= student.subject_name %> - <%= student.year_level %> <%= student.grade_level %></span>
-        </div>
-      </a>
-    <% }) %>
-  </div>
+<%# File: views/content/tutor-students.ejs
+    Purpose: The tutor's students, as people — a card each with their photo
+    (or initials), level, subjects and schedule, opening their profile.
+
+    It used to be one line of text per student. The banner counts them, the
+    search box and subject buttons narrow the cards in place (nothing is
+    reloaded), and a card lifts and its ring turns when it is pointed at.
+
+    Locals: students (one row per student, subjects joined with ", ") %>
+<%
+  const list = students || [];
+  const subjectsOf = (student) => String(student.subject_name || '').split(', ').map((name) => name.trim()).filter(Boolean);
+  const subjectCounts = {};
+  list.forEach((student) => subjectsOf(student).forEach((name) => { subjectCounts[name] = (subjectCounts[name] || 0) + 1; }));
+  const subjectNames = Object.keys(subjectCounts).sort();
+  const slotCount = new Set(list.map((student) => student.time_slot).filter(Boolean)).size;
+%>
+<section class="mq-roster" data-roster>
+
+  <section class="mq-hero">
+    <div>
+      <span class="mq-hero-kicker">My students</span>
+      <h2><%= list.length %> <%= list.length === 1 ? 'student' : 'students' %> in your care</h2>
+      <p>Open a student to see their attendance, assessments and learning modules.</p>
+    </div>
+    <div class="mq-hero-stats">
+      <div class="mq-hero-stat"><strong><%= list.length %></strong><span>Students</span></div>
+      <div class="mq-hero-stat"><strong><%= subjectNames.length %></strong><span>Subjects</span></div>
+      <div class="mq-hero-stat"><strong><%= slotCount %></strong><span>Schedules</span></div>
+    </div>
+  </section>
+
+  <% if (!list.length) { %>
+    <section class="mq-card">
+      <div class="mq-empty">
+        <strong>No students yet</strong>
+        Students appear here once the office assigns them to you.
+      </div>
+    </section>
+  <% } else { %>
+    <div class="mq-roster-tools">
+      <label class="mq-roster-search">
+        <%- icon('search') %>
+        <input type="search" placeholder="Search name or ID" aria-label="Search students" data-roster-search />
+      </label>
+      <div class="mq-roster-filters" role="group" aria-label="Filter by subject">
+        <button type="button" class="mq-filter-chip is-active" data-roster-subject="">All <b><%= list.length %></b></button>
+        <% subjectNames.forEach((name) => { %>
+          <button type="button" class="mq-filter-chip" data-roster-subject="<%= name %>"><%= name %> <b><%= subjectCounts[name] %></b></button>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="mq-roster-grid">
+      <% list.forEach((student, index) => { %>
+        <% const level = [student.year_level, student.grade_level].filter(Boolean).join(' · '); %>
+        <a class="mq-student-card" href="/tutor/students/<%= student.student_id %>" style="--i: <%= Math.min(index, 12) %>"
+           data-roster-item
+           data-name="<%= `${student.full_name} ${student.user_id || ''}`.toLowerCase() %>"
+           data-subjects="<%= subjectsOf(student).join('|') %>">
+          <span class="mq-student-card-band" aria-hidden="true"></span>
+          <span class="mq-profile-avatar-wrap is-card">
+            <%- include('../partials/avatar', { avatarSrc: student.student_image_path, avatarName: student.full_name, avatarSize: 'lg' }) %>
+          </span>
+          <strong class="mq-student-card-name"><%= student.full_name %></strong>
+          <span class="mq-student-card-sub"><%= student.user_id || '' %><%= level ? ` · ${level}` : '' %></span>
+          <span class="mq-chip-list is-centered">
+            <% subjectsOf(student).forEach((name) => { %><span class="mq-subject-chip"><%= name %></span><% }) %>
+          </span>
+          <span class="mq-student-card-meta">
+            <span class="mq-tag"><%- icon('calendar', 14) %> <%= student.time_slot || 'No schedule yet' %></span>
+            <% if (student.branch_name) { %><span class="mq-tag"><%- icon('building', 14) %> <%= titleCaseName(student.branch_name) %></span><% } %>
+          </span>
+          <span class="mq-student-card-cta">View profile <%- icon('view') %></span>
+        </a>
+      <% }) %>
+    </div>
+
+    <section class="mq-card" data-roster-none hidden>
+      <div class="mq-empty">
+        <strong>No student matches</strong>
+        Try another name, or choose All.
+      </div>
+    </section>
+  <% } %>
 </section>
+
+<script>
+  // Narrow the cards in place: by name or ID as it is typed, and by subject.
+  (function () {
+    var root = document.querySelector('[data-roster]');
+    if (!root) return;
+    var search = root.querySelector('[data-roster-search]');
+    var chips = root.querySelectorAll('[data-roster-subject]');
+    var items = root.querySelectorAll('[data-roster-item]');
+    var none = root.querySelector('[data-roster-none]');
+    var subject = '';
+
+    function apply() {
+      var text = (search ? search.value : '').trim().toLowerCase();
+      var shown = 0;
+      Array.prototype.forEach.call(items, function (item) {
+        var byName = !text || item.getAttribute('data-name').indexOf(text) !== -1;
+        var bySubject = !subject || item.getAttribute('data-subjects').split('|').indexOf(subject) !== -1;
+        item.hidden = !(byName && bySubject);
+        if (!item.hidden) shown += 1;
+      });
+      if (none) none.hidden = shown !== 0;
+    }
+
+    if (search) search.addEventListener('input', apply);
+    Array.prototype.forEach.call(chips, function (chip) {
+      chip.addEventListener('click', function () {
+        subject = chip.getAttribute('data-roster-subject');
+        Array.prototype.forEach.call(chips, function (other) {
+          other.classList.toggle('is-active', other === chip);
+        });
+        apply();
+      });
+    });
+  })();
+</script>

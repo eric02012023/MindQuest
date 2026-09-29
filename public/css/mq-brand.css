@@ -871,7 +871,7 @@ body.dashboard-sidebar-open .sidebar-nav a:nth-child(n+9) { animation-delay: .32
 :is(a, button):hover :is(.mq-i-money, .mq-i-wallet, .mq-i-receipt, .mq-i-chart, .mq-i-trend,
                          .mq-i-user, .mq-i-users, .mq-i-book, .mq-i-grid, .mq-i-layers,
                          .mq-i-clipboard, .mq-i-calendar, .mq-i-award, .mq-i-building,
-                         .mq-i-target, .mq-i-message) { animation: mqHop .55s ease-in-out; }
+                         .mq-i-target, .mq-i-message, .mq-i-phone) { animation: mqHop .55s ease-in-out; }
 
 /* -------------------------------------------------------------------------
    19. Spotlight and tilt
@@ -1832,6 +1832,323 @@ a.mq-person.is-compact:hover {
 
 .mq-card-head > .mq-count {
   flex: none;
+}
+
+/* -------------------------------------------------------------------------
+   The tutor's students: a banner that counts them, a search box and subject
+   buttons that narrow the cards in place, and a card per student.
+   ---------------------------------------------------------------------- */
+
+.mq-roster {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.mq-roster > .mq-hero {
+  margin-bottom: 0;
+}
+
+.mq-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.mq-hero-stat {
+  min-width: 96px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, .24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .12);
+  text-align: center;
+  transition: transform .25s var(--mq-ease-spring), background-color .2s ease;
+}
+
+.mq-hero-stat:hover {
+  background: rgba(255, 255, 255, .2);
+  transform: translateY(-3px);
+}
+
+.mq-hero-stat strong {
+  display: block;
+  font-size: 26px;
+  line-height: 1.1;
+  color: #fff;
+}
+
+/* One word each, never broken in the middle ("SCHEDUL / ES"). */
+.mq-hero-stat span {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  color: rgba(255, 255, 255, .8);
+}
+
+.mq-roster-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 18px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08));
+  animation: mqRise .5s var(--mq-ease-out) .06s both;
+}
+
+.mq-roster-search {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+}
+
+.mq-roster-search .mq-i {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  color: var(--text-soft, #5f7084);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.mq-roster-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  margin: 0;
+  padding: 9px 12px 9px 38px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 12px;
+  background: var(--surface-soft, #f7fafc);
+  color: var(--text, #102033);
+  font-size: 14px;
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+
+.mq-roster-search input:focus {
+  outline: none;
+  border-color: var(--mq-accent, #16a8c8);
+  background: var(--surface, #fff);
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, .06);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mq-brand-a) 18%, transparent);
+}
+
+.mq-roster-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mq-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--text, #102033);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .2s var(--mq-ease-spring);
+}
+
+.mq-filter-chip b {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-muted, #eef4f8);
+  font-size: 11px;
+  text-align: center;
+}
+
+.mq-filter-chip:hover {
+  border-color: var(--mq-accent, #16a8c8);
+  color: var(--mq-accent-deep, #0f7ea0);
+  transform: translateY(-2px);
+}
+
+.mq-filter-chip:active {
+  transform: scale(.95);
+}
+
+.mq-filter-chip.is-active {
+  border-color: var(--mq-accent, #16a8c8);
+  background: var(--mq-accent, #16a8c8);
+  color: #fff;
+}
+
+.mq-filter-chip.is-active b {
+  background: rgba(255, 255, 255, .25);
+}
+
+.mq-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 18px;
+}
+
+.mq-student-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 18px 18px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 22px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08));
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+  transition: transform .25s var(--mq-ease-out), box-shadow .25s ease, border-color .25s ease;
+  animation: mqRise .5s var(--mq-ease-out) both;
+  animation-delay: calc(var(--i, 0) * 50ms + .1s);
+}
+
+.mq-student-card:hover,
+.mq-student-card:focus-visible {
+  border-color: rgba(0, 0, 0, .12);
+  border-color: color-mix(in srgb, var(--mq-brand-a) 40%, var(--border, #d7e2ea));
+  box-shadow: var(--shadow-md, 0 18px 48px rgba(16, 32, 51, .12));
+  transform: translateY(-5px);
+}
+
+/* The coloured band behind the face, with the centre's motifs on it. */
+.mq-student-card-band {
+  position: relative;
+  justify-self: stretch;
+  height: 66px;
+  margin: 0 -18px;
+  background: var(--gradient-dark, linear-gradient(145deg, #0d1b2a, #14354a 48%, #1db5bd 100%));
+  overflow: hidden;
+  overflow: clip;
+}
+
+.mq-student-card-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: #fff;
+  -webkit-mask-image: var(--mq-motif);
+          mask-image: var(--mq-motif);
+  -webkit-mask-size: 180px 180px;
+          mask-size: 180px 180px;
+  opacity: .1;
+  transition: transform .6s var(--mq-ease-out);
+}
+
+.mq-student-card:hover .mq-student-card-band::before {
+  transform: translateX(-24px);
+}
+
+.mq-profile-avatar-wrap.is-card {
+  width: 94px;
+  height: 94px;
+  margin-top: -47px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .16);
+  animation: none;
+}
+
+.mq-profile-avatar-wrap.is-card > .mq-avatar {
+  width: 86px;
+  height: 86px;
+  font-size: 28px;
+  border-width: 3px;
+}
+
+/* A room of turning rings would be a distraction: a card's ring turns only
+   while it is pointed at. */
+.mq-profile-avatar-wrap.is-card::before {
+  animation-play-state: paused;
+}
+
+.mq-student-card:hover .mq-profile-avatar-wrap.is-card::before {
+  animation-play-state: running;
+}
+
+.mq-student-card-name {
+  font-size: 16px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.mq-student-card-sub {
+  font-size: 12.5px;
+  color: var(--text-soft, #5f7084);
+  overflow-wrap: anywhere;
+}
+
+.mq-student-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.mq-student-card-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mq-accent-deep, #0f7ea0);
+}
+
+.mq-student-card-cta .mq-i {
+  transition: transform .25s var(--mq-ease-out);
+}
+
+.mq-student-card:hover .mq-student-card-cta .mq-i {
+  transform: translateX(4px);
+}
+
+@media (max-width: 720px) {
+  .mq-hero-stats {
+    justify-content: flex-start;
+  }
+
+  .mq-hero-stats {
+    gap: 8px;
+  }
+
+  .mq-hero-stat {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 10px 4px;
+  }
+
+  .mq-hero-stat strong {
+    font-size: 22px;
+  }
+
+  .mq-hero-stat span {
+    font-size: 10px;
+    letter-spacing: .03em;
+  }
 }
 
 @media (max-width: 1100px) {
