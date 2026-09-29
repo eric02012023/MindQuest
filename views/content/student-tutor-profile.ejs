@@ -1,17 +1,66 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-tutor-profile.ejs | Purpose: UI template/view used by the system. %>
-<section class="page-stack">
-  <section class="panel-card">
-    <div class="panel-card-head"><h2>Tutor Profile</h2></div>
-    <div class="limited-profile-card">
-      <img src="<%= tutor.image_path || '/assets/logo.png' %>" alt="Tutor avatar" class="profile-avatar large" />
-      <div>
-        <h3><%= tutor.first_name %> <%= tutor.last_name %></h3>
-        <p><strong>Email:</strong> <%= tutor.email || '-' %></p>
-        <p><strong>Contact:</strong> <%= tutor.contact_number || '-' %></p>
-        <p><strong>Year Level:</strong> <%= tutor.year_level || '-' %></p>
-        <p><strong>Grade Level:</strong> <%= tutor.grade_level || '-' %></p>
-        <p><strong>Address:</strong> <%= tutor.address || '-' %></p>
+<%# File: views/content/student-tutor-profile.ejs
+    Purpose: A tutor's profile as their student sees it — the tutor's photo,
+    how to reach them, and what they teach. Read-only.
+
+    Locals: tutor %>
+<%
+  const tutorName = [tutor.first_name, tutor.middle_name, tutor.last_name].filter(Boolean).join(' ');
+  const tutorSubjects = Array.isArray(tutor.subjects) ? tutor.subjects : safeJsonArray(tutor.subjects_json || []);
+%>
+<section class="mq-profile">
+  <section class="mq-profile-hero">
+    <div class="mq-profile-cover" aria-hidden="true"></div>
+    <div class="mq-profile-main">
+      <div class="mq-profile-avatar-wrap">
+        <%- include('../partials/avatar', { avatarSrc: tutor.image_path, avatarName: tutorName, avatarSize: 'xl' }) %>
+      </div>
+      <div class="mq-profile-id">
+        <h2><%= tutorName %></h2>
+        <div class="mq-profile-tags">
+          <span class="mq-tag"><%- icon('award', 14) %> Tutor</span>
+          <% if (tutor.branch_name) { %><span class="mq-tag"><%- icon('building', 14) %> <%= titleCaseName(tutor.branch_name) %></span><% } %>
+          <% if (tutor.year_level) { %><span class="mq-tag"><%- icon('book', 14) %> <%= tutor.year_level %></span><% } %>
+        </div>
+      </div>
+      <div class="mq-profile-actions">
+        <a class="mq-btn" href="/student/profile"><%- icon('user') %> My profile</a>
+        <a class="mq-btn mq-btn-primary" href="/student/messages"><%- icon('message') %> Message</a>
       </div>
     </div>
   </section>
+
+  <div class="mq-profile-layout is-even">
+    <section class="mq-card">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('message', 18) %></span>
+        <div><h3>Contact</h3><p>How to reach your tutor.</p></div>
+      </div>
+      <div class="mq-card-body">
+        <dl class="mq-facts">
+          <div><dt>Email</dt><dd><%= tutor.email || '—' %></dd></div>
+          <div><dt>Contact number</dt><dd><%= tutor.contact_number || '—' %></dd></div>
+          <div><dt>Facebook</dt><dd><%= tutor.facebook_account || '—' %></dd></div>
+          <div><dt>Branch</dt><dd><%= tutor.branch_name ? titleCaseName(tutor.branch_name) : '—' %></dd></div>
+          <% if (tutor.grade_level) { %><div><dt>Grade level</dt><dd><%= tutor.grade_level %></dd></div><% } %>
+          <div><dt>Address</dt><dd><%= tutor.address || '—' %></dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="mq-card">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('book', 18) %></span>
+        <div><h3>Teaches</h3><p><%= tutor.year_level || 'All levels' %></p></div>
+      </div>
+      <div class="mq-card-body">
+        <% if (!tutorSubjects.length) { %>
+          <div class="mq-empty"><strong>No subjects listed</strong>The office has not listed this tutor's subjects yet.</div>
+        <% } else { %>
+          <div class="mq-chip-list">
+            <% tutorSubjects.forEach((subjectName) => { %><span class="mq-subject-chip"><%= subjectName %></span><% }) %>
+          </div>
+        <% } %>
+      </div>
+    </section>
+  </div>
 </section>

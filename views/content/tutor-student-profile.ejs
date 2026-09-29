@@ -1,40 +1,93 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-student-profile.ejs | Purpose: Tutor view of a specific student profile. %>
-<section class="page-stack">
-  <div class="toolbar-card split">
-    <h2>Student Profile: <%= student.first_name %> <%= student.last_name %></h2>
-    <a href="/tutor/students" class="btn btn-secondary">Back to Students</a>
-  </div>
+<%# File: views/content/tutor-student-profile.ejs
+    Purpose: A tutor's view of one of their students — the student's photo
+    and details on the same profile cover every profile page uses, then their
+    attendance, assessments and generated modules.
 
-  <section class="panel-card">
-    <div class="profile-header-card">
-      <img src="<%= student.image_path || '/assets/logo.png' %>" alt="Profile image" class="profile-avatar large" />
-      <div>
-        <h2><%= student.first_name %> <%= student.middle_name || '' %> <%= student.last_name %></h2>
-        <p>Student ID: <%= student.user_id %> · <%= student.branch_name || '-' %></p>
+    Locals: student, subjects (shared with this tutor), attendanceLogs,
+    studentAssessments, studentAssessmentHistory, generatedModules %>
+<%
+  const studentName = [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(' ');
+  const logs = attendanceLogs || [];
+  const presentCount = logs.filter((log) => log.status === 'present').length;
+  const attendanceRate = logs.length ? Math.round((presentCount / logs.length) * 100) : null;
+  const combinedAssessments = [
+    ...(studentAssessments || []),
+    ...(studentAssessmentHistory || [])
+  ].sort((a, b) => new Date(b.taken_at || b.created_at) - new Date(a.taken_at || a.created_at));
+%>
+<section class="page-stack">
+  <section class="mq-profile-hero">
+    <div class="mq-profile-cover" aria-hidden="true"></div>
+    <div class="mq-profile-main">
+      <div class="mq-profile-avatar-wrap">
+        <%- include('../partials/avatar', { avatarSrc: student.image_path, avatarName: studentName, avatarSize: 'xl' }) %>
+      </div>
+      <div class="mq-profile-id">
+        <h2><%= studentName %></h2>
+        <div class="mq-profile-tags">
+          <span class="mq-tag"><%- icon('user', 14) %> Student</span>
+          <span class="mq-tag"><%= student.user_id %></span>
+          <% if (student.branch_name) { %><span class="mq-tag"><%- icon('building', 14) %> <%= titleCaseName(student.branch_name) %></span><% } %>
+          <% if (student.grade_level) { %><span class="mq-tag"><%- icon('book', 14) %> <%= student.grade_level %></span><% } %>
+        </div>
+      </div>
+      <div class="mq-profile-actions">
+        <a href="/tutor/students" class="mq-btn"><%- icon('users') %> Back to students</a>
       </div>
     </div>
-    
-    <div class="form-grid three-col" style="margin-top: 1.5rem;">
-      <label>Email<input type="text" value="<%= student.email || '-' %>" readonly /></label>
-      <label>Year Level<input type="text" value="<%= student.year_level || '-' %>" readonly /></label>
-      <label>Grade Level<input type="text" value="<%= student.grade_level || '-' %>" readonly /></label>
+
+    <div class="mq-profile-stats">
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('book', 18) %></span>
+        <div><span>Subjects with you</span><strong><%= subjects.length %></strong></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
+        <div><span>Attendance</span><% if (attendanceRate === null) { %><b>No records yet</b><% } else { %><strong><%= attendanceRate %>%</strong><% } %></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('clipboard', 18) %></span>
+        <div><span>Assessments</span><strong><%= combinedAssessments.length %></strong></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('layers', 18) %></span>
+        <div><span>Modules</span><strong><%= (generatedModules || []).length %></strong></div>
+      </div>
     </div>
   </section>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Assigned Subjects</h3></div>
-    <div class="list-stack">
-      <% if (!subjects.length) { %>
-        <p class="empty-state">No subjects assigned.</p>
-      <% } else { %>
-        <% subjects.forEach((sub) => { %>
-          <article class="list-card compact">
-            <strong><%= sub.subject_name %></strong>
-          </article>
-        <% }) %>
-      <% } %>
-    </div>
-  </section>
+  <div class="mq-profile-layout is-even">
+    <section class="mq-card">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('user', 18) %></span>
+        <div><h3>Details</h3><p>From the student's profile.</p></div>
+      </div>
+      <div class="mq-card-body">
+        <dl class="mq-facts">
+          <div><dt>Email</dt><dd><%= student.email || '—' %></dd></div>
+          <div><dt>Year level</dt><dd><%= student.year_level || '—' %></dd></div>
+          <div><dt>Grade level</dt><dd><%= student.grade_level || '—' %></dd></div>
+          <div><dt>Branch</dt><dd><%= student.branch_name ? titleCaseName(student.branch_name) : '—' %></dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="mq-card">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('book', 18) %></span>
+        <div><h3>Subjects with you</h3><p><%= subjects.length %> assigned</p></div>
+      </div>
+      <div class="mq-card-body">
+        <% if (!subjects.length) { %>
+          <div class="mq-empty"><strong>No subjects</strong>No subjects assigned.</div>
+        <% } else { %>
+          <div class="mq-chip-list">
+            <% subjects.forEach((sub) => { %><span class="mq-subject-chip"><%= sub.subject_name %></span><% }) %>
+          </div>
+        <% } %>
+      </div>
+    </section>
+  </div>
 
   <section class="panel-card">
     <div class="panel-card-head"><h3>Attendance Logs</h3></div>
@@ -83,12 +136,6 @@
           </tr>
         </thead>
         <tbody>
-          <% 
-            const combinedAssessments = [
-              ...(studentAssessments || []),
-              ...(studentAssessmentHistory || [])
-            ].sort((a, b) => new Date(b.taken_at || b.created_at) - new Date(a.taken_at || a.created_at));
-          %>
           <% if (!combinedAssessments.length) { %>
             <tr><td colspan="6" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">No assessments assigned.</td></tr>
           <% } else { %>

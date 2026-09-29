@@ -1,0 +1,21 @@
+<%# File: views/partials/avatar.ejs
+    Purpose: One person's picture, the same way everywhere — their photo, or
+    their initials on the page's colour when they have not uploaded one (the
+    school logo used to stand in for every missing face, so nobody could be
+    told apart).
+
+    Locals: avatarSrc, avatarName, avatarSize ('sm' | 'md' | 'lg' | 'xl') %>
+<%
+  const personName = String(typeof avatarName === 'undefined' ? '' : (avatarName || '')).replace(/\s+/g, ' ').trim();
+  const nameParts = personName.split(' ').filter(Boolean);
+  const initials = (nameParts.length > 1
+    ? nameParts[0][0] + nameParts[nameParts.length - 1][0]
+    : (nameParts[0] || 'MQ').slice(0, 2)).toUpperCase();
+  const sizeClass = `mq-avatar-${typeof avatarSize === 'undefined' ? 'md' : avatarSize}`;
+  const photo = typeof avatarSrc === 'undefined' ? '' : (avatarSrc || '');
+%>
+<% if (photo) { %>
+  <img class="mq-avatar <%= sizeClass %>" src="<%= photo %>" alt="<%= personName || 'Profile photo' %>" loading="lazy" />
+<% } else { %>
+  <span class="mq-avatar <%= sizeClass %> mq-avatar-initials" role="img" aria-label="<%= personName || 'Profile' %>"><%= initials %></span>
+<% } %>

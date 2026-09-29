@@ -39,7 +39,7 @@ body {
   font-family: 'Inter', Arial, sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(22, 168, 200, .07), transparent 28%),
+    radial-gradient(circle at top left, rgba(34, 200, 22, .07), transparent 28%),
     linear-gradient(180deg, #f8fbfd 0%, #edf3f7 100%);
 }
 
@@ -219,8 +219,8 @@ a.btn {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 3px solid rgba(22, 168, 200, .14);
-  border-color: rgba(22, 168, 200, .45);
+  outline: 3px solid rgba(34, 200, 22, .14);
+  border-color: rgba(34, 200, 22, .45);
 }
 
 .page-stack {
@@ -355,7 +355,7 @@ td {
 }
 
 tbody tr:hover {
-  background: rgba(22, 168, 200, .035);
+  background: rgba(34, 200, 22, .035);
 }
 
 .bubble-row,
@@ -386,7 +386,7 @@ tbody tr:hover {
 
 .subject-list-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(22, 168, 200, .35);
+  border-color: rgba(34, 200, 22, .35);
   box-shadow: 0 16px 28px rgba(16, 32, 51, .09);
 }
 
@@ -432,7 +432,7 @@ tbody tr:hover {
   min-height: 220px;
   border-radius: 20px;
   background: linear-gradient(180deg, #f8fbfd, #eef5fa);
-  border: 1px dashed rgba(16, 126, 160, .22);
+  border: 1px dashed rgba(15, 160, 17, .22);
 }
 
 .empty-state {
@@ -541,7 +541,7 @@ tbody tr:hover {
 }
 
 .sidebar {
-  background: linear-gradient(180deg, #001b29 0%, #002d3f 52%, #006a87 100%);
+  background: linear-gradient(180deg, #022d00 0%, #064c02 52%, #19791b 100%);
   padding: 24px 18px;
   color: #fff;
   display: grid;
@@ -683,7 +683,7 @@ tbody tr:hover {
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid rgba(22, 168, 200, .12);
+  border: 2px solid rgba(34, 200, 22, .12);
 }
 
 .menu-wrap {

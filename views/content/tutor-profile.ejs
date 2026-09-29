@@ -1,46 +1,182 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-profile.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/tutor-profile.ejs
+    Purpose: The tutor's own profile — who they are, whom they teach, and the
+    details they may keep up to date.
+
+    Same layout as the student's profile (see css/mq-brand.css, "Profiles"):
+    a cover with their photo and a few facts, their details grouped into
+    cards, and their students as faces that open each student's profile. The
+    form posts the same fields to the same route as before.
+
+    Locals: profileUser, students (one row per student, subjects joined) %>
 <%
-const userSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : safeJsonArray(profileUser.subjects_json || []);
-const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
+  const fullNameText = [profileUser.first_name, profileUser.middle_name, profileUser.last_name].filter(Boolean).join(' ');
+  const userSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : safeJsonArray(profileUser.subjects_json || []);
+  const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
+  const studentList = students || [];
 %>
-<section class="page-stack">
-  <section class="panel-card">
-    <div class="profile-header-card">
-      <img src="<%= profileUser.image_path || '/assets/logo.png' %>" alt="Profile image" class="profile-avatar large" />
-      <div>
-        <h2><%= profileUser.first_name %> <%= profileUser.middle_name || '' %> <%= profileUser.last_name %></h2>
-        <p>User ID: <%= profileUser.user_id %> · <%= profileUser.branch_name || '-' %></p>
+<section class="mq-profile">
+
+  <%# ------------------------------------------------------------------ cover %>
+  <section class="mq-profile-hero">
+    <div class="mq-profile-cover" aria-hidden="true"></div>
+    <div class="mq-profile-main">
+      <div class="mq-profile-avatar-wrap" data-avatar-preview>
+        <%- include('../partials/avatar', { avatarSrc: profileUser.image_path, avatarName: fullNameText, avatarSize: 'xl' }) %>
+      </div>
+      <div class="mq-profile-id">
+        <h2><%= fullNameText %></h2>
+        <div class="mq-profile-tags">
+          <span class="mq-tag"><%- icon('award', 14) %> Tutor</span>
+          <span class="mq-tag"><%= profileUser.user_id %></span>
+          <% if (profileUser.branch_name) { %><span class="mq-tag"><%- icon('building', 14) %> <%= titleCaseName(profileUser.branch_name) %></span><% } %>
+          <% if (profileUser.year_level) { %><span class="mq-tag"><%- icon('book', 14) %> <%= profileUser.year_level %></span><% } %>
+        </div>
+      </div>
+      <div class="mq-profile-actions">
+        <label class="mq-btn mq-btn-primary mq-photo-button" for="tutor-photo-input"><%- icon('edit') %> Change photo</label>
       </div>
     </div>
-    <form method="post" action="/tutor/profile" enctype="multipart/form-data" class="form-grid three-col">
-      <label>User ID<input type="text" value="<%= profileUser.user_id %>" readonly /></label>
-      <label>Email<input type="text" value="<%= profileUser.email || '' %>" readonly /></label>
-      <label>Branch<input type="text" value="<%= profileUser.branch_name || '' %>" readonly /></label>
-      <label>First Name<input type="text" name="first_name" value="<%= profileUser.first_name %>" /></label>
-      <label>Middle Name<input type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" /></label>
-      <label>Last Name<input type="text" name="last_name" value="<%= profileUser.last_name %>" /></label>
-      <label>Birth Date<input type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" /></label>
-      <label>Age<input type="number" name="age" value="<%= profileUser.age || '' %>" /></label>
-      <label>Gender<input type="text" name="gender" value="<%= profileUser.gender || '' %>" /></label>
-      <label>Contact Number<input type="text" name="contact_number" value="<%= profileUser.contact_number || '' %>" /></label>
-      <label>Email<input type="email" name="email" value="<%= profileUser.email || '' %>" /></label>
-      <label>Facebook Account<input type="text" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" /></label>
-      <label>Year Level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
-      <label class="full-width">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>
-      <label class="full-width">Subjects<textarea rows="4" readonly><%= userSubjects.join('\n') %></textarea></label>
-      <label class="full-width">Additional Academic Support<textarea rows="3" readonly><%= userSupports.join('\n') %></textarea></label>
-      <label>Upload Profile Image<input type="file" name="image" accept="image/*" /></label>
-      <div class="form-actions right full-width"><button class="btn btn-primary" type="submit">Save Changes</button></div>
-    </form>
-  </section>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>My Students</h3></div>
-    <div class="list-stack">
-      <% if (!students.length) { %><p class="empty-state">Students will appear after admin assignment.</p><% } %>
-      <% students.forEach((student) => { %>
-        <article class="list-card compact"><strong><%= student.full_name %></strong><span><%= student.subject_name %></span></article>
-      <% }) %>
+    <div class="mq-profile-stats">
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('users', 18) %></span>
+        <div><span>Students</span><strong><%= studentList.length %></strong></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('book', 18) %></span>
+        <div><span>Subjects</span><strong><%= userSubjects.length %></strong></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('message', 18) %></span>
+        <div><span>Contact</span><b><%= profileUser.contact_number || 'Not set yet' %></b></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
+        <div><span>Member since</span><b><%= formatDate(profileUser.created_at) %></b></div>
+      </div>
     </div>
   </section>
+
+  <div class="mq-profile-layout">
+
+    <%# --------------------------------------------------------- the details %>
+    <form method="post" action="/tutor/profile" enctype="multipart/form-data" class="mq-profile-form"
+          data-confirm-message="Save the changes to your profile?">
+      <input type="file" name="image" accept="image/*" id="tutor-photo-input" class="mq-visually-hidden" data-avatar-input />
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('user', 18) %></span>
+          <div><h3>Personal information</h3><p>Your name as students and the office see it.</p></div>
+        </div>
+        <div class="mq-card-body mq-fields">
+          <label>First name<input type="text" name="first_name" value="<%= profileUser.first_name %>" required /></label>
+          <label>Middle name<input type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" /></label>
+          <label>Last name<input type="text" name="last_name" value="<%= profileUser.last_name %>" required /></label>
+          <label>Birth date<input type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" data-auto-age-birth /></label>
+          <label>Age<input type="number" name="age" value="<%= profileUser.age || '' %>" data-auto-age-target min="0" /></label>
+          <label>Gender
+            <%# Gender was free text; a value other than these two is kept, not blanked. %>
+            <%
+              const genderNow = String(profileUser.gender || '').trim();
+              const genderOptions = ['Female', 'Male'];
+              const genderMatch = genderOptions.find((option) => option.toLowerCase() === genderNow.toLowerCase());
+              if (genderNow && !genderMatch) genderOptions.push(genderNow);
+            %>
+            <select name="gender">
+              <option value="">— Select —</option>
+              <% genderOptions.forEach((option) => { %>
+                <option value="<%= option %>" <%= option === (genderMatch || genderNow) ? 'selected' : '' %>><%= option %></option>
+              <% }) %>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('message', 18) %></span>
+          <div><h3>Contact</h3><p>How students and the office reach you.</p></div>
+        </div>
+        <div class="mq-card-body mq-fields">
+          <label>Email<input type="email" name="email" value="<%= profileUser.email || '' %>" required /></label>
+          <label>Contact number<input type="text" name="contact_number" value="<%= profileUser.contact_number || '' %>" /></label>
+          <label>Facebook account<input type="text" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" /></label>
+        </div>
+      </section>
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('building', 18) %></span>
+          <div><h3>Teaching &amp; home</h3><p>Your year level decides which students you are matched with.</p></div>
+        </div>
+        <div class="mq-card-body mq-fields">
+          <label>Year level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
+          <label>Branch<input type="text" value="<%= profileUser.branch_name || '' %>" readonly /></label>
+          <label>User ID<input type="text" value="<%= profileUser.user_id %>" readonly /></label>
+          <label class="is-wide">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>
+        </div>
+        <div class="mq-card-foot">
+          <span class="mq-card-foot-note" data-avatar-note>Choose "Change photo" above to pick a new picture.</span>
+          <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save changes</button>
+        </div>
+      </section>
+    </form>
+
+    <%# ------------------------------------------------ students & subjects %>
+    <aside class="mq-profile-side">
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('users', 18) %></span>
+          <div><h3>My students</h3><p><%= studentList.length %> assigned to you</p></div>
+        </div>
+        <div class="mq-card-body">
+          <% if (!studentList.length) { %>
+            <div class="mq-empty"><strong>No students yet</strong>Students appear here once the office assigns them to you.</div>
+          <% } else { %>
+            <div class="mq-person-list">
+              <% studentList.forEach((student) => { %>
+                <a class="mq-person" href="/tutor/students/<%= student.student_id %>">
+                  <%- include('../partials/avatar', { avatarSrc: student.student_image_path, avatarName: student.full_name, avatarSize: 'md' }) %>
+                  <span class="mq-person-body">
+                    <strong><%= student.full_name %></strong>
+                    <span><%= student.subject_name %><%= student.time_slot ? ` · ${student.time_slot}` : '' %></span>
+                  </span>
+                  <%- icon('view') %>
+                </a>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('book', 18) %></span>
+          <div><h3>Subjects I teach</h3><p>Set by the office.</p></div>
+        </div>
+        <div class="mq-card-body">
+          <% if (!userSubjects.length) { %>
+            <div class="mq-empty"><strong>No subjects yet</strong>The office adds the subjects you teach.</div>
+          <% } else { %>
+            <div class="mq-chip-list">
+              <% userSubjects.forEach((subjectName) => { %><span class="mq-subject-chip"><%= subjectName %></span><% }) %>
+            </div>
+          <% } %>
+        </div>
+      </section>
+
+      <% if (userSupports.length) { %>
+        <section class="mq-card">
+          <div class="mq-card-head">
+            <span class="mq-card-icon"><%- icon('target', 18) %></span>
+            <div><h3>Extra support</h3><p>Additional academic support you offer.</p></div>
+          </div>
+          <div class="mq-card-body mq-chip-list">
+            <% userSupports.forEach((support) => { %><span class="mq-subject-chip"><%= support %></span><% }) %>
+          </div>
+        </section>
+      <% } %>
+    </aside>
+  </div>
 </section>

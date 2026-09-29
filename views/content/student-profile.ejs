@@ -1,51 +1,209 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/student-profile.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/student-profile.ejs
+    Purpose: The student's own profile — who they are, who teaches them, and
+    the details they may keep up to date.
+
+    It used to be a single three-column form under a small header, with the
+    school logo standing in for a missing photo and the tutor as a line of
+    text. Now: a cover with their photo and the facts that matter at a glance,
+    their tutor as a person (photo, schedule, a link to the tutor's profile),
+    their subjects, and the editable details grouped into cards. The form posts
+    the same fields to the same route as before.
+
+    Locals: profileUser, assignments (with tutor_* and time_slot), allSubjects %>
 <%
-const userSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : safeJsonArray(profileUser.subjects_json || []);
-const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
+  const fullNameText = [profileUser.first_name, profileUser.middle_name, profileUser.last_name].filter(Boolean).join(' ');
+  const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
+  // One entry per tutor, with the subjects they teach this student and when.
+  const tutors = [];
+  (assignments || []).forEach((item) => {
+    if (!item.tutor_internal_id) return;
+    let tutor = tutors.find((entry) => Number(entry.id) === Number(item.tutor_internal_id));
+    if (!tutor) {
+      tutor = { id: item.tutor_internal_id, name: item.tutor_name, image: item.tutor_image_path, slot: '', subjects: [] };
+      tutors.push(tutor);
+    }
+    tutor.subjects.push(item.subject_name);
+    if (!tutor.slot && item.time_slot) tutor.slot = item.time_slot;
+  });
+  const schedule = tutors.map((tutor) => tutor.slot).filter(Boolean).filter((slot, index, all) => all.indexOf(slot) === index).join(', ');
 %>
-<section class="page-stack">
-  <section class="panel-card">
-    <div class="profile-header-card">
-      <img src="<%= profileUser.image_path || '/assets/logo.png' %>" alt="Profile image" class="profile-avatar large" />
-      <div>
-        <h2><%= profileUser.first_name %> <%= profileUser.middle_name || '' %> <%= profileUser.last_name %></h2>
-        <p>User ID: <%= profileUser.user_id %> · <%= profileUser.branch_name || '-' %></p>
+<section class="mq-profile">
+
+  <%# ------------------------------------------------------------------ cover %>
+  <section class="mq-profile-hero">
+    <div class="mq-profile-cover" aria-hidden="true"></div>
+    <div class="mq-profile-main">
+      <div class="mq-profile-avatar-wrap" data-avatar-preview>
+        <%- include('../partials/avatar', { avatarSrc: profileUser.image_path, avatarName: fullNameText, avatarSize: 'xl' }) %>
+      </div>
+      <div class="mq-profile-id">
+        <h2><%= fullNameText %></h2>
+        <div class="mq-profile-tags">
+          <span class="mq-tag"><%- icon('user', 14) %> Student</span>
+          <span class="mq-tag"><%= profileUser.user_id %></span>
+          <% if (profileUser.branch_name) { %><span class="mq-tag"><%- icon('building', 14) %> <%= titleCaseName(profileUser.branch_name) %></span><% } %>
+          <% if (profileUser.grade_level) { %><span class="mq-tag"><%- icon('book', 14) %> <%= profileUser.grade_level %></span><% } %>
+        </div>
+      </div>
+      <div class="mq-profile-actions">
+        <label class="mq-btn mq-btn-primary mq-photo-button" for="student-photo-input"><%- icon('edit') %> Change photo</label>
       </div>
     </div>
-    <form method="post" action="/student/profile" enctype="multipart/form-data" class="form-grid three-col">
-      <label>User ID<input type="text" value="<%= profileUser.user_id %>" readonly /></label>
-      <label>Email<input type="text" value="<%= profileUser.email || '' %>" readonly /></label>
-      <label>Branch<input type="text" value="<%= profileUser.branch_name || '' %>" readonly /></label>
-      <label>First Name<input type="text" name="first_name" value="<%= profileUser.first_name %>" /></label>
-      <label>Middle Name<input type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" /></label>
-      <label>Last Name<input type="text" name="last_name" value="<%= profileUser.last_name %>" /></label>
-      <label>Birth Date<input type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" /></label>
-      <label>Age<input type="number" name="age" value="<%= profileUser.age || '' %>" /></label>
-      <label>Gender<input type="text" name="gender" value="<%= profileUser.gender || '' %>" /></label>
-      <label>Contact Number<input type="text" name="contact_number" value="<%= profileUser.contact_number || '' %>" /></label>
-      <label>Parent/Student Email<input type="email" name="parent_email" value="<%= profileUser.parent_email || profileUser.email || '' %>" /></label>
-      <label>Parent/Student Facebook<input type="text" name="parent_facebook" value="<%= profileUser.parent_facebook || profileUser.facebook_account || '' %>" /></label>
-      <label>Parent/Guardian Name<input type="text" name="parent_guardian_name" value="<%= profileUser.parent_guardian_name || '' %>" /></label>
-      <label>Parent Contact<input type="text" name="parent_contact_number" value="<%= profileUser.parent_contact_number || '' %>" /></label>
-      <label>Year Level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
-      <label>Grade Level<input type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" /></label>
-      <label class="full-width">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>
-      <label class="full-width">Subjects<textarea rows="4" readonly><%= userSubjects.join('\n') %></textarea></label>
-      <label class="full-width">Additional Academic Support<textarea rows="3" readonly><%= userSupports.join('\n') %></textarea></label>
-      <label>Upload Profile Image<input type="file" name="image" accept="image/*" /></label>
-      <div class="form-actions right full-width"><button class="btn btn-primary" type="submit">Save Changes</button></div>
-    </form>
-  </section>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Assigned Tutors</h3></div>
-    <div class="list-stack">
-      <% if (!assignments.length) { %><p class="empty-state">Tutor will appear once assigned.</p><% } %>
-      <% assignments.forEach((item) => { %>
-        <article class="list-card compact"><strong><%= item.subject_name %></strong><span><%= item.tutor_name %></span></article>
-      <% }) %>
+    <div class="mq-profile-stats">
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('book', 18) %></span>
+        <div><span>Subjects</span><strong><%= (assignments || []).length %></strong></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('user', 18) %></span>
+        <div><span>Tutor</span><b><%= tutors.length ? tutors.map((tutor) => tutor.name).join(', ') : 'Not yet assigned' %></b></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
+        <div><span>Schedule</span><b><%= schedule || 'Not set yet' %></b></div>
+      </div>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('award', 18) %></span>
+        <div><span>Member since</span><b><%= formatDate(profileUser.created_at) %></b></div>
+      </div>
     </div>
   </section>
-</section>
 
-<% if (typeof limitedView !== 'undefined' && limitedView) { %><p class="mq-profile-note">Limited profile details only.</p><% } %>
+  <div class="mq-profile-layout">
+
+    <%# --------------------------------------------------------- the details %>
+    <form method="post" action="/student/profile" enctype="multipart/form-data" class="mq-profile-form"
+          data-confirm-message="Save the changes to your profile?">
+      <input type="file" name="image" accept="image/*" id="student-photo-input" class="mq-visually-hidden" data-avatar-input />
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('user', 18) %></span>
+          <div><h3>Personal information</h3><p>Your name as it appears on your records.</p></div>
+        </div>
+        <div class="mq-card-body mq-fields">
+          <label>First name<input type="text" name="first_name" value="<%= profileUser.first_name %>" required /></label>
+          <label>Middle name<input type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" /></label>
+          <label>Last name<input type="text" name="last_name" value="<%= profileUser.last_name %>" required /></label>
+          <label>Birth date<input type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" data-auto-age-birth /></label>
+          <label>Age<input type="number" name="age" value="<%= profileUser.age || '' %>" data-auto-age-target min="0" /></label>
+          <label>Gender
+            <%# Gender was free text; a value other than these two is kept, not blanked. %>
+            <%
+              const genderNow = String(profileUser.gender || '').trim();
+              const genderOptions = ['Female', 'Male'];
+              const genderMatch = genderOptions.find((option) => option.toLowerCase() === genderNow.toLowerCase());
+              if (genderNow && !genderMatch) genderOptions.push(genderNow);
+            %>
+            <select name="gender">
+              <option value="">— Select —</option>
+              <% genderOptions.forEach((option) => { %>
+                <option value="<%= option %>" <%= option === (genderMatch || genderNow) ? 'selected' : '' %>><%= option %></option>
+              <% }) %>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('message', 18) %></span>
+          <div><h3>Contact &amp; guardian</h3><p>How the centre reaches you and your family.</p></div>
+        </div>
+        <div class="mq-card-body mq-fields">
+          <label>Login email<input type="text" value="<%= profileUser.email || '' %>" readonly /></label>
+          <label>Contact number<input type="text" name="contact_number" value="<%= profileUser.contact_number || '' %>" /></label>
+          <label>Parent / student email<input type="email" name="parent_email" value="<%= profileUser.parent_email || profileUser.email || '' %>" /></label>
+          <label>Parent / student Facebook<input type="text" name="parent_facebook" value="<%= profileUser.parent_facebook || profileUser.facebook_account || '' %>" /></label>
+          <label>Parent / guardian name<input type="text" name="parent_guardian_name" value="<%= profileUser.parent_guardian_name || '' %>" /></label>
+          <label>Parent contact<input type="text" name="parent_contact_number" value="<%= profileUser.parent_contact_number || '' %>" /></label>
+        </div>
+      </section>
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('building', 18) %></span>
+          <div><h3>School &amp; home</h3><p>Your level decides which modules you see.</p></div>
+        </div>
+        <div class="mq-card-body mq-fields">
+          <label>Year level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
+          <label>Grade level<input type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" /></label>
+          <label>Branch<input type="text" value="<%= profileUser.branch_name || '' %>" readonly /></label>
+          <label class="is-wide">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>
+        </div>
+        <div class="mq-card-foot">
+          <span class="mq-card-foot-note" data-avatar-note>Choose "Change photo" above to pick a new picture.</span>
+          <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save changes</button>
+        </div>
+      </section>
+    </form>
+
+    <%# ------------------------------------------------------ tutor & subjects %>
+    <aside class="mq-profile-side">
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('award', 18) %></span>
+          <div><h3><%= tutors.length > 1 ? 'My tutors' : 'My tutor' %></h3><p>Who teaches you, and when.</p></div>
+        </div>
+        <% if (tutors.length) { %>
+          <% tutors.forEach((tutor) => { %>
+            <div class="mq-tutor-feature">
+              <div class="mq-profile-avatar-wrap is-small">
+                <%- include('../partials/avatar', { avatarSrc: tutor.image, avatarName: tutor.name, avatarSize: 'lg' }) %>
+              </div>
+              <strong><%= tutor.name %></strong>
+              <span class="mq-tag"><%- icon('calendar', 14) %> <%= tutor.slot || 'Schedule not set yet' %></span>
+              <div class="mq-chip-list is-centered">
+                <% tutor.subjects.forEach((subjectName) => { %><span class="mq-subject-chip"><%= subjectName %></span><% }) %>
+              </div>
+              <a class="mq-btn" href="/student/tutors/<%= tutor.id %>"><%- icon('view') %> View tutor profile</a>
+            </div>
+          <% }) %>
+        <% } else { %>
+          <div class="mq-empty">
+            <strong>No tutor yet</strong>
+            Your tutor appears here, with their photo and your schedule, once the office assigns one.
+          </div>
+        <% } %>
+      </section>
+
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('book', 18) %></span>
+          <div><h3>My subjects</h3><p><%= (assignments || []).length %> enrolled</p></div>
+        </div>
+        <div class="mq-card-body">
+          <% if (!(assignments || []).length) { %>
+            <div class="mq-empty"><strong>No subjects yet</strong>Enrol in a subject from My Subject.</div>
+          <% } else { %>
+            <div class="mq-person-list">
+              <% assignments.forEach((item) => { %>
+                <a class="mq-person" href="/student/subjects/<%= item.subject_id %>">
+                  <span class="mq-card-icon"><%- icon('book', 18) %></span>
+                  <span class="mq-person-body">
+                    <strong><%= item.subject_name %></strong>
+                    <span><%= item.start_date ? `${formatDate(item.start_date)} – ${formatDate(item.end_date)}` : (item.enrolled_at ? `Enrolled ${formatDate(item.enrolled_at)}` : 'Enrolled') %></span>
+                  </span>
+                  <%- icon('view') %>
+                </a>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+      </section>
+
+      <% if (userSupports.length) { %>
+        <section class="mq-card">
+          <div class="mq-card-head">
+            <span class="mq-card-icon"><%- icon('target', 18) %></span>
+            <div><h3>Extra support</h3><p>Additional academic support you asked for.</p></div>
+          </div>
+          <div class="mq-card-body mq-chip-list">
+            <% userSupports.forEach((support) => { %><span class="mq-subject-chip"><%= support %></span><% }) %>
+          </div>
+        </section>
+      <% } %>
+    </aside>
+  </div>
+</section>

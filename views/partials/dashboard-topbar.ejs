@@ -34,7 +34,7 @@
         <form action="/logout" method="post"><button type="submit" class="dropdown-danger">Logout</button></form>
       </div>
     </div>
-    <div class="topbar-user"><img src="<%= currentUser.image_path || '/assets/logo.jpeg' %>" alt="User" /><span><%= currentUser.first_name %></span></div>
+    <div class="topbar-user"><%- include('avatar', { avatarSrc: currentUser.image_path, avatarName: [currentUser.first_name, currentUser.last_name].filter(Boolean).join(' '), avatarSize: 'md' }) %><span><%= currentUser.first_name %></span></div>
   </div>
 </header>
 

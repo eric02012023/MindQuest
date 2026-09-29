@@ -9,7 +9,8 @@
       pencil, A+ and π — as a faint pattern behind the dashboard, across the
       sidebar and in the welcome banners. Every motif is painted in the page's
       own --primary-* colour (white on the dark gradients) through a CSS mask,
-      so Admin stays teal, Tutor stays green, and there is no second palette.
+      so Admin stays blue, Tutor and Student are green (section 25), and
+      there is no second palette.
 
    2. Motion. Cards rise in one after another, rows slide in, dialogs pop and
       menus drop. Buttons lift on hover, press down on click and ripple from
@@ -760,8 +761,18 @@ a.subject-list-card:hover,
   box-shadow: 0 8px 20px rgba(16, 32, 51, .1);
 }
 
-.topbar-user img {
+.topbar-user img,
+.topbar-user .mq-avatar {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--mq-brand-a) 55%, transparent);
+}
+
+/* The signed-in person's initials when they have no photo yet. Beats the
+   phone rule that hides the name span beside it. */
+.topbar-user .mq-avatar-initials {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
 }
 
 @media (max-width: 760px) {
@@ -1101,7 +1112,791 @@ input[type="radio"]:checked {
 .registration-design-card .field-block:nth-of-type(n+5) { animation-delay: .2s; }
 
 /* -------------------------------------------------------------------------
-   25. Anyone whose system asks for less motion gets none of the above
+   25. Students and tutors are green, admins blue
+   Each role's pages wear the colour of its own home screen. The student
+   sheets now carry the tutor's greens (public/css/student/*.css), and the
+   admin and assistant sheets keep their blue. The bright #22c816 is too light
+   for white text, so solid buttons and links on the green roles use a deeper
+   shade of the same green.
+   ---------------------------------------------------------------------- */
+
+body.dashboard-body:is([class*=" student-"], [class*=" tutor-"]) {
+  --mq-accent: #1c9a22;
+  --mq-accent-deep: #117716;
+}
+
+/* -------------------------------------------------------------------------
+   26. Profiles
+   A cover in the role's colour with the centre's motifs drifting across it,
+   the person's photo in a slowly turning ring, the facts that matter at a
+   glance, and the details in titled cards instead of one long list of
+   label-and-box rows. Used by every profile page, for every role.
+   ---------------------------------------------------------------------- */
+
+.mq-profile {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.mq-profile-hero {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 24px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08));
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+}
+
+.mq-profile-cover {
+  position: relative;
+  height: 150px;
+  background: var(--gradient-dark, linear-gradient(145deg, #0d1b2a, #14354a 48%, #1db5bd 100%));
+  overflow: hidden;
+  overflow: clip;
+  isolation: isolate;
+}
+
+.mq-profile-cover::before {
+  content: "";
+  position: absolute;
+  top: -240px;
+  left: -240px;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  background-color: #fff;
+  -webkit-mask-image: var(--mq-motif);
+          mask-image: var(--mq-motif);
+  -webkit-mask-size: 240px 240px;
+          mask-size: 240px 240px;
+  opacity: .1;
+  pointer-events: none;
+  animation: mqDrift 70s linear infinite;
+}
+
+.mq-profile-cover::after {
+  content: "";
+  position: absolute;
+  top: -60%;
+  right: 4%;
+  z-index: -1;
+  height: 160%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .22), transparent 62%);
+  pointer-events: none;
+  animation: mqFloat 8s ease-in-out infinite;
+}
+
+.mq-profile-main {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px 22px;
+  margin-top: -66px;
+  padding: 0 28px 22px;
+}
+
+/* The name starts just below the cover, however many lines its tags take. */
+.mq-profile-id,
+.mq-profile-actions {
+  min-width: 0;
+  padding-top: 76px;
+}
+
+.mq-profile-id h2 {
+  margin: 0 0 10px;
+  font-size: clamp(21px, 2.1vw, 28px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.mq-profile-id p {
+  margin: 8px 0 0;
+  color: var(--text-soft, #5f7084);
+  line-height: 1.5;
+}
+
+.mq-profile-tags,
+.mq-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mq-profile-actions {
+  justify-content: flex-end;
+}
+
+.mq-profile-actions .mq-btn,
+.mq-photo-button {
+  cursor: pointer;
+}
+
+.mq-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 11px;
+  border: 1px solid rgba(0, 0, 0, .08);
+  border: 1px solid color-mix(in srgb, var(--mq-brand-a) 26%, transparent);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .04);
+  background: color-mix(in srgb, var(--mq-brand-a) 10%, transparent);
+  color: var(--mq-accent-deep, #0f7ea0);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.mq-tag .mq-i {
+  flex: none;
+}
+
+/* The photo sits in a ring of the role's colour that slowly turns. */
+.mq-profile-avatar-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  isolation: isolate;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .18);
+  animation: mqPop .6s var(--mq-ease-spring) .1s both;
+}
+
+.mq-profile-avatar-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--mq-brand-a), var(--mq-brand-b), #fff, var(--mq-brand-a));
+  animation: mqSpin 9s linear infinite;
+}
+
+.mq-profile-avatar-wrap > .mq-avatar {
+  border: 4px solid var(--surface, #fff);
+}
+
+.mq-profile-avatar-wrap.is-small {
+  width: 104px;
+  height: 104px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .14);
+}
+
+.mq-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-soft, #f7fafc);
+}
+
+.mq-avatar-sm { width: 34px;  height: 34px;  font-size: 12px; }
+.mq-avatar-md { width: 44px;  height: 44px;  font-size: 15px; }
+.mq-avatar-lg { width: 96px;  height: 96px;  font-size: 32px; }
+.mq-avatar-xl { width: 124px; height: 124px; font-size: 40px; }
+
+.mq-avatar-initials {
+  background: var(--gradient-main, linear-gradient(135deg, #16a8c8, #004242));
+  color: #fff;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: .02em;
+}
+
+/* The facts at a glance, divided by hairlines that also work once they wrap. */
+.mq-profile-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--border, #d7e2ea);
+  background: var(--border, #d7e2ea);
+}
+
+.mq-profile-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 22px;
+  background: var(--surface, #fff);
+  transition: background-color .2s ease;
+}
+
+.mq-profile-stat > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mq-profile-stat > div > span {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-soft, #5f7084);
+}
+
+.mq-profile-stat strong {
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.mq-profile-stat b {
+  font-size: 14.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.mq-card-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, .05);
+  background: color-mix(in srgb, var(--mq-brand-a) 13%, transparent);
+  color: var(--mq-accent-deep, #0f7ea0);
+  transition: transform .3s var(--mq-ease-spring);
+}
+
+:is(.mq-card, .mq-profile-stat, .mq-person):hover .mq-card-icon {
+  transform: rotate(-8deg) scale(1.08);
+}
+
+/* Details sit in titled cards: the form on the left, people on the right. */
+.mq-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
+  align-items: start;
+  gap: 22px;
+}
+
+.mq-profile-layout.is-even {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mq-profile-form,
+.mq-profile-side {
+  display: grid;
+  align-content: start;
+  gap: 22px;
+  min-width: 0;
+  margin: 0;
+}
+
+.mq-profile-layout > * > .mq-card,
+.mq-profile-layout > .mq-card {
+  animation: mqRise .55s var(--mq-ease-out) both;
+}
+
+.mq-profile-layout > * > .mq-card:nth-child(2) { animation-delay: .08s; }
+.mq-profile-layout > * > .mq-card:nth-child(3) { animation-delay: .16s; }
+.mq-profile-layout > * > .mq-card:nth-child(n+4) { animation-delay: .24s; }
+
+.mq-card {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 20px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08));
+  transition: box-shadow .25s ease, border-color .25s ease;
+}
+
+.mq-card:hover {
+  border-color: rgba(0, 0, 0, .1);
+  border-color: color-mix(in srgb, var(--mq-brand-a) 30%, var(--border, #d7e2ea));
+  box-shadow: var(--shadow-md, 0 18px 48px rgba(16, 32, 51, .12));
+}
+
+.mq-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 24px;
+  width: 46px;
+  height: 3px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(90deg, var(--mq-brand-a), var(--mq-brand-b));
+  pointer-events: none;
+  transition: width .35s var(--mq-ease-out);
+}
+
+.mq-card:hover::after {
+  width: 92px;
+}
+
+.mq-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border, #d7e2ea);
+}
+
+.mq-card-head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.mq-card-head h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.mq-card-head p {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-soft, #5f7084);
+}
+
+.mq-card-head > .mq-card-head-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.mq-card-body {
+  min-width: 0;
+  padding: 18px 22px;
+}
+
+.mq-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border, #d7e2ea);
+  border-radius: 0 0 20px 20px;
+  background: var(--surface-soft, #f7fafc);
+}
+
+.mq-card-foot-note {
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-soft, #5f7084);
+}
+
+.mq-card-foot-note.is-ready {
+  font-weight: 600;
+  color: var(--mq-accent-deep, #0f7ea0);
+}
+
+/* Fields: a label above a soft box, several to a row, one per row when narrow. */
+.mq-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px 16px;
+}
+
+.mq-fields > label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-soft, #5f7084);
+}
+
+.mq-fields > .is-wide {
+  grid-column: 1 / -1;
+}
+
+.mq-fields > label > :is(input, select, textarea),
+.mq-fields .multi-select-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 12px;
+  background: var(--surface-soft, #f7fafc);
+  color: var(--text, #102033);
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+
+.mq-fields > label > :is(input, select, textarea):hover,
+.mq-fields .multi-select-trigger:not(:disabled):hover {
+  border-color: rgba(0, 0, 0, .18);
+  border-color: color-mix(in srgb, var(--mq-brand-a) 40%, var(--border, #d7e2ea));
+}
+
+.mq-fields > label > :is(input, select, textarea):focus,
+.mq-fields .multi-select-trigger:focus {
+  outline: none;
+  border-color: var(--mq-accent, #16a8c8);
+  background: var(--surface, #fff);
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, .06);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mq-brand-a) 18%, transparent);
+}
+
+.mq-fields > label > input[readonly],
+.mq-fields > label > :is(input, select, textarea):disabled,
+.mq-fields .multi-select-trigger:disabled {
+  background: var(--surface-muted, #eef4f8);
+  color: var(--text-soft, #5f7084);
+  cursor: default;
+}
+
+/* Read-only facts: the same grid, the value in place of a box. */
+.mq-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 16px 18px;
+  margin: 0;
+}
+
+.mq-facts > div {
+  min-width: 0;
+}
+
+.mq-facts dt {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-soft, #5f7084);
+}
+
+.mq-facts dd {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* People and subjects as rows with a face or an icon. */
+.mq-person-list {
+  display: grid;
+  gap: 6px;
+}
+
+.mq-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color .2s ease, border-color .2s ease, transform .25s var(--mq-ease-out);
+}
+
+a.mq-person:hover,
+a.mq-person:focus-visible {
+  border-color: rgba(0, 0, 0, .08);
+  border-color: color-mix(in srgb, var(--mq-brand-a) 24%, transparent);
+  background: rgba(0, 0, 0, .03);
+  background: color-mix(in srgb, var(--mq-brand-a) 7%, transparent);
+  transform: translateX(3px);
+}
+
+.mq-person-body {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mq-person-body strong {
+  font-size: 14px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.mq-person-body > span {
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-soft, #5f7084);
+  overflow-wrap: anywhere;
+}
+
+.mq-person > .mq-i {
+  flex: none;
+  color: var(--text-soft, #5f7084);
+  transition: transform .25s var(--mq-ease-out), color .2s ease;
+}
+
+a.mq-person:hover > .mq-i {
+  color: var(--mq-accent-deep, #0f7ea0);
+  transform: translateX(2px);
+}
+
+/* The tutor, shown to their student as a person rather than a line of text. */
+.mq-tutor-feature {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px 22px;
+  text-align: center;
+}
+
+.mq-tutor-feature > strong {
+  font-size: 18px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.mq-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mq-chip-list.is-centered {
+  justify-content: center;
+}
+
+.mq-subject-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 999px;
+  background: var(--surface-soft, #f7fafc);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  transition: transform .25s var(--mq-ease-spring), border-color .2s ease, color .2s ease;
+}
+
+.mq-subject-chip:hover {
+  border-color: var(--mq-accent, #16a8c8);
+  color: var(--mq-accent-deep, #0f7ea0);
+  transform: translateY(-2px);
+}
+
+.mq-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The multi-select in a field row: the arrow keeps its room, and the ticked
+   options in the open menu read as options, not as captions. */
+.mq-fields .multi-select {
+  width: 100%;
+}
+
+.mq-fields .multi-select-trigger {
+  padding-right: 38px;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.mq-fields .multi-select-menu label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text, #102033);
+}
+
+/* An open menu hangs below its card; lift that card over the ones after it. */
+.mq-card:has(.multi-select.is-open),
+.mq-profile > :has(.multi-select.is-open) {
+  position: relative;
+  z-index: 20;
+}
+
+/* A caption over chips, for lists that are shown rather than typed. */
+.mq-fields > .mq-field-block {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mq-field-block > span:first-child {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-soft, #5f7084);
+}
+
+.mq-field-block > em {
+  font-size: 13.5px;
+  color: var(--text-soft, #5f7084);
+}
+
+/* The admin's record: its cards two to a row, the save button under them. */
+.mq-profile > :not(.global-modal):not(script) {
+  animation: mqRise .55s var(--mq-ease-out) both;
+}
+
+.mq-profile > :nth-child(2) { animation-delay: .07s; }
+.mq-profile > :nth-child(3) { animation-delay: .14s; }
+.mq-profile > :nth-child(n+4) { animation-delay: .21s; }
+
+.mq-profile-form.is-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.mq-profile-form.is-split > .is-full {
+  grid-column: 1 / -1;
+}
+
+.mq-profile-form.is-split > .mq-card {
+  animation: mqRise .55s var(--mq-ease-out) both;
+}
+
+.mq-profile-form.is-split > .mq-card:nth-child(2) { animation-delay: .06s; }
+.mq-profile-form.is-split > .mq-card:nth-child(3) { animation-delay: .12s; }
+.mq-profile-form.is-split > .mq-card:nth-child(n+4) { animation-delay: .18s; }
+
+.mq-profile-savebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 22px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 18px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08));
+}
+
+/* More than one tutor in the card: a line between them. */
+.mq-tutor-feature + .mq-tutor-feature {
+  border-top: 1px solid var(--border, #d7e2ea);
+}
+
+/* A face and a name inside a table cell. */
+/* Pulled left so the face lines up with the column heading; never wider than
+   the cell, so a long name wraps instead of running past the column. */
+.mq-person.is-compact {
+  display: inline-flex;
+  max-width: calc(100% + 8px);
+  gap: 10px;
+  margin: -6px 0 -6px -8px;
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+
+a.mq-person.is-compact:hover {
+  transform: none;
+}
+
+.mq-person.is-compact .mq-person-body strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.mq-current-tutor {
+  border-bottom: 1px solid var(--border, #d7e2ea);
+}
+
+.mq-card > .mq-table {
+  border: 0;
+  border-radius: 0 0 20px 20px;
+}
+
+.mq-card-head > .mq-count {
+  flex: none;
+}
+
+@media (max-width: 1100px) {
+  .mq-profile-layout,
+  .mq-profile-layout.is-even,
+  .mq-profile-form.is-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* One column: the people (a student's tutor, a tutor's students) come
+     before the long form, not after it. */
+  .mq-profile-layout > .mq-profile-side {
+    order: -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .mq-profile-cover {
+    height: 112px;
+  }
+
+  .mq-profile-main {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    margin-top: -62px;
+    padding: 0 18px 18px;
+    text-align: center;
+  }
+
+  .mq-profile-id,
+  .mq-profile-actions {
+    padding-top: 0;
+  }
+
+  .mq-profile-tags,
+  .mq-profile-actions {
+    justify-content: center;
+  }
+
+  .mq-profile-avatar-wrap {
+    width: 116px;
+    height: 116px;
+  }
+
+  .mq-profile-avatar-wrap .mq-avatar-xl {
+    width: 108px;
+    height: 108px;
+    font-size: 34px;
+  }
+
+  .mq-card-head,
+  .mq-card-body,
+  .mq-card-foot,
+  .mq-profile-stat {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .mq-profile-stats {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+/* -------------------------------------------------------------------------
+   27. Anyone whose system asks for less motion gets none of the above
    Everything lands in its finished state at once; nothing floats or pulses.
    ---------------------------------------------------------------------- */
 
@@ -1127,6 +1922,8 @@ input[type="radio"]:checked {
   .hero-dashboard-card.gradient::before,
   .hero-dashboard-card.gradient::after,
   .mq-empty::before,
+  .mq-profile-cover::before,
+  .mq-profile-cover::after,
   .mq-has-spot::before {
     display: none !important;
   }

@@ -356,7 +356,7 @@ td {
 }
 
 tbody tr:hover {
-  background: rgba(22, 168, 200, .035);
+  background: rgba(34, 200, 22, .035);
 }
 
 .bubble-row,
@@ -684,7 +684,7 @@ tbody tr:hover {
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid rgba(22, 168, 200, .12);
+  border: 2px solid rgba(34, 200, 22, .12);
 }
 
 .menu-wrap {

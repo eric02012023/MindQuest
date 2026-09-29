@@ -739,7 +739,9 @@ router.post('/profile', profileUploader.single('image'), async (req, res, next) 
     setFlash(req, 'success', 'Profile updated successfully.');
     res.redirect('/student/profile');
   } catch (error) {
-    next(error);
+    // A refused change (an email already in use) is a message, not an error page.
+    setFlash(req, 'error', error.message || 'Could not save your profile.');
+    res.redirect('/student/profile');
   }
 });
 

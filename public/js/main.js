@@ -178,6 +178,28 @@ document.addEventListener('input', (event) => {
   }
 });
 
+// Profile pages: a photo picked with "Change photo" shows in the avatar at
+// once, so the person sees it before they press Save.
+document.addEventListener('change', (event) => {
+  const input = event.target.closest && event.target.closest('[data-avatar-input]');
+  const file = input?.files?.[0];
+  if (!file || !/^image\//.test(file.type)) return;
+  const slot = document.querySelector('[data-avatar-preview]');
+  if (slot) {
+    const current = slot.querySelector('.mq-avatar');
+    const preview = document.createElement('img');
+    preview.className = current ? current.className.replace('mq-avatar-initials', '').trim() : 'mq-avatar mq-avatar-xl';
+    preview.alt = 'New profile photo';
+    preview.src = URL.createObjectURL(file);
+    if (current) current.replaceWith(preview);
+    else slot.appendChild(preview);
+  }
+  const note = input.form?.querySelector('[data-avatar-note]');
+  if (note) {
+    note.textContent = `New photo chosen (${file.name}) — press Save to keep it.`;
+    note.classList.add('is-ready');
+  }
+});
 
 document.addEventListener('click', (event) => {
   const toggle = event.target.closest('[data-profile-edit-toggle]');

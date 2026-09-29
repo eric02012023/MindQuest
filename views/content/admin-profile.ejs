@@ -2,25 +2,24 @@
     Purpose: One person's full record — identity, contacts, placement, who they
     work with — for Admin and Assistant Admin.
 
-    Laid out as ROWS, one fact per line, rather than the three-column grid this
-    page used to be. A profile is a record: an admin reads down it looking for
-    one field, and a grid that reflows by viewport width puts that field
-    somewhere different on every screen. Straight down, captions aligned, it can
-    be scanned.
+    Opens on the profile cover every profile page shares (css/mq-brand.css,
+    "Profiles"): the person's photo, role, ID, branch and status, and the few
+    figures an admin looks for first. The record follows in titled cards —
+    personal, contact, placement, subjects — each a short grid of fields,
+    instead of one long column of label-and-box rows. Who they work with shows
+    faces, and each face opens that person's profile.
 
     Everything the edit behaviour depends on is unchanged: the form id, the
     [data-profile-editable] markers the toggle in public/js/main.js walks, the
-    multi-select structure and the Manage Subject modal. Only the presentation
-    moved to the mq-* system the rest of the dashboard uses.
+    multi-select structure and the Manage Subject modal.
 
     Locals: profileUser, studentAssignments, tutorAssignments, subjectOptions,
-            supportOptions, branches %>
+            supportOptions, branches, assignableTutors, currentTutor,
+            tutorSlotUsage, timeSlots %>
 <%
 const userSubjects = safeJsonArray(profileUser.subjects_json || profileUser.subjects || []);
 const userSupports = safeJsonArray(profileUser.support_json || profileUser.supports || []);
 const archivedSubjects = safeJsonArray(profileUser.extra?.archived_subjects || []);
-const subjectRows = Math.max(2, userSubjects.length || 1);
-const supportRows = Math.max(2, userSupports.length || 1);
 const isStudent = profileUser.role === 'student';
 const isTutor = profileUser.role === 'tutor';
 const canReassignBranch = currentUser.role === 'admin' && ['student', 'tutor'].includes(profileUser.role);
@@ -42,165 +41,232 @@ const selectedYearLevels = isTutor
 const fullName = [profileUser.first_name, profileUser.middle_name, profileUser.last_name].filter(Boolean).join(' ');
 const assignments = isStudent ? (studentAssignments || []) : (tutorAssignments || []);
 const isOwnAccount = Number(currentUser.id) === Number(profileUser.id);
+const canChangePassword = isOwnAccount && ['admin', 'admin_assistant'].includes(currentUser.role);
 // The admin's own record: an account, not a learner — no subjects, year level,
 // support or "who they work with" to manage.
 const isLearnerRecord = isStudent || isTutor;
+const roleLabel = { student: 'Student', tutor: 'Tutor', admin: 'Admin', admin_assistant: 'Assistant Admin' }[profileUser.role] || profileUser.role;
+const statusKey = profileUser.status === 'approved' ? 'approved' : profileUser.status === 'pending' ? 'pending' : 'rejected';
+const learnerCount = new Set(assignments.map((item) => String(item.student_id))).size;
+const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slot : '';
 %>
-<section class="mq-page">
+<section class="mq-profile">
 
   <%# ------------------------------------------------------------- identity %>
-  <section class="mq-panel">
-    <div class="mq-panel-head">
-      <div>
-        <h2><%= fullName %></h2>
-        <p><%= profileUser.user_id || '—' %> · <%= branchLabel || 'No branch' %></p>
+  <section class="mq-profile-hero">
+    <div class="mq-profile-cover" aria-hidden="true"></div>
+    <div class="mq-profile-main">
+      <div class="mq-profile-avatar-wrap" data-avatar-preview>
+        <%- include('../partials/avatar', { avatarSrc: profileUser.image_path, avatarName: fullName, avatarSize: 'xl' }) %>
       </div>
-      <span class="mq-chip mq-chip-role"><%= profileUser.role %></span>
+      <div class="mq-profile-id">
+        <h2><%= fullName %></h2>
+        <div class="mq-profile-tags">
+          <span class="mq-tag"><%- icon(isTutor ? 'award' : 'user', 14) %> <%= roleLabel %></span>
+          <% if (profileUser.user_id) { %><span class="mq-tag"><%= profileUser.user_id %></span><% } %>
+          <span class="mq-tag"><%- icon('building', 14) %> <%= branchLabel || 'No branch' %></span>
+          <span class="mq-status mq-status-<%= statusKey %>"><%= profileUser.status || 'unknown' %></span>
+        </div>
+      </div>
+      <div class="mq-profile-actions">
+        <% if (isLearnerRecord) { %>
+          <button type="button" class="mq-btn mq-btn-primary" data-modal-target="#manage-subjects-modal"><%- icon('book') %> Manage subjects</button>
+        <% } %>
+        <% if (canChangePassword) { %>
+          <a class="mq-btn" href="#change-password"><%- icon('lock') %> Change password</a>
+        <% } %>
+      </div>
     </div>
 
-    <div class="mq-detail">
-      <div class="mq-detail-item">
-        <span>Status</span>
-        <strong>
-          <span class="mq-status mq-status-<%= profileUser.status === 'approved' ? 'approved' : profileUser.status === 'pending' ? 'pending' : 'rejected' %>"><%= profileUser.status || 'unknown' %></span>
-        </strong>
-      </div>
-      <%# The "Tutors assigned" / "Learners assigned" count used to sit here. It
-          said nothing the assignments panel further down does not say better:
-          that panel names the tutor for each subject and carries the same count
-          in its own header chip. Two places showing the same number is two
-          places to disagree, so this one went. `assignments` is still read by
-          that panel — it is not dead. %>
+    <div class="mq-profile-stats">
       <% if (isLearnerRecord) { %>
-        <div class="mq-detail-item">
-          <span>Subjects</span>
-          <strong><%= userSubjects.length %></strong>
+        <div class="mq-profile-stat">
+          <span class="mq-card-icon"><%- icon('book', 18) %></span>
+          <div><span>Subjects</span><strong><%= userSubjects.length %></strong></div>
+        </div>
+        <% if (isStudent) { %>
+          <div class="mq-profile-stat">
+            <span class="mq-card-icon"><%- icon('award', 18) %></span>
+            <div><span>Tutor</span><b><%= currentTutor ? currentTutor.tutor_name : 'Not yet assigned' %></b></div>
+          </div>
+          <div class="mq-profile-stat">
+            <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
+            <div><span>Schedule</span><b><%= tutorSlot || 'Not set yet' %></b></div>
+          </div>
+        <% } else { %>
+          <div class="mq-profile-stat">
+            <span class="mq-card-icon"><%- icon('users', 18) %></span>
+            <div><span>Learners</span><strong><%= learnerCount %></strong></div>
+          </div>
+          <div class="mq-profile-stat">
+            <span class="mq-card-icon"><%- icon('layers', 18) %></span>
+            <div><span>Year levels</span><b><%= selectedYearLevels.join(', ') || 'Not set yet' %></b></div>
+          </div>
+        <% } %>
+      <% } else { %>
+        <div class="mq-profile-stat">
+          <span class="mq-card-icon"><%- icon('message', 18) %></span>
+          <div><span>Email</span><b><%= profileUser.email || '—' %></b></div>
+        </div>
+        <div class="mq-profile-stat">
+          <span class="mq-card-icon"><%- icon('user', 18) %></span>
+          <div><span>Contact</span><b><%= profileUser.contact_number || '—' %></b></div>
         </div>
       <% } %>
-      <div class="mq-detail-item">
-        <span>Joined</span>
-        <strong><%= formatDate(profileUser.created_at) %></strong>
+      <div class="mq-profile-stat">
+        <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
+        <div><span>Joined</span><b><%= formatDate(profileUser.created_at) %></b></div>
       </div>
     </div>
   </section>
 
   <%# -------------------------------------------------------------- details %>
-  <section class="mq-panel">
-    <div class="mq-panel-head">
-      <div>
-        <h3>Profile details</h3>
-        <p>Read-only until you press Edit.</p>
+  <form id="profile-form" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>"
+        enctype="multipart/form-data" class="mq-profile-form is-split">
+
+    <section class="mq-card">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('user', 18) %></span>
+        <div><h3>Personal information</h3><p>Read-only until you press Edit.</p></div>
+        <div class="mq-card-head-actions">
+          <button type="button" class="mq-btn mq-btn-sm" data-profile-edit-toggle="#profile-form"><%- icon('edit') %> Edit</button>
+        </div>
       </div>
-      <div class="mq-panel-head-actions">
-        <button type="button" class="mq-btn mq-btn-sm" data-profile-edit-toggle="#profile-form">Edit</button>
-        <% if (isLearnerRecord) { %>
-          <button type="button" class="mq-btn mq-btn-sm mq-btn-primary" data-modal-target="#manage-subjects-modal">Manage subjects</button>
+      <div class="mq-card-body mq-fields">
+        <label>First name<input data-profile-editable type="text" name="first_name" value="<%= profileUser.first_name %>" readonly /></label>
+        <label>Middle name<input data-profile-editable type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" readonly /></label>
+        <label>Last name<input data-profile-editable type="text" name="last_name" value="<%= profileUser.last_name %>" readonly /></label>
+        <label>Birth date<input data-profile-editable type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" data-auto-age-birth readonly /></label>
+        <label>Age<input data-profile-editable type="number" name="age" value="<%= profileUser.age || '' %>" data-auto-age-target readonly /></label>
+        <label>Gender<input data-profile-editable type="text" name="gender" value="<%= profileUser.gender || '' %>" readonly /></label>
+        <label class="is-wide">Profile photo<input data-profile-editable type="file" name="image" accept="image/*" disabled data-avatar-input /></label>
+      </div>
+    </section>
+
+    <section class="mq-card">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('message', 18) %></span>
+        <div><h3>Contact</h3><p><%= isStudent ? 'The student and their parent or guardian.' : 'How the office reaches them.' %></p></div>
+      </div>
+      <div class="mq-card-body mq-fields">
+        <label>Login email<input type="text" value="<%= profileUser.email || '' %>" readonly /></label>
+        <label>Contact number<input data-profile-editable type="text" name="contact_number" value="<%= profileUser.contact_number || profileUser.parent_contact_number || '' %>" readonly /></label>
+        <% if (isStudent) { %>
+          <label>Parent/student email<input data-profile-editable type="text" name="parent_email" value="<%= profileUser.parent_email || profileUser.email || '' %>" readonly /></label>
+          <label>Parent/student Facebook<input data-profile-editable type="text" name="parent_facebook" value="<%= profileUser.parent_facebook || profileUser.facebook_account || '' %>" readonly /></label>
+          <label>Parent/guardian name<input data-profile-editable type="text" name="parent_guardian_name" value="<%= profileUser.parent_guardian_name || '' %>" readonly /></label>
+          <label>Parent contact<input data-profile-editable type="text" name="parent_contact_number" value="<%= profileUser.parent_contact_number || '' %>" readonly /></label>
+        <% } else { %>
+          <label>Facebook account<input data-profile-editable type="text" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" readonly /></label>
         <% } %>
       </div>
-    </div>
+    </section>
 
-    <form id="profile-form" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>"
-          enctype="multipart/form-data" class="mq-form mq-form-rows">
-
-      <label>Branch
-        <% if (canReassignBranch && isTutor) { %>
-          <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select branch(es)">
-            <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= branchLabel || 'Select branch(es)' %></span></button>
-            <div class="multi-select-menu">
+    <section class="mq-card<%= isLearnerRecord ? '' : ' is-full' %>">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('building', 18) %></span>
+        <div><h3>Placement</h3><p><%= isLearnerRecord ? 'Branch, level and address.' : 'Branch and address.' %></p></div>
+      </div>
+      <div class="mq-card-body mq-fields">
+        <label>Branch
+          <% if (canReassignBranch && isTutor) { %>
+            <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select branch(es)">
+              <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= branchLabel || 'Select branch(es)' %></span></button>
+              <div class="multi-select-menu">
+                <% activeBranches.forEach((branch) => { %>
+                  <label><input type="checkbox" name="branch_ids" value="<%= branch.id %>" <%= selectedBranchIds.includes(Number(branch.id)) ? 'checked' : '' %> disabled /> <%= branch.name %></label>
+                <% }) %>
+              </div>
+            </div>
+            <input type="hidden" name="branch_id" value="<%= selectedBranchIds[0] || profileUser.branch_id || '' %>" data-primary-branch-input />
+          <% } else if (canReassignBranch) { %>
+            <select data-profile-editable name="branch_id" disabled>
               <% activeBranches.forEach((branch) => { %>
-                <label><input type="checkbox" name="branch_ids" value="<%= branch.id %>" <%= selectedBranchIds.includes(Number(branch.id)) ? 'checked' : '' %> disabled /> <%= branch.name %></label>
+                <option value="<%= branch.id %>" <%= Number(profileUser.branch_id) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
               <% }) %>
-            </div>
-          </div>
-          <input type="hidden" name="branch_id" value="<%= selectedBranchIds[0] || profileUser.branch_id || '' %>" data-primary-branch-input />
-        <% } else if (canReassignBranch) { %>
-          <select data-profile-editable name="branch_id" disabled>
-            <% activeBranches.forEach((branch) => { %>
-              <option value="<%= branch.id %>" <%= Number(profileUser.branch_id) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
-            <% }) %>
-          </select>
-        <% } else { %>
-          <input type="text" value="<%= branchLabel %>" readonly />
+            </select>
+          <% } else { %>
+            <input type="text" value="<%= branchLabel %>" readonly />
+          <% } %>
+        </label>
+
+        <% if (isLearnerRecord) { %>
+          <label>Year level
+            <% if (isTutor) { %>
+              <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select year level(s)">
+                <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= selectedYearLevels.join(', ') || 'Select year level(s)' %></span></button>
+                <div class="multi-select-menu">
+                  <% yearLevelOptions.forEach((level) => { %>
+                    <label><input type="checkbox" name="year_levels" value="<%= level %>" <%= selectedYearLevels.includes(level) ? 'checked' : '' %> disabled /> <%= level %></label>
+                  <% }) %>
+                </div>
+              </div>
+              <input type="hidden" name="year_level" value="<%= selectedYearLevels.join(', ') %>" data-year-level-display-input />
+            <% } else { %>
+              <input data-profile-editable type="text" name="year_level" value="<%= profileUser.year_level || '' %>" readonly />
+            <% } %>
+          </label>
         <% } %>
-      </label>
 
-      <label>First name<input data-profile-editable type="text" name="first_name" value="<%= profileUser.first_name %>" readonly /></label>
-      <label>Middle name<input data-profile-editable type="text" name="middle_name" value="<%= profileUser.middle_name || '' %>" readonly /></label>
-      <label>Last name<input data-profile-editable type="text" name="last_name" value="<%= profileUser.last_name %>" readonly /></label>
-      <label>Birth date<input data-profile-editable type="date" name="birth_date" value="<%= toInputDate(profileUser.birth_date) %>" data-auto-age-birth readonly /></label>
-      <label>Age<input data-profile-editable type="number" name="age" value="<%= profileUser.age || '' %>" data-auto-age-target readonly /></label>
-      <label>Gender<input data-profile-editable type="text" name="gender" value="<%= profileUser.gender || '' %>" readonly /></label>
-      <label>Contact number<input data-profile-editable type="text" name="contact_number" value="<%= profileUser.contact_number || profileUser.parent_contact_number || '' %>" readonly /></label>
-
-      <% if (isStudent) { %>
-        <label>Parent/student email<input data-profile-editable type="text" name="parent_email" value="<%= profileUser.parent_email || profileUser.email || '' %>" readonly /></label>
-        <label>Parent/student Facebook<input data-profile-editable type="text" name="parent_facebook" value="<%= profileUser.parent_facebook || profileUser.facebook_account || '' %>" readonly /></label>
-        <label>Parent/guardian name<input data-profile-editable type="text" name="parent_guardian_name" value="<%= profileUser.parent_guardian_name || '' %>" readonly /></label>
-        <label>Parent contact<input data-profile-editable type="text" name="parent_contact_number" value="<%= profileUser.parent_contact_number || '' %>" readonly /></label>
-      <% } else { %>
-        <label>Facebook account<input data-profile-editable type="text" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" readonly /></label>
-      <% } %>
-
-      <% if (isLearnerRecord) { %>
-      <label>Year level
-        <% if (isTutor) { %>
-          <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select year level(s)">
-            <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= selectedYearLevels.join(', ') || 'Select year level(s)' %></span></button>
-            <div class="multi-select-menu">
-              <% yearLevelOptions.forEach((level) => { %>
-                <label><input type="checkbox" name="year_levels" value="<%= level %>" <%= selectedYearLevels.includes(level) ? 'checked' : '' %> disabled /> <%= level %></label>
-              <% }) %>
-            </div>
-          </div>
-          <input type="hidden" name="year_level" value="<%= selectedYearLevels.join(', ') %>" data-year-level-display-input />
-        <% } else { %>
-          <input data-profile-editable type="text" name="year_level" value="<%= profileUser.year_level || '' %>" readonly />
+        <% if (isStudent) { %>
+          <label>Grade level<input data-profile-editable type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" readonly /></label>
         <% } %>
-      </label>
 
-      <% } %>
-
-      <% if (isStudent) { %>
-        <label>Grade level<input data-profile-editable type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" readonly /></label>
-      <% } %>
-
-      <label>Address<input data-profile-editable type="text" name="address" value="<%= profileUser.address || '' %>" readonly /></label>
-
-      <% if (isLearnerRecord) { %>
-      <label>Subjects
-        <% if (isTutor) { %>
-          <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select subject(s)">
-            <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= userSubjects.join(', ') || 'Select subject(s)' %></span></button>
-            <div class="multi-select-menu tall">
-              <% (subjectOptions || []).forEach((subject) => { if (!archivedSubjects.includes(subject.name)) { %>
-                <label><input type="checkbox" name="subjects" value="<%= subject.name %>" <%= userSubjects.includes(subject.name) ? 'checked' : '' %> disabled /> <%= subject.name %></label>
-              <% } }) %>
-            </div>
-          </div>
-        <% } else { %>
-          <textarea class="expanding-display" data-auto-expand rows="<%= subjectRows %>" readonly><%= userSubjects.join('\n') %></textarea>
-        <% } %>
-      </label>
-
-      <label>Additional academic support<textarea class="expanding-display" data-auto-expand rows="<%= supportRows %>" readonly><%= userSupports.join('\n') %></textarea></label>
-      <% } %>
-
-      <label>Profile image<input data-profile-editable type="file" name="image" accept="image/*" disabled /></label>
-
-      <% if (!canReassignBranch) { %><input type="hidden" name="branch_id" value="<%= profileUser.branch_id || '' %>" /><% } %>
-      <% if (!isTutor) { %><input type="hidden" name="subjects" value="<%= userSubjects.join(',') %>" /><% } %>
-      <input type="hidden" name="supports" value="<%= userSupports.join(',') %>" />
-
-      <div class="mq-form-foot">
-        <button class="mq-btn mq-btn-primary" type="submit">Save changes</button>
+        <label class="is-wide">Address<input data-profile-editable type="text" name="address" value="<%= profileUser.address || '' %>" readonly /></label>
       </div>
-    </form>
-  </section>
+    </section>
+
+    <% if (isLearnerRecord) { %>
+      <section class="mq-card">
+        <div class="mq-card-head">
+          <span class="mq-card-icon"><%- icon('book', 18) %></span>
+          <div><h3>Subjects &amp; support</h3><p><%= isTutor ? 'What this tutor teaches.' : 'Change these with Manage subjects.' %></p></div>
+        </div>
+        <div class="mq-card-body mq-fields">
+          <% if (isTutor) { %>
+            <label class="is-wide">Subjects
+              <div class="multi-select" data-profile-editable data-multi-select data-placeholder="Select subject(s)">
+                <button type="button" class="multi-select-trigger" data-multi-select-trigger disabled><span data-multi-select-label><%= userSubjects.join(', ') || 'Select subject(s)' %></span></button>
+                <div class="multi-select-menu tall">
+                  <% (subjectOptions || []).forEach((subject) => { if (!archivedSubjects.includes(subject.name)) { %>
+                    <label><input type="checkbox" name="subjects" value="<%= subject.name %>" <%= userSubjects.includes(subject.name) ? 'checked' : '' %> disabled /> <%= subject.name %></label>
+                  <% } }) %>
+                </div>
+              </div>
+            </label>
+          <% } else { %>
+            <div class="mq-field-block is-wide">
+              <span>Subjects</span>
+              <% if (userSubjects.length) { %>
+                <div class="mq-chip-list"><% userSubjects.forEach((subjectName) => { %><span class="mq-subject-chip"><%= subjectName %></span><% }) %></div>
+              <% } else { %><em>None yet</em><% } %>
+            </div>
+          <% } %>
+          <div class="mq-field-block is-wide">
+            <span>Additional academic support</span>
+            <% if (userSupports.length) { %>
+              <div class="mq-chip-list"><% userSupports.forEach((support) => { %><span class="mq-subject-chip"><%= support %></span><% }) %></div>
+            <% } else { %><em>None</em><% } %>
+          </div>
+        </div>
+      </section>
+    <% } %>
+
+    <% if (!canReassignBranch) { %><input type="hidden" name="branch_id" value="<%= profileUser.branch_id || '' %>" /><% } %>
+    <% if (!isTutor) { %><input type="hidden" name="subjects" value="<%= userSubjects.join(',') %>" /><% } %>
+    <input type="hidden" name="supports" value="<%= userSupports.join(',') %>" />
+
+    <div class="mq-profile-savebar is-full">
+      <span class="mq-card-foot-note" data-avatar-note>Press Edit, change what you need, then save.</span>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save changes</button>
+    </div>
+  </form>
 
   <%# ---------------------------------------------------------- assignments %>
   <% if (isLearnerRecord) { %>
-  <section class="mq-panel">
-    <div class="mq-panel-head">
+  <section class="mq-card">
+    <div class="mq-card-head">
+      <span class="mq-card-icon"><%- icon(isStudent ? 'award' : 'users', 18) %></span>
       <div>
         <h3><%= isStudent ? 'Tutors' : 'Learners' %></h3>
         <p><%= isStudent ? 'Who teaches this student, by subject.' : 'Who this tutor teaches, by subject.' %></p>
@@ -208,14 +274,15 @@ const isLearnerRecord = isStudent || isTutor;
       <span class="mq-count"><%= assignments.length %></span>
     </div>
 
-    <%# Phase 4.2: each subject shows its OWN month. They genuinely differ —
-        English taken out on 3 June ends 3 July while Filipino added on the 6th
-        ends 6 July — so one "enrolment period" for the student would be wrong
-        for every subject but one. %>
-    <div class="mq-table" style="--mq-cols: minmax(160px, 2fr) minmax(160px, 2fr) minmax(190px, 1.6fr);">
+    <%# Each subject shows its OWN month. They genuinely differ — English taken
+        out on 3 June ends 3 July while Filipino added on the 6th ends 6 July —
+        so one "enrolment period" for the student would be wrong for every
+        subject but one. %>
+    <div class="mq-table" style="--mq-min-width: 680px; --mq-cols: minmax(140px, 1.3fr) minmax(200px, 2fr) minmax(120px, 1fr) minmax(190px, 1.4fr);">
       <div class="mq-head">
         <span>Subject</span>
         <span><%= isStudent ? 'Tutor' : 'Learner' %></span>
+        <span>Schedule</span>
         <span>Enrolment period</span>
       </div>
 
@@ -227,13 +294,24 @@ const isLearnerRecord = isStudent || isTutor;
       <% } %>
 
       <% assignments.forEach((item) => { %>
+        <%
+          const personId = isStudent ? item.tutor_internal_id : item.student_id;
+          const personName = isStudent ? (item.tutor_internal_id ? item.tutor_name : '') : item.student_name;
+          const personPhoto = isStudent ? item.tutor_image_path : item.student_image_path;
+        %>
         <div class="mq-row">
           <span class="mq-cell mq-cell-primary" data-label="Subject">
             <span class="mq-name"><%= item.subject_name %></span>
           </span>
           <span class="mq-cell" data-label="<%= isStudent ? 'Tutor' : 'Learner' %>">
-            <%= (isStudent ? item.tutor_name : item.student_name) || '—' %>
+            <% if (personId && personName) { %>
+              <a class="mq-person is-compact" href="<%= basePath %>/profile/<%= personId %>">
+                <%- include('../partials/avatar', { avatarSrc: personPhoto, avatarName: personName, avatarSize: 'sm' }) %>
+                <span class="mq-person-body"><strong><%= personName %></strong></span>
+              </a>
+            <% } else { %>—<% } %>
           </span>
+          <span class="mq-cell mq-sub" data-label="Schedule"><%= item.time_slot || '—' %></span>
           <span class="mq-cell mq-sub" data-label="Enrolment period">
             <% if (item.start_date || item.end_date) { %>
               <%= formatDate(item.start_date) %> &ndash; <%= formatDate(item.end_date) %>
@@ -267,14 +345,27 @@ const isLearnerRecord = isStudent || isTutor;
       const currentTutorId = currentTutor ? String(currentTutor.tutor_id) : '';
       const currentSlot = currentTutor ? (currentTutor.time_slot || '') : '';
     %>
-    <section class="mq-panel">
-      <div class="mq-panel-head">
+    <section class="mq-card">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
         <div>
           <h3>Tutor &amp; time schedule</h3>
           <p>Applies to <strong>all <%= assignments.length %></strong> of this student's subjects — one tutor per student.</p>
         </div>
-        <span class="mq-chip"><%= currentTutor ? currentTutor.tutor_name : 'No tutor assigned' %></span>
       </div>
+
+      <% if (currentTutor) { %>
+        <div class="mq-card-body mq-current-tutor">
+          <a class="mq-person" href="<%= basePath %>/profile/<%= currentTutor.tutor_id %>">
+            <%- include('../partials/avatar', { avatarSrc: currentTutor.tutor_image_path, avatarName: currentTutor.tutor_name, avatarSize: 'md' }) %>
+            <span class="mq-person-body">
+              <strong><%= currentTutor.tutor_name %></strong>
+              <span>Current tutor · <%= currentSlot || 'No schedule set' %></span>
+            </span>
+            <%- icon('view') %>
+          </a>
+        </div>
+      <% } %>
 
       <% if (!assignments.length) { %>
         <div class="mq-empty">
@@ -282,38 +373,37 @@ const isLearnerRecord = isStudent || isTutor;
           Enrol this student in a subject first — there is nothing to assign a tutor to.
         </div>
       <% } else { %>
-        <form class="mq-form mq-form-rows" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor"
+        <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor"
               data-confirm-message="Assign this tutor and schedule to every subject this student is enrolled in?">
-          <label>Tutor
-            <select name="tutor_id" data-tutor-select>
-              <option value="">— No tutor assigned —</option>
-              <% tutors.forEach((tutor) => { %>
-                <option value="<%= tutor.id %>" <%= currentTutorId === String(tutor.id) ? 'selected' : '' %>
-                        data-taken="<%= (takenByTutor[String(tutor.id)] || []).join('|') %>">
-                  <%= titleCaseName(tutor.first_name) %> <%= titleCaseName(tutor.last_name || '') %><%= tutor.branch_name ? ` — ${tutor.branch_name}` : '' %>
-                </option>
-              <% }) %>
-            </select>
-          </label>
+          <div class="mq-card-body mq-fields">
+            <label class="is-wide">Tutor
+              <select name="tutor_id" data-tutor-select>
+                <option value="">— No tutor assigned —</option>
+                <% tutors.forEach((tutor) => { %>
+                  <option value="<%= tutor.id %>" <%= currentTutorId === String(tutor.id) ? 'selected' : '' %>
+                          data-taken="<%= (takenByTutor[String(tutor.id)] || []).join('|') %>">
+                    <%= titleCaseName(tutor.first_name) %> <%= titleCaseName(tutor.last_name || '') %><%= tutor.branch_name ? ` — ${tutor.branch_name}` : '' %>
+                  </option>
+                <% }) %>
+              </select>
+            </label>
 
-          <label>Time schedule
-            <select name="time_slot" data-slot-select>
-              <option value="">— No schedule set —</option>
-              <% slots.forEach((slot) => { %>
-                <option value="<%= slot %>" <%= currentSlot === slot ? 'selected' : '' %>><%= slot %></option>
-              <% }) %>
-            </select>
-            <small class="mq-field-hint" data-slot-note></small>
-          </label>
-
-          <p class="mq-form-note">
-            Saving writes this tutor to <strong>every</strong> subject this student is enrolled in —
-            they cannot have a different tutor per subject. The student cannot change their tutor
-            or schedule themselves; both are set here.
-          </p>
-
-          <div class="mq-form-foot">
-            <button class="mq-btn mq-btn-primary" type="submit">Save tutor &amp; schedule</button>
+            <label>Time schedule
+              <select name="time_slot" data-slot-select>
+                <option value="">— No schedule set —</option>
+                <% slots.forEach((slot) => { %>
+                  <option value="<%= slot %>" <%= currentSlot === slot ? 'selected' : '' %>><%= slot %></option>
+                <% }) %>
+              </select>
+              <small class="mq-field-hint" data-slot-note></small>
+            </label>
+          </div>
+          <div class="mq-card-foot">
+            <span class="mq-card-foot-note">
+              Saving writes this tutor to <strong>every</strong> subject this student is enrolled in.
+              The student cannot change their tutor or schedule themselves.
+            </span>
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save tutor &amp; schedule</button>
           </div>
         </form>
       <% } %>
@@ -352,20 +442,21 @@ const isLearnerRecord = isStudent || isTutor;
   <% } %>
 
   <%# ------------------------------------------------------- password (own) %>
-  <% if (isOwnAccount && ['admin','admin_assistant'].includes(currentUser.role)) { %>
-    <section class="mq-panel">
-      <div class="mq-panel-head">
-        <div>
-          <h3>Change password</h3>
-          <p>Applies to your own account only.</p>
-        </div>
+  <% if (canChangePassword) { %>
+    <section class="mq-card" id="change-password">
+      <div class="mq-card-head">
+        <span class="mq-card-icon"><%- icon('lock', 18) %></span>
+        <div><h3>Change password</h3><p>Applies to your own account only.</p></div>
       </div>
-      <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/password" class="mq-form mq-form-rows">
-        <label>Current password<input type="password" name="current_password" required /></label>
-        <label>New password<input type="password" name="new_password" minlength="8" required /></label>
-        <label>Confirm new password<input type="password" name="confirm_password" minlength="8" required /></label>
-        <div class="mq-form-foot">
-          <button class="mq-btn mq-btn-primary" type="submit">Save new password</button>
+      <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/password">
+        <div class="mq-card-body mq-fields">
+          <label>Current password<input type="password" name="current_password" required /></label>
+          <label>New password<input type="password" name="new_password" minlength="8" required /></label>
+          <label>Confirm new password<input type="password" name="confirm_password" minlength="8" required /></label>
+        </div>
+        <div class="mq-card-foot">
+          <span class="mq-card-foot-note">At least 8 characters.</span>
+          <button class="mq-btn mq-btn-primary" type="submit"><%- icon('lock') %> Save new password</button>
         </div>
       </form>
     </section>
