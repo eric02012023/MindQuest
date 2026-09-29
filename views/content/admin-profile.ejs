@@ -345,7 +345,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
       const currentTutorId = currentTutor ? String(currentTutor.tutor_id) : '';
       const currentSlot = currentTutor ? (currentTutor.time_slot || '') : '';
     %>
-    <section class="mq-card">
+    <section class="mq-card" id="tutor-schedule">
       <div class="mq-card-head">
         <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
         <div>

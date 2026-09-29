@@ -114,6 +114,7 @@ const {
   getStudentResultsAdmin,
   // --- Management upgrade -------------------------------------------------
   getUsersPaged,
+  countStudentsNeedingTutor,
   // Billing ledger: Billing (1) -> (many) PaymentEntries, append-only
   PAYMENT_METHODS,
   PAYMENT_PURPOSES,
@@ -478,23 +479,28 @@ function createAdminRouter(role) {
   router.get('/users', async (req, res, next) => {
     try {
       const scopeBranchId = getScopeBranchId(req);
-      const selectedRole = req.query.role || 'all';
+      // The "Needs a tutor" folder: students enrolled in a subject who have no
+      // tutor yet, so the office can find everyone still waiting for one.
+      const folder = req.query.folder === 'needs-tutor' ? 'needs-tutor' : 'all';
+      const selectedRole = folder === 'needs-tutor' ? 'student' : (req.query.role || 'all');
       const search = req.query.search || '';
       const status = req.query.status || 'all';
 
       // Paged, not "render everything": the page has to stay usable at two
       // thousand users, and the browser cannot lay out two thousand rows quickly.
       // The archive stays unpaged — it is a lookup, opened from a modal.
-      const [page, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts] = await Promise.all([
+      const [page, needsTutorCount, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts] = await Promise.all([
         getUsersPaged({
           scopeBranchId,
           role: selectedRole,
           archived: false,
           search,
           status,
+          needsTutor: folder === 'needs-tutor',
           page: req.query.page,
           pageSize: req.query.page_size
         }),
+        countStudentsNeedingTutor(scopeBranchId),
         getUsers({ scopeBranchId, role: selectedRole, archived: true, search }),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, false) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, true) : Promise.resolve([]),
@@ -516,6 +522,8 @@ function createAdminRouter(role) {
         archivedAssistantAccounts,
         availableAssistantBranches,
         rosterCounts,
+        folder,
+        needsTutorCount,
         selectedRole,
         selectedStatus: status,
         search

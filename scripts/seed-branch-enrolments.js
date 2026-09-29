@@ -28,6 +28,9 @@
  *   node scripts/seed-branch-enrolments.js --email=you@gmail.com            (preview)
  *   node scripts/seed-branch-enrolments.js --email=you@gmail.com --commit   (writes)
  *   options: --tutors=5 --students=10 --password=MindQuest@2026
+ *            --no-tutor   enrol the students but give none of them a tutor, so
+ *                         the office assigns every one by hand (they show in
+ *                         the "Needs a tutor" folder of User Management)
  *
  * Re-running is safe: accounts whose address exists are skipped, enrolled
  * students are not enrolled again, and a student who has a tutor keeps them.
@@ -96,10 +99,12 @@ function parseArgs(argv) {
     email: process.env.SEED_BASE_EMAIL || '',
     password: 'MindQuest@2026',
     tutors: 5,
-    students: 10
+    students: 10,
+    noTutor: false
   };
   for (const raw of argv) {
     if (raw === '--commit') args.commit = true;
+    else if (raw === '--no-tutor') args.noTutor = true;
     else if (raw.startsWith('--email=')) args.email = raw.slice('--email='.length).trim();
     else if (raw.startsWith('--password=')) args.password = raw.slice('--password='.length);
     else if (raw.startsWith('--tutors=')) args.tutors = Math.max(0, Number(raw.slice(9)) || 0);
@@ -265,6 +270,7 @@ async function main() {
   console.log(`Subjects : ${subjectNames.join(', ')}`);
   console.log(`Adding   : ${args.tutors} tutors + ${args.students} students per branch`);
   console.log(`Acting as: ${actor.first_name} ${actor.last_name} (admin #${actor.id})`);
+  if (args.noTutor) console.log('Tutors   : none — students without one are left for the office to assign');
   console.log(`Mode     : ${args.commit ? 'COMMIT — rows will be written' : 'DRY RUN — nothing will be written'}\n`);
 
   // ------------------------------------------------------------ 1. accounts
@@ -453,7 +459,7 @@ async function main() {
     // a free slot — the least loaded one, so work spreads across the branch.
     let tutorChoice = null;
     let slot = null;
-    if (!hasTutor) {
+    if (!hasTutor && !args.noTutor) {
       const wantedLevel = tutorLevelOf(level);
       const candidates = (tutorsByBranch.get(Number(student.branch_id)) || [])
         .filter((plan) => plan.levels.includes(wantedLevel))

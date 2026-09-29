@@ -1835,6 +1835,92 @@ a.mq-person.is-compact:hover {
 }
 
 /* -------------------------------------------------------------------------
+   User Management folders: everyone, or the students still waiting for a
+   tutor. The waiting folder's count glows while anyone is in it.
+   ---------------------------------------------------------------------- */
+
+.mq-folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.mq-folder {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 10px 18px;
+  border: 1px solid var(--border, #d7e2ea);
+  border-radius: 14px 14px 14px 4px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08));
+  color: var(--text, #102033);
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform .25s var(--mq-ease-out), border-color .2s ease, background-color .2s ease, color .2s ease;
+}
+
+.mq-folder:hover {
+  border-color: var(--mq-accent, #16a8c8);
+  color: var(--mq-accent-deep, #0f7ea0);
+  transform: translateY(-2px);
+}
+
+.mq-folder.is-active {
+  border-color: transparent;
+  background: var(--gradient-dark, linear-gradient(145deg, #0d1b2a, #14354a 48%, #1db5bd 100%));
+  color: #fff;
+}
+
+.mq-folder-count {
+  min-width: 26px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-muted, #eef4f8);
+  color: var(--text-soft, #5f7084);
+  font-size: 12px;
+  text-align: center;
+}
+
+.mq-folder-count.has-items {
+  background: var(--warning, #d28a1f);
+  color: #fff;
+  animation: mqCountGlow 2.4s ease-in-out infinite;
+}
+
+.mq-folder.is-active .mq-folder-count:not(.has-items) {
+  background: rgba(255, 255, 255, .2);
+  color: #fff;
+}
+
+@keyframes mqCountGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(210, 138, 31, .45); }
+  50%      { box-shadow: 0 0 0 6px rgba(210, 138, 31, 0); }
+}
+
+.mq-icon.mq-icon-accent {
+  color: var(--mq-accent-deep, #0f7ea0);
+}
+
+/* Arriving from "Assign a tutor": the schedule card clears the top bar and
+   flashes once so the eye lands on it. */
+#tutor-schedule {
+  scroll-margin-top: 96px;
+}
+
+#tutor-schedule:target {
+  animation: mqTargetGlow 1.4s ease-out 2;
+}
+
+@keyframes mqTargetGlow {
+  0%, 100% { box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08)); }
+  50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--mq-brand-a) 35%, transparent), var(--shadow-md, 0 18px 48px rgba(16, 32, 51, .12)); }
+}
+
+/* -------------------------------------------------------------------------
    The tutor's students: a banner that counts them, a search box and subject
    buttons that narrow the cards in place, and a card per student.
    ---------------------------------------------------------------------- */
