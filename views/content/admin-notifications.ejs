@@ -399,6 +399,6 @@
     document.querySelectorAll('.global-modal.is-open').forEach(function (item) {
       if (item !== modal) item.classList.remove('is-open');
     });
-    modal.classList.add('is-open');
+    openModal(modal); // public/js/main.js — keeps it on screen
   }
 </script>

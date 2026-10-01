@@ -184,12 +184,22 @@
    5. Cards arrive one after another
    The children of a page rise in with a short stagger. Dialogs are left out:
    they are hidden until opened and have an entrance of their own.
+
+   Every entrance in this file that plays on a box with content inside it
+   fills BACKWARDS, never `both`. A forwards fill keeps the last keyframe
+   applied after the animation ends, and the last keyframe of a rise is a
+   transform — interpolated from translateY(14px), "none" ends as
+   translateY(0), not as no transform at all. A box with a transform becomes
+   the frame for every position: fixed element inside it, so a dialog in the
+   profile page was centred on the whole (very tall) profile instead of on
+   the screen and opened below the fold. Filling backwards still holds the
+   first frame through the stagger delay, then lets go completely.
    ---------------------------------------------------------------------- */
 
 .page-stack > :not(.global-modal):not(script),
 .mq-page > :not(.global-modal):not(script),
 .page-wrapper > :not(.page-stack):not(.mq-page):not(.global-modal):not(script) {
-  animation: mqRise .5s var(--mq-ease-out) both;
+  animation: mqRise .5s var(--mq-ease-out) backwards;
 }
 
 .page-stack > :nth-child(2), .mq-page > :nth-child(2), .page-wrapper > :nth-child(2) { animation-delay: .06s; }
@@ -283,7 +293,7 @@ a.subject-list-card:hover,
    ---------------------------------------------------------------------- */
 
 .mq-table > .mq-row {
-  animation: mqSlideIn .4s var(--mq-ease-out) both;
+  animation: mqSlideIn .4s var(--mq-ease-out) backwards;
   transition: background-color .15s ease, box-shadow .2s ease;
 }
 
@@ -427,13 +437,13 @@ a.subject-list-card:hover,
 }
 
 .global-modal.is-open > .global-modal-card {
-  animation: mqPop .34s var(--mq-ease-spring) both;
+  animation: mqPop .34s var(--mq-ease-spring) backwards;
 }
 
 .menu-panel.is-open,
 .multi-select.is-open .multi-select-menu {
   transform-origin: top right;
-  animation: mqDrop .2s var(--mq-ease-out) both;
+  animation: mqDrop .2s var(--mq-ease-out) backwards;
 }
 
 /* -------------------------------------------------------------------------
@@ -678,7 +688,7 @@ a.subject-list-card:hover,
 .create-account-card-design,
 .done-card-design,
 .auth-card {
-  animation: mqPop .55s var(--mq-ease-out) both;
+  animation: mqPop .55s var(--mq-ease-out) backwards;
 }
 
 /* -------------------------------------------------------------------------
@@ -1032,7 +1042,7 @@ input[type="radio"]:checked {
 
 /* The hero's words arrive in order, and its picture floats. */
 .mq-hero-section .mq-copy-block > * {
-  animation: mqRise .7s var(--mq-ease-out) both;
+  animation: mqRise .7s var(--mq-ease-out) backwards;
 }
 
 .mq-hero-section .mq-copy-block > :nth-child(2) { animation-delay: .1s; }
@@ -1103,7 +1113,7 @@ input[type="radio"]:checked {
 
 .registration-design-card .field-block,
 .registration-design-card .top-upload-block {
-  animation: mqRise .5s var(--mq-ease-out) both;
+  animation: mqRise .5s var(--mq-ease-out) backwards;
 }
 
 .registration-design-card .field-block:nth-of-type(2) { animation-delay: .05s; }
@@ -1400,7 +1410,7 @@ body.dashboard-body:is([class*=" student-"], [class*=" tutor-"]) {
 
 .mq-profile-layout > * > .mq-card,
 .mq-profile-layout > .mq-card {
-  animation: mqRise .55s var(--mq-ease-out) both;
+  animation: mqRise .55s var(--mq-ease-out) backwards;
 }
 
 .mq-profile-layout > * > .mq-card:nth-child(2) { animation-delay: .08s; }
@@ -1758,7 +1768,7 @@ a.mq-person:hover > .mq-i {
 
 /* The admin's record: its cards two to a row, the save button under them. */
 .mq-profile > :not(.global-modal):not(script) {
-  animation: mqRise .55s var(--mq-ease-out) both;
+  animation: mqRise .55s var(--mq-ease-out) backwards;
 }
 
 .mq-profile > :nth-child(2) { animation-delay: .07s; }
@@ -1775,7 +1785,7 @@ a.mq-person:hover > .mq-i {
 }
 
 .mq-profile-form.is-split > .mq-card {
-  animation: mqRise .55s var(--mq-ease-out) both;
+  animation: mqRise .55s var(--mq-ease-out) backwards;
 }
 
 .mq-profile-form.is-split > .mq-card:nth-child(2) { animation-delay: .06s; }
@@ -1986,7 +1996,7 @@ a.mq-person.is-compact:hover {
   border-radius: 18px;
   background: var(--surface, #fff);
   box-shadow: var(--shadow-sm, 0 8px 24px rgba(16, 32, 51, .08));
-  animation: mqRise .5s var(--mq-ease-out) .06s both;
+  animation: mqRise .5s var(--mq-ease-out) .06s backwards;
 }
 
 .mq-roster-search {
@@ -2109,7 +2119,7 @@ a.mq-person.is-compact:hover {
   overflow: clip;
   isolation: isolate;
   transition: transform .25s var(--mq-ease-out), box-shadow .25s ease, border-color .25s ease;
-  animation: mqRise .5s var(--mq-ease-out) both;
+  animation: mqRise .5s var(--mq-ease-out) backwards;
   animation-delay: calc(var(--i, 0) * 50ms + .1s);
 }
 

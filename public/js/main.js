@@ -5,17 +5,36 @@
  * Notes: Comments were added to help explain the system during code defense without changing the original logic.
  */
 
+/**
+ * Open a dialog, and make sure it covers the screen rather than part of a page.
+ *
+ * A dialog is position: fixed, which means "relative to the screen" only while
+ * no ancestor has a transform, a filter or a backdrop-filter. Any one of those
+ * makes that ancestor the frame instead, and the dialog is centred on it — on
+ * the Student Profile it was centred on the whole tall profile and opened below
+ * the fold. The shared animations no longer leave a transform behind
+ * (css/mq-brand.css, section 5), but a card that lifts on hover does the same.
+ * So an open dialog whose overlay does not start at the top-left corner of the
+ * screen is moved to <body>, where nothing can trap it. One inside a <form>
+ * stays where it is: moving it would take its fields out of that form.
+ */
+function openModal(modal) {
+  if (!modal) return;
+  modal.classList.add('is-open');
+  if (modal.parentElement === document.body || modal.parentElement.closest('form')) return;
+  const box = modal.getBoundingClientRect();
+  if (Math.abs(box.top) > 1 || Math.abs(box.left) > 1) document.body.appendChild(modal);
+}
+
 document.addEventListener('click', (event) => {
   const modalTargetButton = event.target.closest('[data-modal-target]');
   if (modalTargetButton) {
     const selector = modalTargetButton.getAttribute('data-modal-target');
-    const modal = document.querySelector(selector);
-    if (modal) modal.classList.add('is-open');
+    openModal(document.querySelector(selector));
   }
 
   if (event.target.matches('[data-open-logo]') || event.target.closest('[data-open-logo]')) {
-    const modal = document.querySelector('[data-logo-modal]');
-    if (modal) modal.classList.add('is-open');
+    openModal(document.querySelector('[data-logo-modal]'));
   }
 
   if (event.target.matches('[data-close-modal]') || event.target.closest('[data-close-modal]')) {
@@ -44,9 +63,7 @@ document.addEventListener('click', (event) => {
   }
 });
 
-document.querySelectorAll('.global-modal[data-force-open="true"]').forEach((modal) => {
-  modal.classList.add('is-open');
-});
+document.querySelectorAll('.global-modal[data-force-open="true"]').forEach(openModal);
 
 
 // Function: ensureConfirmModal
@@ -85,8 +102,7 @@ document.addEventListener('click', (event) => {
     confirmAction = () => {
       modal.classList.remove('is-open');
       document.querySelectorAll('.global-modal.is-open').forEach((item) => item.classList.remove('is-open'));
-      const target = document.querySelector(confirmOpenButton.getAttribute('data-confirm-open'));
-      if (target) target.classList.add('is-open');
+      openModal(document.querySelector(confirmOpenButton.getAttribute('data-confirm-open')));
     };
     modal.classList.add('is-open');
   }
