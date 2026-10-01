@@ -2309,6 +2309,35 @@ a.mq-person.is-compact:hover {
 }
 
 /* -------------------------------------------------------------------------
+   The app at 90% on a computer screen
+   At 100% the dashboards were cramped on an ordinary laptop or monitor —
+   Payment Collection's filters wrapped onto three rows. This shows every
+   dashboard the way the browser shows it at 90% zoom, for everyone, without
+   anyone having to set it: `zoom` scales the page exactly as the browser's
+   own zoom does. Below 1101px — where the sidebar becomes a drawer, phones
+   and tablets — the layout is already sized for the screen and stays at
+   100%; smaller text there would only be harder to read.
+   ---------------------------------------------------------------------- */
+
+@media (min-width: 1101px) {
+  .dashboard-body {
+    --mq-zoom: .9;
+    zoom: var(--mq-zoom);
+  }
+
+  /* 100vh is a length like any other, so the zoom shrinks it as well and the
+     shell would stop a tenth short of the bottom of the screen. Divided by
+     the zoom, it reaches the bottom exactly. */
+  .dashboard-body,
+  .dashboard-shell,
+  .dashboard-main,
+  .sidebar {
+    height: calc(100vh / var(--mq-zoom));
+    min-height: calc(100vh / var(--mq-zoom));
+  }
+}
+
+/* -------------------------------------------------------------------------
    27. Anyone whose system asks for less motion gets none of the above
    Everything lands in its finished state at once; nothing floats or pulses.
    ---------------------------------------------------------------------- */

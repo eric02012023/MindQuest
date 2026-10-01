@@ -26,15 +26,18 @@
     var target = event.target.closest ? event.target.closest(RIPPLE_TARGETS) : null;
     if (!target || target.disabled || target.hasAttribute('disabled')) return;
 
+    // The pointer and the box are measured in screen pixels, but the ripple is
+    // placed in the page's own, which the 90% zoom (css/mq-brand.css) scales.
+    var zoom = target.currentCSSZoom || 1;
     var box = target.getBoundingClientRect();
-    var size = Math.max(box.width, box.height) * 2.2;
+    var size = Math.max(box.width, box.height) * 2.2 / zoom;
     var ink = document.createElement('span');
     ink.className = 'mq-ripple';
     ink.setAttribute('aria-hidden', 'true');
     ink.style.width = size + 'px';
     ink.style.height = size + 'px';
-    ink.style.left = (event.clientX - box.left - size / 2) + 'px';
-    ink.style.top = (event.clientY - box.top - size / 2) + 'px';
+    ink.style.left = ((event.clientX - box.left) / zoom - size / 2) + 'px';
+    ink.style.top = ((event.clientY - box.top) / zoom - size / 2) + 'px';
     target.appendChild(ink);
 
     var remove = function () { if (ink.parentNode) ink.parentNode.removeChild(ink); };
@@ -164,8 +167,10 @@
       var box = active.getBoundingClientRect();
       var x = lastEvent.clientX - box.left;
       var y = lastEvent.clientY - box.top;
-      active.style.setProperty('--mq-mx', x + 'px');
-      active.style.setProperty('--mq-my', y + 'px');
+      // Screen pixels into the card's own, as for the ripple above.
+      var zoom = active.currentCSSZoom || 1;
+      active.style.setProperty('--mq-mx', (x / zoom) + 'px');
+      active.style.setProperty('--mq-my', (y / zoom) + 'px');
       if (active.classList.contains('mq-tilt')) {
         active.style.setProperty('--mq-rx', ((0.5 - y / box.height) * 7).toFixed(2) + 'deg');
         active.style.setProperty('--mq-ry', ((x / box.width - 0.5) * 9).toFixed(2) + 'deg');
