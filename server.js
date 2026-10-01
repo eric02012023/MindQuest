@@ -27,6 +27,8 @@ const { icon } = require('./lib/icons');
 const { resolvePageStyles } = require('./lib/pageStyles');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
 const { getFile, usingSupabase, describeBackend, checkBackend } = require('./lib/storage');
+const { startPaymentReminders } = require('./lib/paymentReminders');
+const { resolveOnlinePaymentMethods } = require('./lib/data');
 
 const app = express();
 const server = http.createServer(app);
@@ -462,6 +464,19 @@ async function start() {
         pass: process.env.SMTP_PASS ? 'SET (hidden)' : 'NOT SET',
         from: process.env.SMTP_FROM || 'NOT SET'
       });
+
+      // Students' payment reminders: 1st, 2nd and last week of every month.
+      startPaymentReminders();
+
+      // Online payments written as "Online" (before PayMongo's method was kept,
+      // or while PayMongo could not be reached) are filed under GCash, Maya, ...
+      resolveOnlinePaymentMethods()
+        .then((outcome) => {
+          if (outcome.changed.length) {
+            console.log(`Online payments re-filed by method: ${outcome.changed.map((c) => `#${c.id} ${c.to}`).join(', ')}`);
+          }
+        })
+        .catch((error) => console.error('[PayMongo] could not re-file online payments:', error.message));
     });
   } catch (error) {
     console.error('Failed to bootstrap the database before start.');

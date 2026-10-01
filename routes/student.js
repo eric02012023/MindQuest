@@ -91,7 +91,10 @@ const {
   getViolationSessionCount,
   MAX_VIOLATIONS,
   // Auto weak-topic handout after a Pre-Assessment
-  runPreAssessmentFollowUp
+  runPreAssessmentFollowUp,
+  // Payment reminders in the bell (lib/paymentReminders.js)
+  getAppNotifications,
+  markOwnAppNotificationRead
 } = require('../lib/data');
 const { determineLevel } = require('../config/levelThresholds');
 const { normalizeArray } = require('../lib/utils');
@@ -109,7 +112,12 @@ router.use(authorize(['student']));
 // Role: Handles a reusable server-side operation used by this module.
 
 async function buildShell(req, extra = {}) {
-  const inboxNotifications = await getStudentScheduleNotifications(req.session.user.id);
+  // The bell carries the schedule decisions and, beside them, the alerts
+  // addressed to this student — the weekly payment reminders.
+  const [inboxNotifications, alerts] = await Promise.all([
+    getStudentScheduleNotifications(req.session.user.id),
+    getAppNotifications(req.session.user, { unreadOnly: true }).catch(() => [])
+  ]);
   return {
     pageTitle: extra.pageTitle || 'Student Dashboard',
     roleName: 'Student',
@@ -117,8 +125,9 @@ async function buildShell(req, extra = {}) {
     section: extra.section || 'dashboard',
     contentView: extra.contentView,
     currentUser: req.session.user,
-    notificationCount: inboxNotifications.length,
+    notificationCount: inboxNotifications.length + alerts.length,
     inboxNotifications,
+    alerts,
     ...extra
   };
 }
@@ -306,6 +315,16 @@ router.post('/subjects/:subjectId/apply', async (req, res, next) => {
 router.post('/notifications/:id/read', async (req, res, next) => {
   try {
     await markStudentScheduleNotificationRead(Number(req.params.id), req.session.user.id);
+    setFlash(req, 'success', 'Notification marked as read.');
+    res.redirect('back');
+  } catch (error) { next(error); }
+});
+
+// A payment reminder (or any alert addressed to this student) dismissed from
+// the bell. Only ever marks the student's own.
+router.post('/alerts/:id/read', async (req, res, next) => {
+  try {
+    await markOwnAppNotificationRead(Number(req.params.id), req.session.user);
     setFlash(req, 'success', 'Notification marked as read.');
     res.redirect('back');
   } catch (error) { next(error); }

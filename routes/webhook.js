@@ -23,6 +23,9 @@ router.post('/paymongo', async (req, res) => {
         const payments = session?.attributes?.payments || [];
         const paidPayment = payments.find((p) => p?.attributes?.status === 'paid') || payments[0] || null;
         const transactionReference = paidPayment?.id || null;
+        // How it was paid — 'gcash', 'card', ... — so the ledger files it under
+        // GCash rather than "Online".
+        const method = session?.attributes?.payment_method_used || paidPayment?.attributes?.source?.type || null;
 
         // Find the pending payment using the checkout session id
         const rows = await query(
@@ -38,7 +41,7 @@ router.post('/paymongo', async (req, res) => {
           // earlier (reconcilePayMongoPayments); that is a success, not an error
           // for PayMongo to keep retrying.
           try {
-            await completeOnlinePayment(paymentId, { transactionReference });
+            await completeOnlinePayment(paymentId, { transactionReference, method });
             console.log(`[PayMongo Webhook] Payment ${paymentId} completed successfully for session ${checkoutSessionId}`
               + `${transactionReference ? ` (transaction ${transactionReference})` : ''}.`);
           } catch (error) {

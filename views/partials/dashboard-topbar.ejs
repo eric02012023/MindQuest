@@ -59,6 +59,11 @@
             <% if (alert.link_url) { %>
               <a class="btn btn-primary btn-sm" href="<%= alert.link_url %>">Open</a>
             <% } %>
+            <%# A student's alerts are theirs alone (payment reminders), so they
+                can put one away. Staff alerts are settled by acting on them. %>
+            <% if (basePath === '/student') { %>
+              <form method="post" action="/student/alerts/<%= alert.id %>/read"><button class="btn btn-secondary btn-sm" type="submit">Mark as read</button></form>
+            <% } %>
           </div>
         </article>
       <% }) %>
