@@ -4,7 +4,7 @@
 <%- include('partials/head', { pageTitle, pageCss: '/css/auth/register.css' }) %>
 <body class="auth-register-page plain-page registration-design-page">
   <section class="registration-modal-shell">
-    <form action="/register/<%= type %>/details" method="post" enctype="multipart/form-data" class="registration-design-card" data-registration-form data-registration-type="<%= type %>">
+    <form action="/register/<%= type %>/details" method="post" class="registration-design-card" data-registration-form data-registration-type="<%= type %>">
       <a href="/" class="big-close-link" aria-label="Go back">×</a>
 
       <div class="registration-design-header">
@@ -17,18 +17,9 @@
 
       <div class="registration-top-divider"></div>
 
-      <div class="top-upload-block">
-        <div class="upload-block upload-block-top">
-          <label>Upload Photo</label>
-          <label class="fake-upload-box" data-upload-preview-box>
-            <input type="file" name="image" accept="image/*" data-image-preview-input />
-            <input type="hidden" name="existing_image_path" value="<%= formData.image_path || '' %>" />
-            <img src="<%= formData.image_path || '' %>" alt="Preview" class="upload-preview-image <%= formData.image_path ? 'has-image' : '' %>" data-upload-preview-image />
-            <span class="upload-placeholder <%= formData.image_path ? 'is-hidden' : '' %>">Add photo here</span>
-            <strong class="upload-plus <%= formData.image_path ? 'is-hidden' : '' %>">+</strong>
-          </label>
-        </div>
-
+      <%# No photo here: a learner or tutor adds their picture from their own
+          profile once the office has accepted them ("Change photo"). %>
+      <div class="top-upload-block is-photo-free">
         <div class="field-block full-row-name">
             <label class="group-label">Name <span class="required-mark">*</span></label>
             <div class="triple-input-row">

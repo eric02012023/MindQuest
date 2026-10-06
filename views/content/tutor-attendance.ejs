@@ -22,7 +22,7 @@
       <label>Attendance Date<input type="date" name="attendance_date" value="<%= toInputDate(new Date()) %>" required /></label>
       <div class="table-wrap scroll-table-box">
         <table>
-          <thead><tr><th>Select</th><th>Subject</th><th>Student</th><th>Status</th></tr></thead>
+          <thead><tr><th>Select</th><th>Subject</th><th data-search-col>Student</th><th>Status</th></tr></thead>
           <tbody>
             <% if (!(students || []).length) { %>
               <tr><td colspan="4">Select one subject first, then click Load Assigned Student.</td></tr>
@@ -51,7 +51,7 @@
     <div class="panel-card-head"><h2>Attendance Logs</h2></div>
     <div class="table-wrap scroll-table-box">
       <table>
-        <thead><tr><th>Date</th><th>Student</th><th>Subject</th><th>Status</th></tr></thead>
+        <thead><tr><th>Date</th><th data-search-col>Student</th><th>Subject</th><th>Status</th></tr></thead>
         <tbody>
           <% if (!(attendanceLogs || []).length) { %><tr><td colspan="4">No attendance logs yet.</td></tr><% } %>
           <% (attendanceLogs || []).forEach((item) => { %>

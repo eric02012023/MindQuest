@@ -64,6 +64,7 @@ const {
   getModuleById,
   getModuleHandouts,
   getModuleHandoutTexts,
+  moduleTargetsStudent,
   // Post-Assessment (Phase 8)
   getPostAssessment,
   getSubjectPrePostComparison,
@@ -240,8 +241,11 @@ router.get('/students/:studentId', async (req, res, next) => {
 
 router.post('/notifications/:id/accept', async (req, res, next) => {
   try {
-    await acceptTutorScheduleApplication(Number(req.params.id), req.session.user.id);
-    setFlash(req, 'success', 'Student schedule application accepted.');
+    const result = await acceptTutorScheduleApplication(Number(req.params.id), req.session.user.id);
+    const subjects = (result && result.subjects) || [];
+    setFlash(req, 'success', subjects.length
+      ? `Schedule request accepted. You now teach this student ${subjects.join(', ')}.`
+      : 'Student schedule application accepted.');
     res.redirect('back');
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not accept application.');
@@ -831,11 +835,15 @@ router.get('/profile', async (req, res, next) => {
 router.post('/profile', profileUploader.single('image'), async (req, res, next) => {
   try {
     const current = await getUserById(req.session.user.id);
+    // "Subjects I teach" are set by the office, so the tutor's own save passes
+    // the stored lists back unchanged. They used to be re-read from the raw JSON
+    // and split on commas: the tutor's subjects became names no subject has,
+    // and the cleanup that follows a save unassigned every one of their students.
     await updateUser(req.session.user.id, {
       ...req.body,
       branch_id: current.branch_id,
-      subjects: normalizeArray(req.body.subjects || current.subjects_json),
-      supports: normalizeArray(req.body.supports || current.support_json),
+      subjects: current.subjects || [],
+      supports: current.supports || [],
       image_path: req.file ? `/uploads/profiles/${req.file.filename}` : null,
       extra: current.extra || {}
     });
@@ -869,36 +877,28 @@ router.get('/students/:studentId/analytics', async (req, res, next) => {
       return res.redirect('/tutor/students');
     }
 
-    // Get the student's assignments to find which subjects overlap
-    const studentAssignments = await getStudentAssignments(req.params.studentId);
-    const tutorSubjectIds = new Set(assignmentCheck.map((a) => Number(a.subject_id)));
+    // Only the subjects THIS tutor teaches the student: their score trend and
+    // history there, and nothing about the student's other subjects. (It used
+    // to fall back to the student's first subject, whoever taught it.)
+    const tutorSubjectIds = [...new Set(assignmentCheck.map((a) => Number(a.subject_id)))];
+    const analyticsList = (await Promise.all(
+      tutorSubjectIds.map((subjectId) => getStudentAnalytics(req.params.studentId, subjectId))
+    )).filter(Boolean);
 
-    // Gather analytics for each overlapping subject
-    const analyticsData = [];
-    for (const assignment of studentAssignments) {
-      if (tutorSubjectIds.has(Number(assignment.subject_id))) {
-        const analytics = await getStudentAnalytics(req.params.studentId, assignment.subject_id);
-        if (analytics) analyticsData.push(analytics);
-      }
-    }
-
-    // Fallback: try first subject from assignments
-    if (!analyticsData.length && studentAssignments.length) {
-      const fallback = await getStudentAnalytics(req.params.studentId, studentAssignments[0].subject_id);
-      if (fallback) analyticsData.push(fallback);
-    }
-
-    const primaryAnalytics = analyticsData[0] || null;
-    if (!primaryAnalytics) {
+    if (!analyticsList.length) {
       setFlash(req, 'error', 'No analytics data found for this student.');
       return res.redirect('/tutor/students');
     }
+    const student = analyticsList[0].student;
 
     const shell = await buildShell(req, {
-      pageTitle: `Analytics: ${primaryAnalytics.student.first_name} ${primaryAnalytics.student.last_name}`,
-      section: 'students',
+      pageTitle: `Analytics: ${student.first_name} ${student.last_name}`,
+      section: req.query.from === 'analytics' ? 'analytics' : 'students',
       contentView: '../content/admin-student-analytics',
-      analytics: primaryAnalytics
+      student,
+      analyticsList,
+      backUrl: req.query.from === 'analytics' ? '/tutor/analytics' : `/tutor/students/${student.id}`,
+      backLabel: req.query.from === 'analytics' ? 'Back to Analytics & Reports' : 'Back to student profile'
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -919,16 +919,13 @@ router.get('/students/:studentId/analytics', async (req, res, next) => {
  */
 router.get('/analytics', async (req, res, next) => {
   try {
-    const filters = {
-      search: String(req.query.search || '').trim(),
-      subjectId: req.query.subject_id || 'all',
-      kind: req.query.kind || 'all',
-      from: req.query.from || '',
-      to: req.query.to || ''
-    };
+    // The same report the admin reads, scoped to this tutor's own learners,
+    // without the filter bar; each table has its own search icon. A learner's
+    // row opens their per-subject score trend (/tutor/students/:id/analytics).
+    const filters = { search: '', subjectId: 'all', kind: 'all', from: '', to: '' };
 
     const data = await getAnalyticsDashboard(req.session.user, filters);
-    const focus = await getFocusHandoutsForTutor(req.session.user.id, { search: filters.search }).catch(() => []);
+    const focus = await getFocusHandoutsForTutor(req.session.user.id, {}).catch(() => []);
 
     const shell = await buildShell(req, {
       pageTitle: 'Analytics & Reports',
@@ -1090,13 +1087,18 @@ router.get('/modules/:id/assessments/:assessmentId/submissions', async (req, res
       return res.redirect(`/tutor/modules/${mod.id}`);
     }
 
+    // This tutor's own students in the subject — and only those the module is
+    // aimed at, since a student whose year level cannot see the module cannot
+    // answer its assessment either. Anyone who DID answer is kept regardless.
+    const submissions = (await getSubmissionsByAssessment(assessment.id, { tutorId: req.session.user.id }))
+      .filter((row) => row.submission_id || moduleTargetsStudent(mod, row));
     const shell = await buildShell(req, {
       pageTitle: `${assessment.title} — Answers`,
       section: 'modules',
       contentView: '../content/tutor-assessment-submissions',
       mod,
       assessment,
-      submissions: await getSubmissionsByAssessment(assessment.id)
+      submissions
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }

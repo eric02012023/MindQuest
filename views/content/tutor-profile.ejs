@@ -111,7 +111,9 @@
           <div><h3>Teaching &amp; home</h3><p>Your year level decides which students you are matched with.</p></div>
         </div>
         <div class="mq-card-body mq-fields">
-          <label>Year level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
+          <%# Set by the office (it decides which students the tutor is matched
+              with); a change typed here was never saved, so it is shown, not edited. %>
+          <label>Year level<input type="text" value="<%= profileUser.year_level || '' %>" readonly /></label>
           <label>Branch<input type="text" value="<%= profileUser.branch_name || '' %>" readonly /></label>
           <label>User ID<input type="text" value="<%= profileUser.user_id %>" readonly /></label>
           <label class="is-wide">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>

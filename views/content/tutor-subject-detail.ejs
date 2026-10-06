@@ -1,20 +1,26 @@
 <%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-subject-detail.ejs | Purpose: UI template/view used by the system. %>
 <section class="page-stack">
   <section class="panel-card">
-    <div class="panel-card-head"><h2>Enrolled Students</h2></div>
-    <div class="list-stack">
-      <% if (!students.length) { %><p class="empty-state">No students under this subject yet.</p><% } %>
-      <% const seenIds = new Set(); %>
-      <% students.forEach((student) => { %>
-        <% if (!seenIds.has(Number(student.student_id))) { seenIds.add(Number(student.student_id)); %>
-          <a class="list-card compact student-link-card" href="/tutor/students/<%= student.student_id %>/analytics">
-            <div>
-              <strong><%= student.full_name %></strong>
-              <span><%= student.year_level %> <%= student.grade_level %></span>
-            </div>
-          </a>
-        <% } %>
-      <% }) %>
+    <div class="panel-card-head">
+      <h2>Enrolled Students</h2>
+      <% const seenIds = new Set(); const myStudents = students.filter((student) => { const id = Number(student.student_id); if (seenIds.has(id)) return false; seenIds.add(id); return true; }); %>
+      <span class="badge badge-info"><%= myStudents.length %> student<%= myStudents.length === 1 ? '' : 's' %></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th data-search-col>Student</th><th>Year / Grade</th><th>Time Schedule</th><th>Action</th></tr></thead>
+        <tbody>
+          <% if (!myStudents.length) { %><tr><td colspan="4">No students under this subject yet.</td></tr><% } %>
+          <% myStudents.forEach((student) => { %>
+            <tr>
+              <td><a href="/tutor/students/<%= student.student_id %>"><strong><%= student.full_name %></strong></a> <span class="module-card-meta"><%= student.user_id || '' %></span></td>
+              <td><%= [student.year_level, student.grade_level].filter(Boolean).join(' / ') || '-' %></td>
+              <td><%= student.time_slot || '-' %></td>
+              <td><a class="btn btn-secondary btn-sm" href="/tutor/students/<%= student.student_id %>/analytics">Analytics</a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -221,27 +227,8 @@
     <% } %>
   </section>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Legacy Modules</h3></div>
-    <p class="table-note">Uploaded under the previous module system. Kept so existing student records still resolve; new material lives in the Modules section above.</p>
-    <div class="list-stack">
-      <% if (!adminResources.length) { %><p class="empty-state">No legacy module.</p><% } %>
-      <% adminResources.forEach((resource) => { %>
-        <article class="list-card">
-          <div>
-            <strong><%= resource.title %></strong>
-            <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
-            <% if (resource.module_origin === 'ai_generated') { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
-            <p><%= resource.description || 'No description' %></p>
-            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
-          </div>
-        </article>
-      <% }) %>
-    </div>
-    <%# Phase 9: the "Post Assessment to Students" form was removed from here. It
-        generated one AI assessment over every legacy resource and pushed it to the
-        whole class, competing with the real Post-Assessment above — which reuses
-        the Pre-Assessment items so the before-and-after actually compares. %>
-  </section>
+  <%# The Legacy Modules panel is gone: those pre-overhaul files can no longer
+      be added or managed by the office, and every module now lives in Modules
+      above. %>
 
 </section>

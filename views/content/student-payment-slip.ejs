@@ -39,8 +39,6 @@
     <div class="mq-panel">
       <div class="mq-empty">
         <strong>No billing record yet</strong>
-        Your account has not been billed, so there is nothing to pay. The office will post a
-        statement here once it is ready.
       </div>
     </div>
   <% } else { %>
@@ -70,7 +68,7 @@
           different days and run their own month. %>
       <div class="mq-panel" style="margin:0 16px 16px;">
         <div class="mq-panel-head"><h3>Enrolled subjects</h3><span class="mq-count"><%= s.subjects.length %></span></div>
-        <div class="mq-table" style="--mq-cols: minmax(160px, 1.6fr) minmax(170px, 1.4fr) 120px;">
+        <div class="mq-table" data-no-table-search data-no-table-cap style="--mq-cols: minmax(160px, 1.6fr) minmax(170px, 1.4fr) 120px;">
           <div class="mq-head"><span>Subject</span><span>Period</span><span class="mq-num">Amount</span></div>
           <% if (!s.subjects.length) { %>
             <div class="mq-empty">No active subject enrolments on this account.</div>
@@ -128,28 +126,20 @@
     <% if (!hasSlip) { %>
       <section class="mq-panel print-hide">
         <div class="mq-panel-head">
-          <div>
-            <h2>Issue this slip</h2>
-            <p>Tell the office what you intend to pay. Nothing is charged — the cashier records
-               whatever actually changes hands.</p>
-          </div>
+          <h2>Issue this slip</h2>
         </div>
         <% if (s.totals.remaining <= 0) { %>
           <div class="mq-empty">Your account is fully settled. There is nothing to pay.</div>
         <% } else { %>
           <form class="mq-form" method="post" action="/student/billing/slip"
                 data-confirm-message="Generate a payment slip? Show it at the branch to pay.">
+            <%# Never more than the balance (public/js/main.js warns, the server
+                refuses); no "Purpose of payment" — a student pays tuition. %>
             <label>Amount you intend to pay
               <input type="number" name="amount" step="0.01"
-                     min="<%= Number(s.minimumNow).toFixed(2) %>" max="<%= s.totals.remaining %>"
+                     min="<%= Number(s.minimumNow).toFixed(2) %>" max="<%= Number(s.totals.remaining).toFixed(2) %>"
+                     data-balance="<%= Number(s.totals.remaining).toFixed(2) %>" data-balance-audience="student"
                      value="<%= Number(s.totals.remaining).toFixed(2) %>" required />
-            </label>
-            <label>Purpose of payment
-              <select name="purpose">
-                <% (typeof paymentPurposes !== 'undefined' ? paymentPurposes : ['Tuition']).forEach((purpose) => { %>
-                  <option value="<%= purpose %>"><%= purpose %></option>
-                <% }) %>
-              </select>
             </label>
             <label class="is-wide">Notes for the office (optional)
               <input type="text" name="reference_note" placeholder="e.g. with my guardian on Saturday" />

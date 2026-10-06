@@ -281,12 +281,17 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
 // Purpose: Processes this endpoint and returns the correct view or action result.
 router.post('/apply-tutor', async (req, res, next) => {
   try {
-    await createTutorScheduleApplicationForAllSubjects(
+    // A tutor takes only the subjects they teach, and only ones with no tutor
+    // yet. The request says which; any other subject is picked separately.
+    const result = await createTutorScheduleApplicationForAllSubjects(
       req.session.user.id,
       Number(req.body.tutor_id),
       String(req.body.time_slot || '').trim()
     );
-    setFlash(req, 'success', 'Schedule application sent to tutor for all your enrolled subjects.');
+    const covered = (result && result.subjects) || [];
+    setFlash(req, 'success', covered.length
+      ? `Schedule request sent to the tutor for ${covered.join(', ')}. You will be notified once they accept.`
+      : 'Schedule request sent to the tutor.');
     res.redirect('/student/subjects');
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not submit schedule application.');
@@ -503,7 +508,9 @@ async function issuePaymentSlip(req, res) {
       student,
       amount: req.body.amount,
       paymentMethod: 'cash',
-      purpose: req.body.purpose,
+      // "Purpose of payment" is no longer asked of the student: what a student
+      // pays through Billing Data is their tuition.
+      purpose: 'Tuition',
       referenceNote: req.body.reference_note || null,
       branchId,
       branchName: branch?.name || ''
@@ -743,11 +750,16 @@ router.get('/profile', async (req, res, next) => {
 router.post('/profile', profileUploader.single('image'), async (req, res, next) => {
   try {
     const current = await getUserById(req.session.user.id);
+    // The student's own form has no subjects: those change only through an
+    // enrolment request the office accepts. So the stored lists go back as
+    // they are. They used to be re-read from the raw JSON and split on commas,
+    // which turned ["ENGLISH"] into '["ENGLISH"]' — no such subject — and
+    // saving a profile unenrolled the student from everything.
     await updateUser(req.session.user.id, {
       ...req.body,
       branch_id: current.branch_id,
-      subjects: normalizeArray(req.body.subjects || current.subjects_json),
-      supports: normalizeArray(req.body.supports || current.support_json),
+      subjects: current.subjects || [],
+      supports: current.supports || [],
       image_path: req.file ? `/uploads/profiles/${req.file.filename}` : null,
       extra: current.extra || {}
     });
@@ -892,13 +904,9 @@ router.post('/billing/pay-online', async (req, res, next) => {
  */
 router.get('/analytics', async (req, res, next) => {
   try {
-    const filters = {
-      search: String(req.query.search || '').trim(),
-      subjectId: req.query.subject_id || 'all',
-      kind: req.query.kind || 'all',
-      from: req.query.from || '',
-      to: req.query.to || ''
-    };
+    // No filter bar: every subject, every assessment. The score trend is drawn
+    // per subject, one bar per assessment taken.
+    const filters = { search: '', subjectId: 'all', kind: 'all', from: '', to: '' };
 
     const [data, focus] = await Promise.all([
       getAnalyticsDashboard(req.session.user, filters),
@@ -1289,10 +1297,14 @@ router.get('/modules/:moduleId', async (req, res, next) => {
     const completedActivities = activities.filter(a => submissions.some(s => Number(s.assessment_id) === Number(a.id)));
     const completedPost = postAssessments.filter(a => submissions.some(s => Number(s.assessment_id) === Number(a.id)));
 
-    // Progress: handout (always available) + activities + post
-    const totalTasks = 1 + activities.length + postAssessments.length; // 1 for handout
-    const completedTasks = completedActivities.length + completedPost.length;
-    // We count handout as completed if student has viewed it (we'll track via query param)
+    // Progress: the handouts, the activities and the post-test. Reading the
+    // handouts is done by being here — the open was recorded above, and it is
+    // what the Post-Assessment's completion check counts too. It used to be
+    // counted as a task that could never be completed, so a module with one
+    // activity, done, still read 50%.
+    const handoutTask = handouts.length ? 1 : 0;
+    const totalTasks = handoutTask + activities.length + postAssessments.length;
+    const completedTasks = handoutTask + completedActivities.length + completedPost.length;
     const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     const shell = await buildShell(req, {
@@ -1432,37 +1444,21 @@ router.get('/assessment-result/:submissionId', (req, res) => {
 router.get('/progress', async (req, res, next) => {
   try {
     const studentId = req.session.user.id;
-    const progress = await getStudentProgress(studentId);
     const assignments = await getStudentAssignments(studentId);
 
-    // For each subject with a level, get submission stats
-    const enrichedProgress = [];
-    for (const p of progress) {
-      const submissions = await getStudentSubmissions(studentId, p.subject_id);
-      const assignedModule = await getModuleBySubjectAndLevel(p.subject_id, p.level);
-      enrichedProgress.push({
-        ...p,
-        submissions,
-        assignedModule,
-        totalSubmissions: submissions.length,
-        avgScore: submissions.length > 0
-          ? (submissions.reduce((sum, s) => sum + Number(s.percentage || 0), 0) / submissions.length).toFixed(1)
-          : '0.0'
-      });
-    }
-
-    // The analytics half: counters and attempt history per enrolled subject.
-    const subjects = [];
-    for (const assignment of assignments) {
-      const analytics = await getStudentAnalytics(studentId, assignment.subject_id);
-      if (analytics) subjects.push(analytics);
-    }
+    // One record per enrolled subject, read from what the system records today:
+    // the modules opened, every assessment submitted (Pre, module activities,
+    // Post), and the level on record. This page used to read the retired
+    // first-generation tables, so it showed no progress for anyone.
+    const subjects = (await Promise.all(
+      assignments.map((assignment) => getStudentAnalytics(studentId, assignment.subject_id)
+        .then((analytics) => (analytics ? { ...analytics, assignment } : null)))
+    )).filter(Boolean);
 
     const shell = await buildShell(req, {
       pageTitle: 'My Progress',
       section: 'progress',
       contentView: '../content/student-progress',
-      progress: enrichedProgress,
       assignments,
       subjects
     });

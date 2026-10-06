@@ -51,7 +51,7 @@ function answer(text, params = []) {
   if (/^SELECT b\.student_id, b\.full_bill/i.test(sql)) return db.accounts;
   if (/^SELECT TOP 1 \* FROM online_payments/i.test(sql)) return db.onlinePayment ? [{ ...db.onlinePayment }] : [];
   if (/^UPDATE online_payments/i.test(sql)) return [{ claimed_id: db.onlinePayment.id }];
-  if (/^SELECT TOP 1 id, full_bill FROM billing/i.test(sql)) return [{ id: 3, full_bill: 1800 }];
+  if (/^SELECT TOP 1 id, full_bill, partial_payment FROM billing/i.test(sql)) return [{ id: 3, full_bill: 1800, partial_payment: 500 }];
   if (/^SELECT COALESCE\(MAX\(sequence_no\)/i.test(sql)) return [{ last_seq: 1, paid: 500 }];
   if (/^SELECT COALESCE\(SUM\(amount\), 0\) AS paid, MAX/i.test(sql)) return [{ paid: 1100, last_paid_at: null, entry_count: 2 }];
   if (/^SELECT TOP 1 full_bill FROM billing/i.test(sql)) return [{ full_bill: 1800 }];

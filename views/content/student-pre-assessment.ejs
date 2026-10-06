@@ -22,15 +22,6 @@
 
   <section class="panel-card pa-intro">
     <p><%= assessment.instructions || 'Answer every item as best you can.' %></p>
-    <p class="pa-note">
-      <% if (isPost) { %>
-        These are the same questions you answered at the start. Answering them again
-        shows you and your tutor exactly how much you have improved.
-      <% } else { %>
-        This is not graded for marks. It shows your tutor what you already know, so the lessons
-        can focus on what you need. Your modules unlock as soon as you submit.
-      <% } %>
-    </p>
   </section>
 
   <%- include('../partials/anti-cheat', {

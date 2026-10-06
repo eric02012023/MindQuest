@@ -12,35 +12,60 @@
       - money is staff-only, and is not even queried for a tutor or student
       - violations are a supervision concern, so students do not see the list
 
-    Locals: analytics (from getAnalyticsDashboard), focusHandouts, filters,
-            viewerRole, query %>
+    WHAT CHANGED (this release)
+      - The filter bar (search, subject, assessment, from/to, branch) is gone for
+        every role. Each table lists every row, shows ten and scrolls, and has a
+        search icon in its heading (public/js/mq-tables.js) — they used to show
+        only the top 25/40/60.
+      - Staff: a learner's row in "Learner performance" opens that learner's
+        own page — a score chart per subject (for a tutor, only the subjects
+        they teach that learner).
+      - Student: the score trend is one bar chart PER SUBJECT, a bar for each
+        assessment taken, instead of a single monthly average line.
+
+    Locals: analytics (from getAnalyticsDashboard), focusHandouts, viewerRole %>
 <%
   const a = analytics;
   const scope = a.scope;
   const kpis = a.kpis;
   const isStudent = scope.isStudent;
+  const isTutor = scope.isTutor;
   const showMoney = !!a.financials;
-  const currentQuery = typeof query === 'undefined' ? {} : query;
-  const analyticsPath = `${basePath}/analytics`;
 
   const scopeNote = scope.isAdmin
-    ? 'You are seeing every branch. Narrow it with the branch filter.'
+    ? 'You are seeing every branch.'
     : scope.isAssistant
       ? 'You are seeing your assigned branch only.'
-      : scope.isTutor
-        ? 'You are seeing the learners assigned to you.'
-        : 'You are seeing your own results.';
+      : 'You are seeing the learners assigned to you.';
 
   const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
-
-  // Each table shows a bounded slice — a dashboard that renders four thousand
-  // rows is not a dashboard. The count says so out loud rather than letting a
-  // reader assume they are looking at everything.
-  const shown = (list, cap, noun) => {
-    const total = (list || []).length;
-    return total > cap ? `showing top ${cap} of ${total}` : `${total} ${noun}${total === 1 ? '' : 's'}`;
-  };
   const nameOf = (row) => `${titleCaseName(row.first_name)} ${titleCaseName(row.last_name || '')}`.trim();
+  const countOf = (list, noun) => `${(list || []).length} ${noun}${(list || []).length === 1 ? '' : 's'}`;
+  // Where a learner's own page is: the admin's, or the tutor's (their subjects only).
+  const learnerHref = (studentId) => (isTutor
+    ? `/tutor/students/${studentId}/analytics?from=analytics`
+    : `${basePath}/students/${studentId}/analytics`);
+
+  // The student's score trend, one chart per subject: every graded attempt,
+  // oldest first, labelled with the assessment it was.
+  const subjectTrends = [];
+  if (isStudent) {
+    const bySubject = new Map();
+    [...(a.submissions || [])].reverse().forEach((row) => {
+      if (row.percentage == null) return;
+      const key = String(row.subject_id);
+      if (!bySubject.has(key)) bySubject.set(key, { id: row.subject_id, name: row.subject_name, labels: [], kinds: [], values: [] });
+      const entry = bySubject.get(key);
+      entry.labels.push(row.title);
+      entry.kinds.push(row.assessment_kind);
+      entry.values.push(Number(Number(row.percentage).toFixed(1)));
+    });
+    (a.subjects || []).forEach((subject) => {
+      const key = String(subject.id);
+      subjectTrends.push(bySubject.get(key) || { id: subject.id, name: subject.name, labels: [], kinds: [], values: [] });
+    });
+  }
+  const groups = showMoney ? 4 : (isStudent ? 2 : 3);
 %>
 <section class="mq-page">
 
@@ -48,7 +73,7 @@
     <div class="mq-panel-head">
       <div>
         <h2>Analytics &amp; Reports</h2>
-        <p><%= scopeNote %></p>
+        <% if (!isStudent) { %><p><%= scopeNote %></p><% } %>
       </div>
       <span class="mq-chip"><%= scope.label %></span>
     </div>
@@ -64,7 +89,7 @@
     <div class="mq-kpi">
       <span>Assessments taken</span>
       <strong><%= kpis.attempts %></strong>
-      <small>in the selected period</small>
+      <small>all time</small>
     </div>
     <div class="mq-kpi">
       <span>Average score</span>
@@ -97,109 +122,97 @@
     <% } %>
   </div>
 
-  <%# --------------------------------------------------------------- filters %>
-  <form class="mq-toolbar" method="get" action="<%= analyticsPath %>">
-    <div class="mq-filters">
-      <% if (!isStudent) { %>
-        <label class="mq-field mq-field-search">
-          <span>Search</span>
-          <input type="search" name="search" value="<%= filters.search || '' %>" placeholder="Learner name, ID or subject" />
-        </label>
-      <% } %>
-
-      <label class="mq-field">
-        <span>Subject</span>
-        <select name="subject_id" onchange="this.form.submit()">
-          <option value="all">All subjects</option>
-          <% (a.subjects || []).forEach((subject) => { %>
-            <option value="<%= subject.id %>" <%= String(filters.subjectId) === String(subject.id) ? 'selected' : '' %>><%= subject.name %></option>
-          <% }) %>
-        </select>
-      </label>
-
-      <label class="mq-field">
-        <span>Assessment</span>
-        <select name="kind" onchange="this.form.submit()">
-          <option value="all" <%= filters.kind === 'all' ? 'selected' : '' %>>All</option>
-          <option value="pre_assessment" <%= filters.kind === 'pre_assessment' ? 'selected' : '' %>>Pre-Assessment</option>
-          <option value="post_assessment" <%= filters.kind === 'post_assessment' ? 'selected' : '' %>>Post-Assessment</option>
-          <option value="tutor_assessment" <%= filters.kind === 'tutor_assessment' ? 'selected' : '' %>>Module assessment</option>
-        </select>
-      </label>
-
-      <label class="mq-field"><span>From</span><input type="date" name="from" value="<%= filters.from || '' %>" /></label>
-      <label class="mq-field"><span>To</span><input type="date" name="to" value="<%= filters.to || '' %>" /></label>
-
-      <% if (scope.canPickBranch && typeof branches !== 'undefined' && (branches || []).length) { %>
-        <label class="mq-field">
-          <span>Branch</span>
-          <select name="branch_id" onchange="this.form.submit()">
-            <option value="all">All branches</option>
-            <% branches.forEach((branch) => { %>
-              <option value="<%= branch.id %>" <%= String(filters.branchId) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
-            <% }) %>
-          </select>
-        </label>
-      <% } %>
-
-      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
-      <a class="mq-btn" href="<%= analyticsPath %>">Clear</a>
-    </div>
-  </form>
-
   <%# ==================================================================
       GROUP 1 — Learner performance
-      The page's core question: how are learners actually doing? Scores
-      first because everything below is a refinement of them.
       ================================================================== %>
   <div class="mq-report-group">
     <div>
       <h2>Learner performance</h2>
-      <p>How learners are scoring, where they are weakest, and who needs attention.</p>
+      <% if (!isStudent) { %><p>How learners are scoring, where they are weakest, and who needs attention.</p><% } %>
     </div>
-    <span class="mq-report-group-index">1 of <%= showMoney ? 4 : (isStudent ? 2 : 3) %></span>
+    <span class="mq-report-group-index">1 of <%= groups %></span>
   </div>
 
-  <div class="mq-chart-grid">
-    <section class="mq-panel">
-      <div class="mq-panel-head">
-        <h3>Score trend</h3>
-        <span class="mq-count">average % per month</span>
-      </div>
-      <% if (!(a.trend || []).length) { %>
-        <div class="mq-empty">No assessments have been submitted in this range yet.</div>
-      <% } else { %>
-        <div class="mq-chart-box"><canvas id="trendChart"></canvas></div>
+  <% if (isStudent) { %>
+    <%# One chart per subject — a bar for every assessment taken, the score in
+        percent, so the student sees each subject's own trend. %>
+    <div class="mq-chart-grid mq-subject-trends">
+      <% if (!subjectTrends.length) { %>
+        <section class="mq-panel">
+          <div class="mq-panel-head"><h3>Score trend</h3></div>
+          <div class="mq-empty">You are not enrolled in a subject yet.</div>
+        </section>
       <% } %>
-    </section>
+      <% subjectTrends.forEach((trend, index) => { %>
+        <section class="mq-panel">
+          <div class="mq-panel-head">
+            <h3>Score trend — <%= trend.name %></h3>
+            <span class="mq-count"><%= trend.values.length %> assessment<%= trend.values.length === 1 ? '' : 's' %></span>
+          </div>
+          <% if (!trend.values.length) { %>
+            <div class="mq-empty">No assessment taken in this subject yet.</div>
+          <% } else { %>
+            <div class="mq-chart-box mq-chart-box-tall"><canvas id="subjectTrend<%= index %>"></canvas></div>
+          <% } %>
+        </section>
+      <% }) %>
+    </div>
 
-    <section class="mq-panel">
-      <div class="mq-panel-head">
-        <h3>Level spread</h3>
-        <span class="mq-count">from Pre-Assessment results</span>
-      </div>
-      <% const levelTotal = Object.values(a.levels || {}).reduce((s, n) => s + Number(n || 0), 0); %>
-      <% if (!levelTotal) { %>
-        <div class="mq-empty">No level has been assigned yet.</div>
-      <% } else { %>
-        <div class="mq-chart-box"><canvas id="levelChart"></canvas></div>
-      <% } %>
-    </section>
-  </div>
+    <div class="mq-chart-grid">
+      <section class="mq-panel">
+        <div class="mq-panel-head">
+          <h3>Level spread</h3>
+        </div>
+        <% const levelTotalStudent = Object.values(a.levels || {}).reduce((s, n) => s + Number(n || 0), 0); %>
+        <% if (!levelTotalStudent) { %>
+          <div class="mq-empty">No level has been assigned yet.</div>
+        <% } else { %>
+          <div class="mq-chart-box"><canvas id="levelChart"></canvas></div>
+        <% } %>
+      </section>
+    </div>
+  <% } else { %>
+    <div class="mq-chart-grid">
+      <section class="mq-panel">
+        <div class="mq-panel-head">
+          <h3>Score trend</h3>
+          <span class="mq-count">average % per month</span>
+        </div>
+        <% if (!(a.trend || []).length) { %>
+          <div class="mq-empty">No assessments have been submitted yet.</div>
+        <% } else { %>
+          <div class="mq-chart-box"><canvas id="trendChart"></canvas></div>
+        <% } %>
+      </section>
+
+      <section class="mq-panel">
+        <div class="mq-panel-head">
+          <h3>Level spread</h3>
+          <span class="mq-count">from Pre-Assessment results</span>
+        </div>
+        <% const levelTotal = Object.values(a.levels || {}).reduce((s, n) => s + Number(n || 0), 0); %>
+        <% if (!levelTotal) { %>
+          <div class="mq-empty">No level has been assigned yet.</div>
+        <% } else { %>
+          <div class="mq-chart-box"><canvas id="levelChart"></canvas></div>
+        <% } %>
+      </section>
+    </div>
+  <% } %>
 
   <%# --------------------------------------------------------- weak topics %>
   <section class="mq-panel">
     <div class="mq-panel-head">
       <div>
         <h3>Weak topics</h3>
-        <p>Grouped by the module and handout each question came from. Worst first.</p>
+        <% if (!isStudent) { %><p>Grouped by the module and handout each question came from. Worst first.</p><% } %>
       </div>
-      <span class="mq-count"><%= (a.weakTopics || []).length %> topic<%= (a.weakTopics || []).length === 1 ? '' : 's' %></span>
+      <span class="mq-count"><%= countOf(a.weakTopics, 'topic') %></span>
     </div>
 
     <div class="mq-table" style="--mq-cols: minmax(200px, 3fr) 1fr 90px 90px minmax(120px, 1fr);">
       <div class="mq-head">
-        <span>Topic</span><span>Subject</span><span class="mq-num">Correct</span>
+        <span data-search-col>Topic</span><span>Subject</span><span class="mq-num">Correct</span>
         <span class="mq-num">Score</span><span>Mastery</span>
       </div>
 
@@ -210,7 +223,7 @@
         </div>
       <% } %>
 
-      <% (a.weakTopics || []).slice(0, 25).forEach((topic) => { %>
+      <% (a.weakTopics || []).forEach((topic) => { %>
         <div class="mq-row">
           <span class="mq-cell mq-cell-primary" data-label="Topic">
             <span class="mq-name"><%= topic.topic %></span>
@@ -233,26 +246,26 @@
       <div class="mq-panel-head">
         <div>
           <h3>Learner performance</h3>
-          <p>Lowest average first — the learners who need attention are at the top.</p>
+          <p>Lowest average first. Open a learner to see their score trend in each subject.</p>
         </div>
-        <span class="mq-count"><%= shown(a.performance, 60, 'learner') %></span>
+        <span class="mq-count"><%= countOf(a.performance, 'learner') %></span>
       </div>
 
-      <div class="mq-table" style="--mq-cols: minmax(170px, 2fr) 1fr 80px 90px 90px 130px 90px;">
+      <div class="mq-table" style="--mq-cols: minmax(170px, 2fr) 1fr 80px 90px 90px 130px 90px 48px;">
         <div class="mq-head">
-          <span>Learner</span><span>Branch</span><span class="mq-num">Attempts</span>
+          <span data-search-col>Learner</span><span>Branch</span><span class="mq-num">Attempts</span>
           <span class="mq-num">Average</span><span class="mq-num">Best</span>
-          <span>Last attempt</span><span class="mq-num">Flags</span>
+          <span>Last attempt</span><span class="mq-num">Flags</span><span></span>
         </div>
 
         <% if (!(a.performance || []).length) { %>
           <div class="mq-empty"><strong>No learners in scope</strong>Once learners are assigned to you they appear here.</div>
         <% } %>
 
-        <% (a.performance || []).slice(0, 60).forEach((row) => { %>
+        <% (a.performance || []).forEach((row) => { %>
           <div class="mq-row">
             <span class="mq-cell mq-cell-primary" data-label="Learner">
-              <span class="mq-name"><%= nameOf(row) %></span>
+              <a class="mq-name" href="<%= learnerHref(row.student_id) %>"><%= nameOf(row) %></a>
               <span class="mq-sub"><%= row.student_code %><%= row.grade_level ? ` · ${row.grade_level}` : '' %></span>
             </span>
             <span class="mq-cell mq-sub" data-label="Branch"><%= row.branch_name || '—' %></span>
@@ -265,6 +278,9 @@
                 <span class="mq-status mq-status-flagged"><%= row.violations %></span>
               <% } else { %>—<% } %>
             </span>
+            <span class="mq-cell mq-cell-actions">
+              <a class="mq-icon" href="<%= learnerHref(row.student_id) %>" title="View this learner's analytics" aria-label="View this learner's analytics"><%- icon('chart') %></a>
+            </span>
           </div>
         <% }) %>
       </div>
@@ -276,7 +292,7 @@
     <div class="mq-panel-head">
       <div>
         <h3><%= isStudent ? 'Your assessment history' : 'Recent attempts' %></h3>
-        <p>Every submission in the selected period, newest first.</p>
+        <% if (!isStudent) { %><p>Every submission, newest first.</p><% } %>
       </div>
       <span class="mq-count"><%= (a.submissions || []).length %></span>
     </div>
@@ -284,8 +300,8 @@
     <div class="mq-table" style="--mq-cols: 130px <%= isStudent ? '' : 'minmax(160px, 2fr)' %> minmax(160px, 2fr) 130px 90px 110px;">
       <div class="mq-head">
         <span>Date</span>
-        <% if (!isStudent) { %><span>Learner</span><% } %>
-        <span>Assessment</span>
+        <% if (!isStudent) { %><span data-search-col>Learner</span><% } %>
+        <span <%= isStudent ? 'data-search-col' : '' %>>Assessment</span>
         <span>Subject</span>
         <span class="mq-num">Score</span>
         <span>Result</span>
@@ -295,12 +311,12 @@
         <div class="mq-empty"><strong>No attempts yet</strong>Submitted assessments appear here.</div>
       <% } %>
 
-      <% (a.submissions || []).slice(0, 60).forEach((row) => { %>
+      <% (a.submissions || []).forEach((row) => { %>
         <div class="mq-row">
           <span class="mq-cell mq-sub" data-label="Date"><%= formatDate(row.submitted_at) %></span>
           <% if (!isStudent) { %>
             <span class="mq-cell mq-cell-primary" data-label="Learner">
-              <span class="mq-name"><%= nameOf(row) %></span>
+              <a class="mq-name" href="<%= learnerHref(row.student_id) %>"><%= nameOf(row) %></a>
               <span class="mq-sub"><%= row.student_code %></span>
             </span>
           <% } %>
@@ -316,9 +332,7 @@
           <span class="mq-cell mq-num" data-label="Score"><%= Number(row.percentage).toFixed(1) %>%</span>
           <span class="mq-cell" data-label="Result">
             <%# Coloured from the classification it is showing, not from a second
-                set of cut-offs. These were 75/50 while the bands in
-                config/levelThresholds.js are 80/50, so two "Intermediate" chips
-                could carry different colours — 78% green, 55% amber. %>
+                set of cut-offs — the bands live in config/levelThresholds.js. %>
             <span class="mq-status mq-status-<%= row.level === 'Advance' ? 'paid' : row.level === 'Intermediate' ? 'partial' : 'unpaid' %>"><%= row.level %></span>
           </span>
         </div>
@@ -328,17 +342,13 @@
 
   <%# ==================================================================
       GROUP 2 — Enrolment & progress
-      What learners are signed up to, and how far through it they are.
-      "Enrolment by subject" moved here from the money block at the foot of
-      the page: a headcount per subject is an enrolment fact, and sitting it
-      beside the income chart made it read as a revenue figure.
       ================================================================== %>
   <div class="mq-report-group">
     <div>
       <h2>Enrolment &amp; progress</h2>
-      <p>What learners are enrolled in, and how much of the material they have worked through.</p>
+      <% if (!isStudent) { %><p>What learners are enrolled in, and how much of the material they have worked through.</p><% } %>
     </div>
-    <span class="mq-report-group-index">2 of <%= showMoney ? 4 : (isStudent ? 2 : 3) %></span>
+    <span class="mq-report-group-index">2 of <%= groups %></span>
   </div>
 
   <% if (showMoney) { %>
@@ -346,19 +356,18 @@
       <div class="mq-panel-head">
         <div>
           <h3>Enrolment by subject</h3>
-          <p>Active learners per subject, across the selected scope.</p>
+          <p>Active learners per subject.</p>
         </div>
-        <span class="mq-count"><%= (a.enrolment || []).length %> subject<%= (a.enrolment || []).length === 1 ? '' : 's' %></span>
+        <span class="mq-count"><%= countOf(a.enrolment, 'subject') %></span>
       </div>
       <%# Learners only. This page reports on how students are doing; a staff
-          headcount is a User Management question and only made the row look
-          like a performance figure about tutors. %>
+          headcount is a User Management question. %>
       <div class="mq-table" style="--mq-cols: minmax(180px, 3fr) 90px;">
-        <div class="mq-head"><span>Subject</span><span class="mq-num">Learners</span></div>
+        <div class="mq-head"><span data-search-col>Subject</span><span class="mq-num">Learners</span></div>
         <% if (!(a.enrolment || []).length) { %>
           <div class="mq-empty">No active enrolments.</div>
         <% } %>
-        <% (a.enrolment || []).slice(0, 12).forEach((row) => { %>
+        <% (a.enrolment || []).forEach((row) => { %>
           <div class="mq-row">
             <span class="mq-cell mq-name" data-label="Subject"><%= row.subject_name %></span>
             <span class="mq-cell mq-num" data-label="Learners"><%= row.students %></span>
@@ -373,14 +382,14 @@
     <div class="mq-panel-head">
       <div>
         <h3>Module completion</h3>
-        <p>How much of each subject's material has actually been opened.</p>
+        <% if (!isStudent) { %><p>How much of each subject's material has actually been opened.</p><% } %>
       </div>
-      <span class="mq-count"><%= (a.completion || []).length %> subject<%= (a.completion || []).length === 1 ? '' : 's' %></span>
+      <span class="mq-count"><%= countOf(a.completion, 'subject') %></span>
     </div>
 
     <div class="mq-table" style="--mq-cols: minmax(200px, 3fr) 90px 90px 90px minmax(120px, 1fr);">
       <div class="mq-head">
-        <span>Subject</span><span class="mq-num">Learners</span><span class="mq-num">Modules</span>
+        <span data-search-col>Subject</span><span class="mq-num">Learners</span><span class="mq-num">Modules</span>
         <span class="mq-num">Opened</span><span>Completion</span>
       </div>
       <% if (!(a.completion || []).length) { %>
@@ -407,17 +416,17 @@
       <div class="mq-panel-head">
         <div>
           <h3>Auto-generated focus areas</h3>
-          <p>Written from Pre-Assessment results — the topics to teach first.</p>
+          <% if (!isStudent) { %><p>Written from Pre-Assessment results — the topics to teach first.</p><% } %>
         </div>
-        <span class="mq-count"><%= shown(focusHandouts, 25, 'handout') %></span>
+        <span class="mq-count"><%= countOf(focusHandouts, 'handout') %></span>
       </div>
 
       <div class="mq-table" style="--mq-cols: 120px minmax(160px, 2fr) minmax(200px, 3fr) 90px <%= isStudent ? '0px' : '96px' %>;">
         <div class="mq-head">
-          <span>Created</span><span><%= isStudent ? 'Subject' : 'Learner' %></span>
+          <span>Created</span><span data-search-col><%= isStudent ? 'Subject' : 'Learner' %></span>
           <span>Focus</span><span class="mq-num">Pre %</span><span></span>
         </div>
-        <% focusHandouts.slice(0, 25).forEach((handout) => { %>
+        <% focusHandouts.forEach((handout) => { %>
           <div class="mq-row">
             <span class="mq-cell mq-sub" data-label="Created"><%= formatDate(handout.created_at) %></span>
             <span class="mq-cell mq-cell-primary" data-label="<%= isStudent ? 'Subject' : 'Learner' %>">
@@ -441,19 +450,12 @@
 
   <%# ==================================================================
       GROUP 3 — Payment collection (staff only)
-      What has been collected and what is still outstanding.
-
-      The "Income Trend" chart that used to open this block is GONE (Phase 6),
-      and lib/analytics.js no longer runs the monthly aggregate behind it. The
-      month-by-month picture belongs on the Payment Collection report, not on a
-      page about how learners are doing — here the useful question is simply
-      "how much is in, how much is out".
       ================================================================== %>
   <% if (showMoney) { %>
     <div class="mq-report-group">
       <div>
         <h2>Payment collection</h2>
-        <p>Money received and still outstanding across the selected scope and period.</p>
+        <p>Money received and still outstanding.</p>
       </div>
       <span class="mq-report-group-index">3 of 4</span>
     </div>
@@ -462,7 +464,7 @@
       <div class="mq-panel-head">
         <div>
           <h3>Collection summary</h3>
-          <p>Totals for the filters above. The full transaction list is on the Payment Collection report.</p>
+          <p>The full transaction list is on the Payment Collection report.</p>
         </div>
         <a class="mq-btn mq-btn-sm" href="<%= basePath %>/income-report"><%- icon('receipt') %> Open Payment Collection</a>
       </div>
@@ -487,8 +489,6 @@
 
   <%# ==================================================================
       GROUP 4 — Assessment integrity (staff only)
-      Last because it is an exception report: most days it is empty, and an
-      empty table at the top of a page reads as "nothing here".
       ================================================================== %>
   <% if (!isStudent) { %>
     <div class="mq-report-group">
@@ -505,20 +505,20 @@
           <h3>Flagged events</h3>
           <p>Every flagged action during an assessment, with the attempt it belongs to.</p>
         </div>
-        <span class="mq-count"><%= shown(a.violations, 40, 'event') %></span>
+        <span class="mq-count"><%= countOf(a.violations, 'event') %></span>
       </div>
 
       <div class="mq-table" style="--mq-cols: 150px minmax(150px, 2fr) minmax(150px, 2fr) 150px 70px;">
         <div class="mq-head">
-          <span>When</span><span>Learner</span><span>Assessment</span><span>Event</span><span class="mq-num">Strike</span>
+          <span>When</span><span data-search-col>Learner</span><span>Assessment</span><span>Event</span><span class="mq-num">Strike</span>
         </div>
         <% if (!(a.violations || []).length) { %>
           <div class="mq-empty">
             <strong>Nothing flagged</strong>
-            No suspicious activity has been recorded in this range.
+            No suspicious activity has been recorded.
           </div>
         <% } %>
-        <% (a.violations || []).slice(0, 40).forEach((violation) => { %>
+        <% (a.violations || []).forEach((violation) => { %>
           <div class="mq-row">
             <span class="mq-cell mq-sub" data-label="When"><%= formatDateTime(violation.occurred_at) %></span>
             <span class="mq-cell mq-cell-primary" data-label="Learner">
@@ -536,11 +536,14 @@
     </section>
   <% } %>
 
-  <%# The money block that used to sit here has moved up into Group 3, and the
-      Income Trend chart it opened with was removed (Phase 6). Enrolment by
-      subject went to Group 2, where a headcount belongs. %>
-
 </section>
+
+<style>
+  .mq-chart-box-tall { height: 300px; }
+  @media (min-width: 1200px) {
+    .mq-subject-trends { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
 
 <script src="/js/vendor/chart.umd.min.js"></script>
 <script src="/js/chart-zoom.js"></script>
@@ -577,6 +580,61 @@
       });
     }
 
+    // The student's score trend, one bar chart per subject — a bar for each
+    // assessment taken, its score in percent. Long assessment names are cut on
+    // the axis and shown whole in the tooltip.
+    // "<" escaped so an assessment title can never close this script tag.
+    var trends = <%- JSON.stringify(subjectTrends.map((t) => ({ labels: t.labels, values: t.values }))).replace(/</g, '\\u003c') %>;
+    trends.forEach(function (trend, index) {
+      var canvas = document.getElementById('subjectTrend' + index);
+      if (!canvas || !trend.values.length) return;
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: trend.labels,
+          datasets: [{
+            label: 'Score',
+            data: trend.values,
+            backgroundColor: '#2ea9f4',
+            hoverBackgroundColor: '#1488d6',
+            borderRadius: 2,
+            maxBarThickness: 46
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: function (items) { return items.length ? trend.labels[items[0].dataIndex] : ''; },
+                label: function (item) { return 'Score: ' + item.parsed.y + '%'; }
+              }
+            }
+          },
+          scales: {
+            y: {
+              min: 0, max: 100,
+              ticks: { stepSize: 50, font: { size: 11 } },
+              title: { display: true, text: 'Score%', font: { size: 12 } },
+              grid: { color: 'rgba(0,0,0,0.06)' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: {
+                maxRotation: 45, minRotation: 45, autoSkip: false, font: { size: 11 },
+                callback: function (value) {
+                  var label = String(this.getLabelForValue(value) || '');
+                  return label.length > 16 ? label.slice(0, 14) + '…' : label;
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+
     var levelCanvas = document.getElementById('levelChart');
     if (levelCanvas) {
       new Chart(levelCanvas.getContext('2d'), {
@@ -586,8 +644,7 @@
           datasets: [{
             data: <%- JSON.stringify(Object.values(a.levels || {})) %>,
             // Beginner, Intermediate, Advance, Not yet assessed. The last is
-            // deliberately grey: it is an absence of data, not a bad result, and
-            // colouring it red would read as thirty failing students.
+            // deliberately grey: it is an absence of data, not a bad result.
             backgroundColor: ['#d54c4c', '#d28a1f', '#32a65a', '#9aa4ae'],
             borderWidth: 0
           }]
@@ -600,9 +657,5 @@
         }
       });
     }
-
-    // A third chart used to be built here and was removed in Phase 6, together
-    // with its data source — see lib/analytics.js, where getIncomeTrend is no
-    // longer called by getAnalyticsDashboard.
   });
 </script>

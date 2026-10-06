@@ -194,6 +194,65 @@ document.addEventListener('input', (event) => {
   }
 });
 
+// ============================================================================
+// Never more than is owed
+//
+// An amount field marked data-balance="3600.00" warns the moment the amount
+// typed is larger than the balance — "₱4,000.00 is more than the remaining
+// balance of ₱3,600.00 …" — and the form will not submit until it is fixed
+// (setCustomValidity). The server refuses the same thing (lib/billing.js,
+// overpaymentError), so this only saves a round trip and says it plainly.
+// data-balance-audience="student" words it for the student.
+// Delegated, so a dialog fetched later (Student Bill) is covered too.
+// ============================================================================
+(function () {
+  function peso(value) {
+    return '₱' + Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function checkBalance(input) {
+    var balance = Number(input.getAttribute('data-balance'));
+    if (!isFinite(balance)) return;
+    var raw = String(input.value || '').trim();
+    var amount = Number(raw);
+    var hint = input.parentElement.querySelector('[data-balance-warning]');
+    if (!hint) {
+      hint = document.createElement('small');
+      hint.className = 'mq-field-hint mq-field-hint-error';
+      hint.setAttribute('data-balance-warning', '');
+      hint.setAttribute('role', 'alert');
+      hint.hidden = true;
+      input.insertAdjacentElement('afterend', hint);
+    }
+    var forStudent = input.getAttribute('data-balance-audience') === 'student';
+    var message = '';
+    if (raw && isFinite(amount) && Math.round(amount * 100) > Math.round(balance * 100)) {
+      if (balance > 0) {
+        message = forStudent
+          ? peso(amount) + ' is more than your remaining balance of ' + peso(balance) + '. Please enter the exact amount: ' + peso(balance) + '.'
+          : peso(amount) + ' is more than the remaining balance of ' + peso(balance) + '. Enter the exact amount (' + peso(balance) + ') or less.';
+      } else {
+        message = 'This account is already fully paid — there is nothing left to pay.';
+      }
+    }
+    input.setCustomValidity(message);
+    hint.textContent = message;
+    hint.hidden = !message;
+  }
+
+  document.addEventListener('input', function (event) {
+    var input = event.target && event.target.closest ? event.target.closest('input[data-balance]') : null;
+    if (input) checkBalance(input);
+  });
+  // A form opened with an amount already over (a stale slip) says so at once.
+  document.addEventListener('focusin', function (event) {
+    var input = event.target && event.target.closest ? event.target.closest('input[data-balance]') : null;
+    if (input) checkBalance(input);
+  });
+  document.querySelectorAll('input[data-balance]').forEach(checkBalance);
+  window.mqCheckBalance = checkBalance;
+})();
+
 // Profile pages: a photo picked with "Change photo" shows in the avatar at
 // once, so the person sees it before they press Save.
 document.addEventListener('change', (event) => {

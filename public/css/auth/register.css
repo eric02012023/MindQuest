@@ -1393,3 +1393,20 @@ body {
     min-height: 128px;
   }
 }
+
+/* The form no longer takes a photo (each user sets theirs from their profile
+   once logged in), so the top row is the name and the birthdate/age pair:
+   two columns, then one on a narrow screen. */
+.top-upload-block.is-photo-free {
+  grid-template-columns: minmax(0, 0.68fr) minmax(0, 0.32fr);
+}
+
+@media (max-width: 960px) {
+  .top-upload-block.is-photo-free {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .top-upload-block.is-photo-free > .double-field-row {
+    grid-column: auto;
+  }
+}

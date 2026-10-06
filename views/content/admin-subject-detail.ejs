@@ -1,65 +1,105 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-subject-detail.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/admin-subject-detail.ejs
+    Purpose: One subject, for Admin and Admin Assistant — in TABS.
+
+    Modules, Pre-Assessment Results, Subject Assessments, Pre vs Post, Enrolled
+    Students, Tutors and Archived are each a tab: a tab's contents show when it
+    is clicked, rather than every section stacked down one long page. The tab
+    open is kept in the address (#modules, #students, ...), so coming back to
+    the page — after adding a module, archiving a tutor — lands on it again.
+
+    Every section is a table that shows ten rows and scrolls, with a search icon
+    in its heading (public/js/mq-tables.js).
+
+    WHAT WENT: the Legacy Modules panel, and with it the routes that uploaded,
+    archived and recovered those old files. Subject Assessments now lists the
+    assessments that exist today (getSubjectAssessmentsOverview) instead of the
+    retired table, which was always empty. %>
+<%
+  const isAdmin = currentUser.role === 'admin';
+  const kindLabel = (kind) => (kind === 'pre_assessment' ? 'Pre-Assessment'
+    : kind === 'post_assessment' ? 'Post-Assessment' : 'Module assessment');
+  const levelClass = (level) => String(level || 'beginner').toLowerCase();
+  const uniqueStudents = [];
+  const seenStudentIds = new Set();
+  (students || []).forEach((s) => {
+    const id = Number(s.student_id || s.id);
+    if (!seenStudentIds.has(id)) { seenStudentIds.add(id); uniqueStudents.push(s); }
+  });
+  const taken = (comparisons || []).filter((c) => c.pre_submission_id || c.post_submission_id);
+  const archivedCount = (archivedAssignments || []).length + (archivedTutors || []).length;
+  const tabs = [
+    { key: 'modules', label: 'Modules', count: modules.length },
+    { key: 'pre-results', label: 'Pre-Assessment Results', count: preResults.length },
+    { key: 'assessments', label: 'Subject Assessments', count: (subjectAssessments || []).length },
+    { key: 'pre-post', label: 'Pre vs Post', count: taken.length },
+    { key: 'students', label: 'Enrolled Students', count: uniqueStudents.length },
+    { key: 'tutors', label: 'Tutors', count: tutors.length },
+    { key: 'archived', label: 'Archived', count: archivedCount }
+  ];
+%>
 <section class="page-stack">
   <div class="toolbar-card split">
     <h2><%= subject ? subject.name : 'Subject' %></h2>
+    <a class="btn btn-secondary btn-sm" href="<%= basePath %>/subjects">Back to All Subjects</a>
   </div>
 
-  <%# ------------------------------------------------------------------------
-      Modules (overhaul Phase 3). Numbered Module 1..N, each targeted at year
-      levels and holding its own handout files. This is now the entry point into
-      the module system; the legacy "resources" panel below is read-only.
-      ------------------------------------------------------------------------ %>
-  <section class="panel-card">
+  <nav class="mq-tabs" role="tablist" aria-label="<%= subject.name %> sections" data-tabs>
+    <% tabs.forEach((tab, index) => { %>
+      <button type="button" role="tab" class="mq-tab<%= index === 0 ? ' is-active' : '' %>" id="tab-<%= tab.key %>"
+              data-tab="<%= tab.key %>" aria-controls="panel-<%= tab.key %>" aria-selected="<%= index === 0 ? 'true' : 'false' %>">
+        <%= tab.label %> <span class="mq-tab-count"><%= tab.count %></span>
+      </button>
+    <% }) %>
+  </nav>
+
+  <%# =========================================================== Modules %>
+  <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-modules" data-tab-panel="modules" aria-labelledby="tab-modules">
     <div class="panel-card-head">
       <h3>Modules</h3>
-      <% if (currentUser.role === 'admin') { %>
+      <% if (isAdmin) { %>
         <button type="button" class="btn btn-primary btn-sm" data-modal-target="#add-module">Add Module</button>
       <% } %>
     </div>
-
-    <% if (!modules.length) { %>
-      <p class="empty-state">No modules yet.<% if (currentUser.role === 'admin') { %> Use “Add Module” to create Module 1.<% } %></p>
-    <% } %>
-
-    <div class="module-grid">
-      <% modules.forEach((mod) => { %>
-        <article class="module-card">
-          <div class="module-card-head">
-            <span class="module-number">Module <%= mod.order_number %></span>
-            <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>">
-              <%= mod.handout_count %> handout<%= Number(mod.handout_count) === 1 ? '' : 's' %>
-            </span>
-          </div>
-          <h4><%= mod.title %></h4>
-          <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
-
-          <div class="module-card-targets">
-            <strong>Visible to</strong>
-            <div class="target-chips">
-              <% if (!mod.target_year_levels.length) { %>
-                <span class="target-chip target-chip-all">All year levels</span>
-              <% } else { %>
-                <% mod.target_year_levels.forEach((lvl) => { %>
-                  <span class="target-chip"><%= lvl %></span>
-                <% }) %>
-              <% } %>
-            </div>
-          </div>
-
-          <div class="module-card-foot">
-            <% if (Number(mod.assessment_count)) { %>
-              <span class="module-card-meta"><%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %></span>
-            <% } %>
-            <a class="btn btn-secondary btn-sm" href="<%= basePath %>/modules/<%= mod.id %>">
-              <%= currentUser.role === 'admin' ? 'Manage Handouts' : 'View' %>
-            </a>
-          </div>
-        </article>
-      <% }) %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Module</th><th data-search-col>Title</th><th>Visible to</th><th>Handouts</th><th>Assessments</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <% if (!modules.length) { %>
+            <tr><td colspan="6">No modules yet.<% if (isAdmin) { %> Use “Add Module” to create Module 1.<% } %></td></tr>
+          <% } %>
+          <% modules.forEach((mod) => { %>
+            <tr>
+              <td><strong>Module <%= mod.order_number %></strong></td>
+              <td>
+                <strong><%= mod.title %></strong>
+                <% if (mod.description) { %><br /><small class="module-card-meta"><%= mod.description %></small><% } %>
+              </td>
+              <td>
+                <% if (!mod.target_year_levels.length) { %>
+                  <span class="target-chip target-chip-all">All year levels</span>
+                <% } else { %>
+                  <%= mod.target_year_levels.join(', ') %>
+                <% } %>
+              </td>
+              <td>
+                <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>"><%= mod.handout_count %></span>
+              </td>
+              <td><%= Number(mod.assessment_count) || 0 %></td>
+              <td>
+                <a class="btn btn-secondary btn-sm" href="<%= basePath %>/modules/<%= mod.id %>">
+                  <%= isAdmin ? 'Manage Handouts' : 'View' %>
+                </a>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
     </div>
   </section>
 
-  <% if (currentUser.role === 'admin') { %>
+  <% if (isAdmin) { %>
     <%# The dialog is split into head / body / foot so the year-level picker
         scrolls on its own instead of pushing the title and the submit button
         past the edge of the screen. %>
@@ -74,8 +114,7 @@
         </header>
 
         <%# The lowest number no live module is using. A number freed by removing
-            a module becomes available again, so the only module in a subject is
-            never called "Module 4" just because three were removed before it. %>
+            a module becomes available again. %>
         <%
           const usedNumbers = modules.map((m) => Number(m.order_number)).filter((n) => n > 0);
           let suggestedNumber = 1;
@@ -136,68 +175,81 @@
     </div>
   <% } %>
 
-  <%# ------------------------------------------------------------------------
-      Pre-Assessment results (overhaul Phase 6, acceptance item 8). Read-only for
-      Admin and Admin Assistant alike — this is a monitoring view, not an editing
-      one. "View Breakdown" opens the per-item + weak-area page.
-      ------------------------------------------------------------------------ %>
-  <section class="panel-card">
+  <%# ============================================ Pre-Assessment Results %>
+  <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-pre-results" data-tab-panel="pre-results" aria-labelledby="tab-pre-results" hidden>
     <%- include('../partials/pre-assessment-status', { preStatus, warmup }) %>
-  </section>
 
-  <section class="panel-card">
     <div class="panel-card-head">
       <h3>Pre-Assessment Results</h3>
       <span class="badge badge-info"><%= preResults.length %> submission<%= preResults.length === 1 ? '' : 's' %></span>
     </div>
-    <p class="table-note">Each student's score on the Pre-Assessment generated from this subject's handouts. Open a row to see which module and handout the missed items came from.</p>
-
-    <% if (!preResults.length) { %>
-      <p class="empty-state">No student has taken the Pre-Assessment for this subject yet.</p>
-    <% } else { %>
-      <div class="table-wrap">
-        <table>
-          <thead>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-search-col>Student</th><th>Year Level</th><th>Score</th><th>Percentage</th>
+            <th>Classification</th><th>Submitted</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!preResults.length) { %>
+            <tr><td colspan="7">No student has taken the Pre-Assessment for this subject yet.</td></tr>
+          <% } %>
+          <% preResults.forEach((r) => { %>
             <tr>
-              <th>Student</th>
-              <th>Year Level</th>
-              <th>Score</th>
-              <th>Percentage</th>
-              <th>Classification</th>
-              <th>Submitted</th>
-              <th>Action</th>
+              <td>
+                <strong><%= r.first_name %> <%= r.last_name || '' %></strong>
+                <span class="module-card-meta"><%= r.student_code %></span>
+              </td>
+              <td><%= r.grade_level || r.year_level || '-' %></td>
+              <td><%= Number(r.score) %>/<%= Number(r.total_points) %></td>
+              <td><%= Number(r.percentage).toFixed(1) %>%</td>
+              <td><span class="res-level res-level-<%= levelClass(r.level) %>"><%= r.level %></span></td>
+              <td><%= formatDateTime(r.submitted_at) %></td>
+              <td><a class="btn btn-secondary btn-sm" href="<%= basePath %>/results/<%= r.id %>">View Breakdown</a></td>
             </tr>
-          </thead>
-          <tbody>
-            <% preResults.forEach((r) => { %>
-              <tr>
-                <td>
-                  <strong><%= r.first_name %> <%= r.last_name || '' %></strong>
-                  <span class="module-card-meta"><%= r.student_code %></span>
-                </td>
-                <td><%= r.grade_level || r.year_level || '-' %></td>
-                <td><%= Number(r.score) %>/<%= Number(r.total_points) %></td>
-                <td><%= Number(r.percentage).toFixed(1) %>%</td>
-                <td>
-                  <span class="res-level res-level-<%= (r.level || 'beginner').toLowerCase() %>"><%= r.level %></span>
-                </td>
-                <td><%= formatDateTime(r.submitted_at) %></td>
-                <td>
-                  <a class="btn btn-secondary btn-sm" href="<%= basePath %>/results/<%= r.id %>">View Breakdown</a>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      </div>
-    <% } %>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
   </section>
 
-  <%# ------------------------------------------------------------------------
-      Pre vs Post (overhaul Phase 8, acceptance item 12). Read-only here — the
-      tutor opens the Post-Assessment; Admin monitors the outcome.
-      ------------------------------------------------------------------------ %>
-  <section class="panel-card">
+  <%# ================================================ Subject Assessments %>
+  <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-assessments" data-tab-panel="assessments" aria-labelledby="tab-assessments" hidden>
+    <div class="panel-card-head">
+      <h3>Subject Assessments</h3>
+      <span class="badge badge-info"><%= (subjectAssessments || []).length %></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th data-search-col>Title</th><th>Type</th><th>Module</th><th>Created by</th><th>Items</th><th>Answered</th><th>Average</th><th>Created</th></tr>
+        </thead>
+        <tbody>
+          <% if (!(subjectAssessments || []).length) { %>
+            <tr><td colspan="8">No assessments in this subject yet.</td></tr>
+          <% } %>
+          <% (subjectAssessments || []).forEach((sa) => { %>
+            <tr>
+              <td><strong><%= sa.title %></strong></td>
+              <td>
+                <span class="badge badge-<%= sa.assessment_kind === 'pre_assessment' ? 'info' : sa.assessment_kind === 'post_assessment' ? 'success' : 'warning' %>"><%= kindLabel(sa.assessment_kind) %></span>
+              </td>
+              <td><%= sa.module_number ? `Module ${sa.module_number} — ${sa.module_title}` : '-' %></td>
+              <td><%= sa.tutor_first_name ? `${titleCaseName(sa.tutor_first_name)} ${titleCaseName(sa.tutor_last_name || '')}` : 'Generated from the handouts' %></td>
+              <td><%= Number(sa.question_count) || Number(sa.item_count) || 0 %></td>
+              <td><%= Number(sa.submission_count) || 0 %></td>
+              <td><%= sa.average_percentage == null ? '-' : Number(sa.average_percentage).toFixed(1) + '%' %></td>
+              <td><%= formatDate(sa.created_at) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <%# ========================================================= Pre vs Post %>
+  <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-pre-post" data-tab-panel="pre-post" aria-labelledby="tab-pre-post" hidden>
     <div class="panel-card-head">
       <h3>Pre vs Post</h3>
       <% if (postAssessment) { %>
@@ -206,223 +258,160 @@
         <span class="badge badge-info">Not opened yet</span>
       <% } %>
     </div>
-    <p class="table-note">
-      The Post-Assessment reuses the Pre-Assessment's exact items, so the change below is the
-      student's improvement rather than a difference between two papers.
-      <% if (!postAssessment) { %>
-        The assigned tutor opens it once a student has finished all modules and activities.
-      <% } %>
-    </p>
-
-    <% const taken = comparisons.filter((c) => c.pre_submission_id || c.post_submission_id); %>
-    <% if (!taken.length) { %>
-      <p class="empty-state">No student has taken an assessment in this subject yet.</p>
-    <% } else { %>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Student</th>
-              <th>Year Level</th>
-              <th>Pre</th>
-              <th>Post</th>
-              <th>Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% taken.forEach((c) => { %>
-              <tr>
-                <td>
-                  <strong><%= c.first_name %> <%= c.last_name || '' %></strong>
-                  <span class="module-card-meta"><%= c.student_code %></span>
-                </td>
-                <td><%= c.grade_level || c.year_level || '-' %></td>
-                <td>
-                  <% if (c.pre_submission_id) { %>
-                    <a href="<%= basePath %>/results/<%= c.pre_submission_id %>"><%= Number(c.pre_percentage).toFixed(1) %>%</a>
-                    <span class="res-level res-level-<%= String(c.pre_level || '').toLowerCase() %>"><%= c.pre_level %></span>
-                  <% } else { %>
-                    <span class="module-card-meta">not taken</span>
-                  <% } %>
-                </td>
-                <td>
-                  <% if (c.post_submission_id) { %>
-                    <a href="<%= basePath %>/results/<%= c.post_submission_id %>"><%= Number(c.post_percentage).toFixed(1) %>%</a>
-                    <span class="res-level res-level-<%= String(c.post_level || '').toLowerCase() %>"><%= c.post_level %></span>
-                  <% } else { %>
-                    <span class="module-card-meta">not taken</span>
-                  <% } %>
-                </td>
-                <td>
-                  <% if (c.delta === null) { %>
-                    <span class="module-card-meta">&mdash;</span>
-                  <% } else { %>
-                    <span class="prepost-delta <%= c.delta > 0 ? 'is-up' : c.delta < 0 ? 'is-down' : '' %>">
-                      <%= c.delta > 0 ? '+' : '' %><%= c.delta %>
-                      <% if (c.level_changed) { %>
-                        <span class="prepost-move"><%= c.pre_level %> &rarr; <%= c.post_level %></span>
-                      <% } %>
-                    </span>
-                  <% } %>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      </div>
-    <% } %>
-  </section>
-
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Legacy Modules</h3></div>
-    <p class="table-note">Read-only. These were uploaded under the previous module system and are kept so existing student records still resolve. New material belongs in the Modules section above.</p>
-    <div class="list-stack">
-      <% if (!adminResources.length) { %><p class="empty-state">No legacy modules.</p><% } %>
-      <% adminResources.forEach((resource) => { %>
-        <article class="list-card">
-          <div>
-            <strong><%= resource.title %></strong>
-            <% if (resource.type_of_module) { %><span class="badge badge-info" style="margin-left:8px;"><%= resource.type_of_module %></span><% } %>
-            <% if (resource.module_origin === 'ai_generated') { %><span class="badge badge-success" style="margin-left:4px;">AI Generated</span><% } %>
-            <p><%= resource.description || 'No description' %></p>
-            <p><strong>Posted by:</strong> <% if (resource.module_origin === 'ai_generated') { %>System<% } else if (resource.created_by_role === 'admin_template') { %>Admin<% } else { %><%= resource.tutor_name %><% } %></p>
-            <% if (resource.difficulty_level) { %><p><strong>Difficulty:</strong> <%= resource.difficulty_level %></p><% } %>
-            <% if (resource.file_path || resource.content_text) { %><a href="/download/module/<%= resource.id %>" target="_blank">Open Module</a><% } %>
-            <% if (resource.is_archived) { %><span class="badge badge-danger" style="margin-left:8px;">Archived</span><% } %>
-          </div>
-          <% if (currentUser.role === 'admin') { %>
-            <div class="row-actions">
-              <% if (!resource.is_archived) { %>
-                <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/resources/<%= resource.id %>/archive" data-confirm-message="Archive this module?">
-                  <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
-                </form>
-              <% } else { %>
-                <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/resources/<%= resource.id %>/recover" data-confirm-message="Recover this module?">
-                  <button class="btn btn-primary btn-sm" type="submit">Recover</button>
-                </form>
-              <% } %>
-            </div>
-          <% } %>
-        </article>
-      <% }) %>
-    </div>
-  </section>
-
-  <%# Assessment creation was removed from the Admin subject page in Phase 1 of
-      the Module/Assessment overhaul. Pre/Post assessments are now generated from
-      module handouts, and module-level assessments are created by the Tutor.
-      See MODULE_OVERHAUL_PLAN.md. %>
-
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Subject Assessments</h3></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Title</th><th>Type</th><th>Module</th><th>Student</th><th>Score</th><th>Status</th><th>Action</th></tr></thead>
+        <thead>
+          <tr><th data-search-col>Student</th><th>Year Level</th><th>Pre</th><th>Post</th><th>Change</th></tr>
+        </thead>
         <tbody>
-          <% if (!(subjectAssessments || []).length) { %><tr><td colspan="7">No assessments created yet.</td></tr><% } %>
-          <% (subjectAssessments || []).forEach((sa) => { %>
+          <% if (!taken.length) { %>
+            <tr><td colspan="5">No student has taken an assessment in this subject yet.</td></tr>
+          <% } %>
+          <% taken.forEach((c) => { %>
             <tr>
-              <td><%= sa.title %></td>
-              <td><span class="badge badge-<%= sa.assessment_type === 'pre' ? 'info' : 'success' %>"><%= sa.assessment_type === 'pre' ? 'Pre' : 'Post' %></span></td>
-              <td><%= sa.source_module_title || '-' %></td>
-              <td><%= sa.first_name ? (sa.first_name + ' ' + (sa.last_name || '')) : 'All Students' %></td>
-              <td><%= sa.score != null ? sa.score + '/' + sa.result_total : '-' %></td>
-              <td><% if (sa.taken_at) { %><span class="badge badge-success">Taken</span><% } else if (sa.is_published) { %><span class="badge badge-info">Published</span><% } else { %><span class="badge badge-warning">Not Published</span><% } %></td>
               <td>
-                <div class="row-actions wrap-row-actions">
-                  <a class="btn btn-secondary btn-sm" href="<%= basePath %>/assessments/<%= sa.id %>">View</a>
-                  <% if (!sa.is_published && currentUser.role === 'admin') { %>
-                    <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/assessments/<%= sa.id %>/publish" data-confirm-message="Publish this assessment? Students will be able to take it."><button class="btn btn-primary btn-sm" type="submit">Publish</button></form>
-                  <% } %>
-                </div>
+                <strong><%= c.first_name %> <%= c.last_name || '' %></strong>
+                <span class="module-card-meta"><%= c.student_code %></span>
+              </td>
+              <td><%= c.grade_level || c.year_level || '-' %></td>
+              <td>
+                <% if (c.pre_submission_id) { %>
+                  <a href="<%= basePath %>/results/<%= c.pre_submission_id %>"><%= Number(c.pre_percentage).toFixed(1) %>%</a>
+                  <span class="res-level res-level-<%= String(c.pre_level || '').toLowerCase() %>"><%= c.pre_level %></span>
+                <% } else { %>
+                  <span class="module-card-meta">not taken</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (c.post_submission_id) { %>
+                  <a href="<%= basePath %>/results/<%= c.post_submission_id %>"><%= Number(c.post_percentage).toFixed(1) %>%</a>
+                  <span class="res-level res-level-<%= String(c.post_level || '').toLowerCase() %>"><%= c.post_level %></span>
+                <% } else { %>
+                  <span class="module-card-meta">not taken</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (c.delta === null) { %>
+                  <span class="module-card-meta">&mdash;</span>
+                <% } else { %>
+                  <span class="prepost-delta <%= c.delta > 0 ? 'is-up' : c.delta < 0 ? 'is-down' : '' %>">
+                    <%= c.delta > 0 ? '+' : '' %><%= c.delta %>
+                    <% if (c.level_changed) { %>
+                      <span class="prepost-move"><%= c.pre_level %> &rarr; <%= c.post_level %></span>
+                    <% } %>
+                  </span>
+                <% } %>
               </td>
             </tr>
           <% }) %>
         </tbody>
       </table>
     </div>
-    <p class="table-note">Read-only history of assessments created before the module overhaul. New Pre/Post assessments are generated from module handouts; module assessments are created by the Tutor.</p>
   </section>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Enrolled Students</h3></div>
-    <div class="list-stack">
-      <% const uniqueStudents = []; const seenStudentIds = new Set(); %>
-      <% students.forEach((s) => { if (!seenStudentIds.has(Number(s.student_id || s.id))) { seenStudentIds.add(Number(s.student_id || s.id)); uniqueStudents.push(s); } }) %>
-      <% if (!uniqueStudents.length) { %><p class="empty-state">No students enrolled yet.</p><% } %>
-      <% uniqueStudents.forEach((student) => { %>
-        <a class="list-card compact student-link-card" href="<%= basePath %>/subjects/<%= subject.id %>/students/<%= student.student_id || student.id %>/analytics">
-          <div>
-            <strong><%= student.full_name %></strong>
-            <span><%= student.year_level || '-' %> <%= student.grade_level || '' %></span>
-            <span style="margin-left:12px;"><%= student.tutor_name || 'No tutor assigned' %></span>
-            <% if (student.time_slot) { %><span style="margin-left:8px;">(<%= student.time_slot %>)</span><% } %>
-          </div>
-        </a>
-      <% }) %>
+  <%# ==================================================== Enrolled Students %>
+  <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-students" data-tab-panel="students" aria-labelledby="tab-students" hidden>
+    <div class="panel-card-head">
+      <h3>Enrolled Students</h3>
+      <span class="badge badge-info"><%= uniqueStudents.length %> student<%= uniqueStudents.length === 1 ? '' : 's' %></span>
     </div>
-  </section>
-
-  <% if (tutors.length) { %>
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Tutors</h3></div>
-    <div class="subject-member-grid">
-      <% tutors.forEach((tutor) => { %>
-        <% const tutorFullName = [tutor.first_name, tutor.middle_name, tutor.last_name].filter(Boolean).join(' '); %>
-        <% const tutorBranchLabels = [...new Set(safeJsonArray(tutor.extra?.branch_ids || []).map((id) => { const hit = (branches || []).find((branch) => Number(branch.id) === Number(id)); return hit ? hit.name : ''; }).filter(Boolean))]; %>
-        <% const tutorYearLabels = [...new Set(safeJsonArray(tutor.extra?.year_levels || (tutor.year_level || '').split(',')).map((item) => String(item || '').trim()).filter(Boolean))]; %>
-        <% const assignedStudents = (students || []).filter((student) => Number(student.tutor_id || student.tutor_profile_id || 0) === Number(tutor.id)); %>
-        <article class="subject-member-card">
-          <div class="subject-member-card-head">
-            <strong><%= tutorFullName %></strong>
-            <span class="subject-role-chip">Tutor</span>
-          </div>
-          <div class="subject-member-meta">
-            <div><span>Name</span><strong><%= tutorFullName %></strong></div>
-            <div><span>Branch</span><strong><%= tutorBranchLabels.join(', ') || tutor.branch_name || '-' %></strong></div>
-            <div><span>Role</span><strong>Tutor</strong></div>
-            <div><span>Year Level</span><strong><%= tutorYearLabels.join(', ') || tutor.year_level || '-' %></strong></div>
-            <div><span>Assign Student</span><strong><%= assignedStudents.length ? assignedStudents.map((student) => student.full_name).join(', ') : 'No assigned students yet' %></strong></div>
-            <div><span>Time Schedule</span><strong><%= tutor.time_slot || tutor.available_time_slots || '-' %></strong></div>
-          </div>
-          <div class="subject-member-actions">
-            <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/tutors/<%= tutor.id %>/archive" data-confirm-message="Archive this tutor from the subject?">
-              <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
-            </form>
-          </div>
-        </article>
-      <% }) %>
-    </div>
-  </section>
-  <% } %>
-
-  <section class="panel-card">
-    <div class="panel-card-head"><h3>Archived Enrolled Users</h3></div>
-    <div class="table-wrap max-modal-table">
+    <div class="table-wrap">
       <table>
-        <thead><tr><th>Name</th><th>Branch</th><th>Role</th><th>Year Level</th><th>Time Schedule</th><th>Recover</th></tr></thead>
+        <thead>
+          <tr><th data-search-col>Student</th><th>Year / Grade</th><th>Branch</th><th>Tutor</th><th>Time Schedule</th><th>Action</th></tr>
+        </thead>
         <tbody>
-          <% if (!archivedAssignments.length && !archivedTutors.length) { %>
+          <% if (!uniqueStudents.length) { %>
+            <tr><td colspan="6">No students enrolled yet.</td></tr>
+          <% } %>
+          <% uniqueStudents.forEach((student) => { const sid = student.student_id || student.id; %>
+            <tr>
+              <td>
+                <a href="<%= basePath %>/profile/<%= sid %>"><strong><%= student.full_name %></strong></a>
+                <span class="module-card-meta"><%= student.user_id %></span>
+              </td>
+              <td><%= [student.year_level, student.grade_level].filter(Boolean).join(' / ') || '-' %></td>
+              <td><%= student.branch_name || '-' %></td>
+              <td><%= student.tutor_name || 'No tutor yet' %></td>
+              <td><%= student.time_slot || '-' %></td>
+              <td><a class="btn btn-secondary btn-sm" href="<%= basePath %>/subjects/<%= subject.id %>/students/<%= sid %>/analytics">Analytics</a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <%# =============================================================== Tutors %>
+  <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-tutors" data-tab-panel="tutors" aria-labelledby="tab-tutors" hidden>
+    <div class="panel-card-head">
+      <h3>Tutors</h3>
+      <span class="badge badge-info"><%= tutors.length %> tutor<%= tutors.length === 1 ? '' : 's' %></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th data-search-col>Tutor</th><th>Branch</th><th>Year Level</th><th>Students in this subject</th><th>Time Schedule</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <% if (!tutors.length) { %>
+            <tr><td colspan="6">No tutor teaches this subject yet.</td></tr>
+          <% } %>
+          <% tutors.forEach((tutor) => { %>
+            <%
+              const tutorFullName = [tutor.first_name, tutor.middle_name, tutor.last_name].filter(Boolean).join(' ');
+              const tutorBranchLabels = [...new Set(safeJsonArray(tutor.extra?.branch_ids || []).map((id) => { const hit = (branches || []).find((branch) => Number(branch.id) === Number(id)); return hit ? hit.name : ''; }).filter(Boolean))];
+              const tutorYearLabels = [...new Set(safeJsonArray(tutor.extra?.year_levels || (tutor.year_level || '').split(',')).map((item) => String(item || '').trim()).filter(Boolean))];
+              const assignedStudents = (students || []).filter((student) => Number(student.tutor_id || student.tutor_profile_id || 0) === Number(tutor.id));
+              const slots = [...new Set(assignedStudents.map((student) => student.time_slot).filter(Boolean))];
+            %>
+            <tr>
+              <td><a href="<%= basePath %>/profile/<%= tutor.id %>"><strong><%= tutorFullName %></strong></a></td>
+              <td><%= tutorBranchLabels.join(', ') || tutor.branch_name || '-' %></td>
+              <td><%= tutorYearLabels.join(', ') || tutor.year_level || '-' %></td>
+              <td><%= assignedStudents.length ? assignedStudents.map((student) => student.full_name).join(', ') : 'No assigned students yet' %></td>
+              <td><%= slots.join(', ') || '-' %></td>
+              <td>
+                <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/tutors/<%= tutor.id %>/archive" data-confirm-message="Archive this tutor from the subject?">
+                  <input type="hidden" name="return_tab" value="tutors" />
+                  <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <%# ============================================================ Archived %>
+  <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-archived" data-tab-panel="archived" aria-labelledby="tab-archived" hidden>
+    <div class="panel-card-head"><h3>Archived Enrolled Users</h3></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th data-search-col>Name</th><th>Branch</th><th>Role</th><th>Year Level</th><th>Time Schedule</th><th>Recover</th></tr></thead>
+        <tbody>
+          <% if (!archivedCount) { %>
             <tr><td colspan="6">No archived enrolled users.</td></tr>
           <% } %>
-          <% archivedAssignments.forEach((assignment) => { %>
+          <% (archivedAssignments || []).forEach((assignment) => { %>
             <tr>
               <td><%= assignment.first_name %> <%= assignment.last_name %></td>
               <td><%= assignment.branch_name || '-' %></td>
               <td><%= assignment.role || 'student' %></td>
               <td><%= assignment.year_level || '-' %><%= assignment.grade_level ? ' / ' + assignment.grade_level : '' %></td>
               <td><%= assignment.time_slot || '-' %></td>
-              <td><form method="post" action="<%= basePath %>/subjects/assignments/<%= assignment.id %>/recover" data-confirm-message="Recover this archived enrolled user?"><button class="btn btn-primary btn-sm" type="submit">Recover</button></form></td>
+              <td><form method="post" action="<%= basePath %>/subjects/assignments/<%= assignment.id %>/recover" data-confirm-message="Recover this archived enrolled user?"><input type="hidden" name="return_tab" value="archived" /><button class="btn btn-primary btn-sm" type="submit">Recover</button></form></td>
             </tr>
           <% }) %>
-          <% archivedTutors.forEach((tutor) => { %>
+          <% (archivedTutors || []).forEach((tutor) => { %>
             <tr>
               <td><%= tutor.first_name %> <%= tutor.last_name %></td>
               <td><%= tutor.branch_name || '-' %></td>
               <td>tutor</td>
               <td><%= tutor.year_level || '-' %></td>
               <td><%= tutor.time_slot || '-' %></td>
-              <td><form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/tutors/<%= tutor.id %>/recover" data-confirm-message="Recover this archived tutor into the subject?"><button class="btn btn-primary btn-sm" type="submit">Recover</button></form></td>
+              <td><form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/tutors/<%= tutor.id %>/recover" data-confirm-message="Recover this archived tutor into the subject?"><input type="hidden" name="return_tab" value="archived" /><button class="btn btn-primary btn-sm" type="submit">Recover</button></form></td>
             </tr>
           <% }) %>
         </tbody>
@@ -430,3 +419,42 @@
     </div>
   </section>
 </section>
+
+<script>
+  // Tabs: one section at a time. The open tab is kept in the address (#students)
+  // so a page that comes back here — after archiving a tutor, say — reopens it.
+  (function () {
+    var nav = document.querySelector('[data-tabs]');
+    if (!nav) return;
+    var buttons = Array.prototype.slice.call(nav.querySelectorAll('[data-tab]'));
+    var panels = Array.prototype.slice.call(document.querySelectorAll('[data-tab-panel]'));
+
+    function show(key, remember) {
+      var known = buttons.some(function (b) { return b.getAttribute('data-tab') === key; });
+      if (!known) key = buttons[0].getAttribute('data-tab');
+      buttons.forEach(function (button) {
+        var on = button.getAttribute('data-tab') === key;
+        button.classList.toggle('is-active', on);
+        button.setAttribute('aria-selected', on ? 'true' : 'false');
+        button.tabIndex = on ? 0 : -1;
+      });
+      panels.forEach(function (panel) { panel.hidden = panel.getAttribute('data-tab-panel') !== key; });
+      if (remember && window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', '#' + key);
+      }
+    }
+
+    buttons.forEach(function (button, index) {
+      button.addEventListener('click', function () { show(button.getAttribute('data-tab'), true); });
+      button.addEventListener('keydown', function (event) {
+        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+        var next = buttons[(index + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length];
+        next.focus();
+        show(next.getAttribute('data-tab'), true);
+      });
+    });
+
+    show((window.location.hash || '').replace('#', ''), false);
+    window.addEventListener('hashchange', function () { show((window.location.hash || '').replace('#', ''), false); });
+  })();
+</script>

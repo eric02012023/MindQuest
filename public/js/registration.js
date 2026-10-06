@@ -59,10 +59,6 @@ document.querySelectorAll('[data-registration-form]').forEach((form) => {
   const gradeLevel = form.querySelector('[data-grade-level]');
   const birthDateInput = form.querySelector('[data-birthdate]');
   const ageInput = form.querySelector('[data-age]');
-  const previewInput = form.querySelector('[data-image-preview-input]');
-  const previewImage = form.querySelector('[data-upload-preview-image]');
-  const previewPlaceholder = form.querySelector('.upload-placeholder');
-  const previewPlus = form.querySelector('.upload-plus');
   const registrationType = form.getAttribute('data-registration-type') || 'student';
   const passwordInput = form.querySelector('input[name="password"]');
   const confirmPasswordInput = form.querySelector('input[name="confirm_password"]');
@@ -92,14 +88,8 @@ document.querySelectorAll('[data-registration-form]').forEach((form) => {
   }
 
   birthDateInput?.addEventListener('change', fillAge);
-  previewInput?.addEventListener('change', () => {
-    const file = previewInput.files && previewInput.files[0];
-    if (!file || !previewImage) return;
-    previewImage.src = URL.createObjectURL(file);
-    previewImage.classList.add('has-image');
-    previewPlaceholder?.classList.add('is-hidden');
-    previewPlus?.classList.add('is-hidden');
-  });
+  // The photo upload and its preview are gone from registration: a learner or
+  // tutor sets their picture from their own profile once logged in.
   yearLevel?.addEventListener('change', () => {
     gradeLevel.dataset.selectedValue = '';
     fillGradeOptions();

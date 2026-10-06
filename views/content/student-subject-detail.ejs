@@ -35,7 +35,6 @@
         <span class="lock-icon" aria-hidden="true">&#128274;</span>
         <div>
           <h3>Pre-Assessment required</h3>
-          <p>Your modules and handouts for this subject unlock once you finish it.</p>
         </div>
       </div>
       <%# Two things can hold the Pre-Assessment shut, and they are different
@@ -59,17 +58,9 @@
           <a class="btn btn-primary" href="/student/billing">Go to Billing Data</a>
         <% } %>
       <% } else if (handoutsReady) { %>
-        <p class="lock-note">
-          It is built from this subject's handouts and mixes multiple choice, true or false,
-          and short essay items. It is not graded for marks — it shows your tutor what to
-          focus on.
-        </p>
         <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/pre-assessment">Start Pre-Assessment</a>
       <% } else { %>
-        <p class="lock-note">
-          Your tutorial centre has not uploaded readable handouts for this subject yet, so the
-          Pre-Assessment cannot be prepared. Please check back later.
-        </p>
+        <p class="lock-note">The Pre-Assessment is not ready yet.</p>
       <% } %>
     </section>
   <% } else { %>
@@ -163,20 +154,13 @@
         <% } %>
 
       <% } else if (!postAssessmentOpen) { %>
-        <p class="empty-state">
-          Your tutor opens this once the class material is complete. It is the same set of
-          questions as your Pre-Assessment, so you can see how much you have improved.
-        </p>
+        <p class="empty-state">Not open yet.</p>
 
       <% } else if (completion.isComplete) { %>
-        <p class="table-note">
-          You have finished every module and activity in this subject. The Post-Assessment
-          asks the same questions as your Pre-Assessment.
-        </p>
         <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/post-assessment">Start Post-Assessment</a>
 
       <% } else { %>
-        <p class="table-note">Finish these first and the Post-Assessment opens on its own:</p>
+        <p class="table-note">To do first:</p>
         <ul class="module-handout-list">
           <% if (completion.modulesOpened < completion.modulesTotal) { %>
             <li>Open all your modules (<%= completion.modulesOpened %> of <%= completion.modulesTotal %> so far)</li>
@@ -202,7 +186,6 @@
   <% if ((modules || []).length) { %>
   <section class="panel-card">
     <div class="panel-card-head"><h3>Legacy Modules</h3></div>
-    <p class="table-note">Older material from before this subject moved to numbered modules.</p>
     <div class="list-stack">
       <% modules.forEach((resource) => { %>
         <article class="list-card">

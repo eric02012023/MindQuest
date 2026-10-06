@@ -1,32 +1,23 @@
 <%# File: views/content/admin-users.ejs
-    Purpose: User Management, rebuilt as a row list.
+    Purpose: User Management, as a row list.
 
-    It used to be a <table> whose only row action was Archive and which rendered
-    every user in the branch at once. It is now the shared .mq-table row system:
-    one line per user, key facts only, icon actions on the right, and a pager, so
-    the page stays the same size whether there are 20 users or 2,000.
+    One line per user, key facts only, icon actions on the right. Every user is
+    listed: the table shows ten rows and scrolls, and the search icon beside the
+    "All users" heading finds anyone by anything in their row — name, ID, email,
+    branch, role, status (public/js/mq-tables.js). The search / branch / role /
+    status filters and the page numbers that used to sit around the table are
+    gone.
 
     The heavy detail (full profile, subjects, guardian, documents) is one click
     away on the profile page rather than crammed into the row. %>
 <%
-  const pagerState = typeof pager === 'undefined' ? null : pager;
-  const currentQuery = typeof query === 'undefined' ? {} : query;
   const rosterOf = (assistant) => (typeof rosterCounts !== 'undefined' && rosterCounts && rosterCounts.get(Number(assistant.id)))
     || { currentTutors: 0, currentStudents: 0, ever: 0 };
-  // Folders: everyone, or only the students still waiting for a tutor. A
-  // folder link keeps the branch and search, and starts again at page one.
+  // Folders: everyone, or only the students still waiting for a tutor.
   const activeFolder = typeof folder === 'undefined' ? 'all' : folder;
   const waitingCount = typeof needsTutorCount === 'undefined' ? 0 : needsTutorCount;
   const inNeedsTutor = activeFolder === 'needs-tutor';
-  const folderHref = (value) => {
-    const params = new URLSearchParams();
-    ['search', 'branch_id', 'status'].forEach((key) => {
-      if (currentQuery[key] && currentQuery[key] !== 'all') params.set(key, currentQuery[key]);
-    });
-    if (value !== 'all') params.set('folder', value);
-    const text = params.toString();
-    return `${basePath}/users${text ? `?${text}` : ''}`;
-  };
+  const folderHref = (value) => `${basePath}/users${value !== 'all' ? `?folder=${value}` : ''}`;
 %>
 <section class="mq-page">
 
@@ -42,51 +33,10 @@
     </a>
   </nav>
 
-  <form class="mq-toolbar" method="get" action="<%= basePath %>/users">
-    <% if (inNeedsTutor) { %><input type="hidden" name="folder" value="needs-tutor" /><% } %>
-    <div class="mq-filters">
-      <label class="mq-field mq-field-search">
-        <span>Search</span>
-        <input type="search" name="search" value="<%= search || '' %>" placeholder="Name, ID, email or contact number" />
-      </label>
-
-      <% if (currentUser.role === 'admin') { %>
-        <label class="mq-field">
-          <span>Branch</span>
-          <select name="branch_id" onchange="this.form.submit()">
-            <option value="all">All branches</option>
-            <% branches.forEach((branch) => { %>
-              <option value="<%= branch.id %>" <%= Number(effectiveBranchId) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
-            <% }) %>
-          </select>
-        </label>
-      <% } %>
-
-      <%# The folder holds students only, so there is no role to pick in it. %>
-      <% if (!inNeedsTutor) { %>
-        <label class="mq-field">
-          <span>Role</span>
-          <select name="role" onchange="this.form.submit()">
-            <option value="all" <%= selectedRole === 'all' ? 'selected' : '' %>>All roles</option>
-            <option value="student" <%= selectedRole === 'student' ? 'selected' : '' %>>Student</option>
-            <option value="tutor" <%= selectedRole === 'tutor' ? 'selected' : '' %>>Tutor</option>
-          </select>
-        </label>
-      <% } %>
-
-      <label class="mq-field">
-        <span>Status</span>
-        <select name="status" onchange="this.form.submit()">
-          <option value="all" <%= selectedStatus === 'all' ? 'selected' : '' %>>All</option>
-          <option value="approved" <%= selectedStatus === 'approved' ? 'selected' : '' %>>Approved</option>
-          <option value="pending" <%= selectedStatus === 'pending' ? 'selected' : '' %>>Pending</option>
-          <option value="rejected" <%= selectedStatus === 'rejected' ? 'selected' : '' %>>Rejected</option>
-        </select>
-      </label>
-
-      <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
-    </div>
-
+  <%# The account actions stay; the search / branch / role / status filters
+      that shared this bar are gone — the icon beside the heading below does
+      their job inside the table. %>
+  <div class="mq-toolbar">
     <div class="mq-toolbar-actions">
       <button type="button" class="mq-btn" data-modal-target="#archived-users-modal"><%- icon('archive') %> Archive</button>
       <% if (currentUser.role === 'admin') { %>
@@ -94,22 +44,24 @@
         <button type="button" class="mq-btn mq-btn-primary" data-modal-target="#assistant-modal"><%- icon('add') %> Branch account</button>
       <% } %>
     </div>
-  </form>
+  </div>
 
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <% if (inNeedsTutor) { %>
-        <div>
-          <h2>Students who need a tutor</h2>
-          <p>Enrolled in a subject, with no tutor yet. Open one to assign a tutor and schedule; they leave this folder once assigned.</p>
-        </div>
-      <% } else { %>
-        <h2>All users</h2>
-      <% } %>
-      <span class="mq-count"><%= pagerState ? pagerState.total : users.length %> total</span>
+      <div class="mq-heading-search">
+        <%# The search icon sits on the left, beside the heading, inside the
+            table's own frame. It opens a box that searches every row. %>
+        <h2><%= inNeedsTutor ? 'Students who need a tutor' : 'All users' %></h2>
+        <button type="button" class="mq-th-search" data-table-search-for="users-table"
+                title="Search this table" aria-label="Search <%= inNeedsTutor ? 'students who need a tutor' : 'all users' %>">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M20 20l-3.6-3.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <span class="mq-count"><%= users.length %> total</span>
     </div>
 
-    <div class="mq-table" style="--mq-min-width: 930px; --mq-cols: 120px minmax(180px, 2fr) 1fr 110px 110px 110px 96px;">
+    <div class="mq-table" id="users-table" data-search-anchor="external"
+         style="--mq-min-width: 930px; --mq-cols: 120px minmax(180px, 2fr) 1fr 110px 110px 110px 96px;">
       <div class="mq-head">
         <span>User ID</span>
         <span>Name</span>
@@ -122,12 +74,12 @@
 
       <% if (!users.length) { %>
         <div class="mq-empty">
-          <% if (inNeedsTutor && !search) { %>
-            <strong>Every enrolled student has a tutor</strong>
-            Students enrolled without a tutor appear here until one is assigned.
+          <% if (inNeedsTutor) { %>
+            <strong>Every enrolled subject has a tutor</strong>
+            A student appears here while any of their subjects has no tutor.
           <% } else { %>
-            <strong>No users found</strong>
-            Try a different search term, or clear the filters above.
+            <strong>No users yet</strong>
+            Accepted registrations appear here.
           <% } %>
         </div>
       <% } %>
@@ -149,7 +101,7 @@
 
           <span class="mq-cell" data-label="<%= inNeedsTutor ? 'Tutor' : 'Role' %>">
             <% if (inNeedsTutor) { %>
-              <span class="mq-status mq-status-pending">No tutor yet</span>
+              <span class="mq-status mq-status-pending"><%= (user.enrolled_subjects || []).length > 1 ? `${user.enrolled_subjects.length} subjects need one` : 'No tutor yet' %></span>
             <% } else { %>
               <span class="mq-chip mq-chip-role"><%= user.role %></span>
             <% } %>
@@ -173,10 +125,6 @@
           </span>
         </div>
       <% }) %>
-
-      <% if (pagerState) { %>
-        <%- include('../partials/mq-pager', { pager: pagerState, baseUrl: `${basePath}/users`, params: currentQuery, noun: 'user' }) %>
-      <% } %>
     </div>
   </section>
 

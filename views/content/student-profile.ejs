@@ -80,7 +80,7 @@
       <section class="mq-card">
         <div class="mq-card-head">
           <span class="mq-card-icon"><%- icon('user', 18) %></span>
-          <div><h3>Personal information</h3><p>Your name as it appears on your records.</p></div>
+          <div><h3>Personal information</h3></div>
         </div>
         <div class="mq-card-body mq-fields">
           <label>First name<input type="text" name="first_name" value="<%= profileUser.first_name %>" required /></label>
@@ -109,7 +109,7 @@
       <section class="mq-card">
         <div class="mq-card-head">
           <span class="mq-card-icon"><%- icon('phone', 18) %></span>
-          <div><h3>Contact &amp; guardian</h3><p>How the centre reaches you and your family.</p></div>
+          <div><h3>Contact &amp; guardian</h3></div>
         </div>
         <div class="mq-card-body mq-fields">
           <label>Login email<input type="text" value="<%= profileUser.email || '' %>" readonly /></label>
@@ -124,7 +124,7 @@
       <section class="mq-card">
         <div class="mq-card-head">
           <span class="mq-card-icon"><%- icon('building', 18) %></span>
-          <div><h3>School &amp; home</h3><p>Your level decides which modules you see.</p></div>
+          <div><h3>School &amp; home</h3></div>
         </div>
         <div class="mq-card-body mq-fields">
           <label>Year level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
@@ -133,7 +133,7 @@
           <label class="is-wide">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>
         </div>
         <div class="mq-card-foot">
-          <span class="mq-card-foot-note" data-avatar-note>Choose "Change photo" above to pick a new picture.</span>
+          <span class="mq-card-foot-note" data-avatar-note></span>
           <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save changes</button>
         </div>
       </section>
@@ -144,7 +144,7 @@
       <section class="mq-card">
         <div class="mq-card-head">
           <span class="mq-card-icon"><%- icon('award', 18) %></span>
-          <div><h3><%= tutors.length > 1 ? 'My tutors' : 'My tutor' %></h3><p>Who teaches you, and when.</p></div>
+          <div><h3><%= tutors.length > 1 ? 'My tutors' : 'My tutor' %></h3></div>
         </div>
         <% if (tutors.length) { %>
           <% tutors.forEach((tutor) => { %>
@@ -163,7 +163,6 @@
         <% } else { %>
           <div class="mq-empty">
             <strong>No tutor yet</strong>
-            Your tutor appears here, with their photo and your schedule, once the office assigns one.
           </div>
         <% } %>
       </section>
@@ -175,7 +174,7 @@
         </div>
         <div class="mq-card-body">
           <% if (!(assignments || []).length) { %>
-            <div class="mq-empty"><strong>No subjects yet</strong>Enrol in a subject from My Subject.</div>
+            <div class="mq-empty"><strong>No subjects yet</strong></div>
           <% } else { %>
             <div class="mq-person-list">
               <% assignments.forEach((item) => { %>
@@ -197,7 +196,7 @@
         <section class="mq-card">
           <div class="mq-card-head">
             <span class="mq-card-icon"><%- icon('target', 18) %></span>
-            <div><h3>Extra support</h3><p>Additional academic support you asked for.</p></div>
+            <div><h3>Extra support</h3></div>
           </div>
           <div class="mq-card-body mq-chip-list">
             <% userSupports.forEach((support) => { %><span class="mq-subject-chip"><%= support %></span><% }) %>

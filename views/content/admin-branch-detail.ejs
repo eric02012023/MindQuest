@@ -1,4 +1,10 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-branch-detail.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/admin-branch-detail.ejs
+    Purpose: One branch's students and tutors.
+
+    The Students table had a "Grade Level" heading and no cell under it, so the
+    grade never showed and every column after it sat one place to the left.
+    Both tables show ten rows and scroll, with a search icon in the Name
+    heading (public/js/mq-tables.js). %>
 <section class="page-stack">
   <section class="panel-card">
     <div class="panel-card-head"><h2><%= branch.name %></h2></div>
@@ -6,10 +12,13 @@
   </section>
 
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Students in this branch</h3></div>
+    <div class="panel-card-head">
+      <h3>Students in this branch</h3>
+      <span class="badge badge-info"><%= students.length %> student<%= students.length === 1 ? '' : 's' %></span>
+    </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>User ID</th><th>Name</th><th>Year Level</th><th>Grade Level</th></tr></thead>
+        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Grade Level</th></tr></thead>
         <tbody>
           <% if (!students.length) { %><tr><td colspan="4">No students in this branch.</td></tr><% } %>
           <% students.forEach((user) => { %>
@@ -17,6 +26,7 @@
               <td><%= user.user_id %></td>
               <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= user.first_name %> <%= user.last_name %></a></td>
               <td><%= user.year_level || '-' %></td>
+              <td><%= user.grade_level || '-' %></td>
             </tr>
           <% }) %>
         </tbody>
@@ -25,17 +35,21 @@
   </section>
 
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Tutors in this branch</h3></div>
+    <div class="panel-card-head">
+      <h3>Tutors in this branch</h3>
+      <span class="badge badge-info"><%= tutors.length %> tutor<%= tutors.length === 1 ? '' : 's' %></span>
+    </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>User ID</th><th>Name</th><th>Year Level</th></tr></thead>
+        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Subjects</th></tr></thead>
         <tbody>
-          <% if (!tutors.length) { %><tr><td colspan="3">No tutors in this branch.</td></tr><% } %>
+          <% if (!tutors.length) { %><tr><td colspan="4">No tutors in this branch.</td></tr><% } %>
           <% tutors.forEach((user) => { %>
             <tr>
               <td><%= user.user_id %></td>
               <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= user.first_name %> <%= user.last_name %></a></td>
               <td><%= user.year_level || '-' %></td>
+              <td><%= (user.subjects || []).join(', ') || '-' %></td>
             </tr>
           <% }) %>
         </tbody>

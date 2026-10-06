@@ -3,7 +3,6 @@
   <article class="hero-dashboard-card gradient">
     <div>
       <h2>Welcome, <%= dashboard.user.first_name %>!</h2>
-      <p>Your subjects, tutors, assessments, and billing details are available here.</p>
     </div>
     <img src="<%= dashboard.user.image_path || '/assets/logo.png' %>" alt="Student avatar" class="profile-avatar large" />
   </article>
@@ -12,9 +11,17 @@
     <section class="panel-card">
       <div class="panel-card-head"><h3>Subject Tutors</h3></div>
       <div class="bubble-row">
-        <% if (!dashboard.tutors.length) { %><p class="empty-state">No tutor assigned yet.</p><% } %>
-        <% dashboard.tutors.forEach((item) => { %>
-          <div class="mini-bubble"><span><%= item.tutor_name %></span></div>
+        <%# A subject's tutor is that subject's own, so one tutor can appear for
+            several subjects; each is listed once, with what they teach. %>
+        <% const tutorList = [];
+           (dashboard.assignments || []).filter((item) => item.tutor_internal_id).forEach((item) => {
+             let entry = tutorList.find((t) => Number(t.id) === Number(item.tutor_internal_id));
+             if (!entry) { entry = { id: item.tutor_internal_id, name: item.tutor_name, subjects: [] }; tutorList.push(entry); }
+             entry.subjects.push(item.subject_name);
+           }); %>
+        <% if (!tutorList.length) { %><p class="empty-state">No tutor assigned yet.</p><% } %>
+        <% tutorList.forEach((tutor) => { %>
+          <div class="mini-bubble" title="<%= tutor.subjects.join(', ') %>"><span><%= tutor.name %> · <%= tutor.subjects.join(', ') %></span></div>
         <% }) %>
       </div>
     </section>

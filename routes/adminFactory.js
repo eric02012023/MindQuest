@@ -151,7 +151,12 @@ const {
   normalizeTutorYearLevels,
   // Who was under which Assistant Admin
   getAssistantRoster,
-  getAssistantRosterCounts
+  getAssistantRosterCounts,
+  // A tutor teaches only the subjects they teach
+  tutorTeachesSubject,
+  matchesTutorStudentScope,
+  // All Subjects -> subject -> Subject Assessments (the live ones)
+  getSubjectAssessmentsOverview
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
 const { normalizeAmount } = require('../lib/billing');
@@ -190,6 +195,18 @@ function normalizeRouteId(value) {
   const match = cleaned.match(/(\d+)/g);
   if (!match || !match.length) return null;
   return String(Number(match[match.length - 1]));
+}
+
+/**
+ * Back to the page a form was posted from, on the tab it was posted from.
+ * A subject's sections are tabs kept in the address (#tutors); the browser
+ * does not send that part in the Referer, so the form names it.
+ */
+function redirectBackToTab(req, res, fallback) {
+  const tab = String(req.body?.return_tab || '').replace(/[^a-z-]/g, '');
+  const referer = req.get('Referer');
+  if (referer && tab) return res.redirect(`${referer.split('#')[0]}#${tab}`);
+  return res.redirect(referer || fallback);
 }
 
 // Function: createAdminRouter
@@ -478,30 +495,31 @@ function createAdminRouter(role) {
 
   router.get('/users', async (req, res, next) => {
     try {
-      const scopeBranchId = getScopeBranchId(req);
-      // The "Needs a tutor" folder: students enrolled in a subject who have no
-      // tutor yet, so the office can find everyone still waiting for one.
+      // An assistant still sees only their own branch; that is a scope, not a
+      // filter, and is enforced here rather than offered as a choice.
+      const scopeBranchId = req.session.user.role === 'admin_assistant'
+        ? Number(req.session.user.assistant_scope_branch_id)
+        : null;
+      // The "Needs a tutor" folder: students with a subject that has no tutor
+      // yet, so the office can find everyone still waiting for one.
       const folder = req.query.folder === 'needs-tutor' ? 'needs-tutor' : 'all';
-      const selectedRole = folder === 'needs-tutor' ? 'student' : (req.query.role || 'all');
-      const search = req.query.search || '';
-      const status = req.query.status || 'all';
+      const selectedRole = folder === 'needs-tutor' ? 'student' : 'all';
 
-      // Paged, not "render everything": the page has to stay usable at two
-      // thousand users, and the browser cannot lay out two thousand rows quickly.
-      // The archive stays unpaged — it is a lookup, opened from a modal.
+      // Every user, on one page. The search, branch, role and status filters
+      // and the page numbers are gone: the list shows ten rows and scrolls, and
+      // the search icon beside "All users" finds anyone in it — by name, ID,
+      // email, branch, role or status — without a round trip.
+      // (public/js/mq-tables.js)
       const [page, needsTutorCount, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts] = await Promise.all([
         getUsersPaged({
           scopeBranchId,
           role: selectedRole,
           archived: false,
-          search,
-          status,
           needsTutor: folder === 'needs-tutor',
-          page: req.query.page,
-          pageSize: req.query.page_size
+          all: true
         }),
         countStudentsNeedingTutor(scopeBranchId),
-        getUsers({ scopeBranchId, role: selectedRole, archived: true, search }),
+        getUsers({ scopeBranchId, role: 'all', archived: true }),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, false) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, true) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAvailableAssistantBranches() : Promise.resolve([]),
@@ -515,7 +533,6 @@ function createAdminRouter(role) {
         section: 'users',
         contentView: '../content/admin-users',
         users: page.rows,
-        pager: page,
         query: req.query,
         archivedUsers,
         assistantAccounts,
@@ -523,10 +540,7 @@ function createAdminRouter(role) {
         availableAssistantBranches,
         rosterCounts,
         folder,
-        needsTutorCount,
-        selectedRole,
-        selectedStatus: status,
-        search
+        needsTutorCount
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -537,14 +551,13 @@ function createAdminRouter(role) {
   /**
    * Student Profiles and Tutor Profiles used to be their own pages: the same
    * row list over the same query with the role pinned. User Management already
-   * lists every user and already filters by role, so they were a second way to
-   * reach a page the admin was on anyway.
+   * lists every user, and its search finds a role as readily as a name.
    *
-   * Kept as redirects so older links and bookmarks land on the right filtered
-   * list rather than a 404.
+   * Kept as redirects so older links and bookmarks land on User Management
+   * rather than a 404.
    */
-  router.get('/students', (req, res) => res.redirect(`${basePath}/users?role=student`));
-  router.get('/tutors', (req, res) => res.redirect(`${basePath}/users?role=tutor`));
+  router.get('/students', (req, res) => res.redirect(`${basePath}/users`));
+  router.get('/tutors', (req, res) => res.redirect(`${basePath}/users`));
 
   // Route handler: GET request
 
@@ -608,16 +621,29 @@ function createAdminRouter(role) {
         getSubjects(false)
       ]);
 
-      // Phase 5: the admin's tutor/schedule editor needs the tutors who actually
-      // teach at this student's branch, and which of the centre's slots each of
-      // them still has free.
-      const assignableTutors = user.role === 'student'
-        ? (await getUsers({ role: 'tutor', scopeBranchId: user.branch_id || null }))
-        : [];
+      // The admin's tutor/schedule editor needs, for EACH of the student's
+      // subjects, the tutors who teach that subject at this student's branch
+      // (home branch or a second branch they serve), and which of the centre's
+      // slots each tutor already has taken.
+      let assignableTutors = [];
+      let tutorsBySubject = {};
+      if (user.role === 'student') {
+        const branchOf = (tutor) => new Set([tutor.branch_id, ...normalizeArray(tutor.extra?.branch_ids || [])]
+          .map((id) => Number(id)).filter(Boolean));
+        assignableTutors = (await getUsers({ role: 'tutor' }))
+          .filter((tutor) => !user.branch_id || branchOf(tutor).has(Number(user.branch_id)))
+          .map((tutor) => ({ ...tutor, matchesLevel: matchesTutorStudentScope(tutor, user).yearLevelMatch }));
+        tutorsBySubject = Object.fromEntries(studentAssignments.map((assignment) => [
+          String(assignment.subject_id),
+          assignableTutors
+            .filter((tutor) => tutorTeachesSubject(tutor, assignment.subject_name))
+            .sort((a, b) => Number(b.matchesLevel) - Number(a.matchesLevel))
+        ]));
+      }
       const currentTutor = user.role === 'student' ? await getAssignedTutorFor(user.id) : null;
       const tutorSlotUsage = user.role === 'student'
         ? await query(
-            `SELECT usa.tutor_id, usa.time_slot, usa.student_id
+            `SELECT usa.tutor_id, usa.time_slot, usa.student_id, usa.subject_id
                FROM user_subject_assignments usa
               WHERE usa.is_archived = 0 AND usa.tutor_id IS NOT NULL AND usa.time_slot IS NOT NULL`
           )
@@ -632,6 +658,7 @@ function createAdminRouter(role) {
         tutorAssignments,
         subjectOptions,
         assignableTutors,
+        tutorsBySubject,
         currentTutor,
         tutorSlotUsage,
         // A tutor's levels are offered in the words the tutor registered with,
@@ -651,16 +678,16 @@ function createAdminRouter(role) {
   });
 
   /**
-   * Phase 5 — set a student's tutor and time schedule.
+   * Set a student's tutor and time schedule.
    *
-   * The tutor goes to EVERY subject the student is enrolled in, because a
-   * student has one tutor (setStudentTutorAndSchedule enforces that). The
-   * schedule is set here, by staff, and the student-side apply routes refuse
-   * once a tutor exists — between them that is what makes "only an admin can
-   * change the schedule" actually true.
+   * A tutor is written only to the subjects they teach (setStudentTutorAndSchedule
+   * enforces it). Posted with `subject_ids`, it sets the tutor for those subjects
+   * — one row of the profile's per-subject editor; without, for every subject of
+   * the student that the tutor teaches, and the flash names any subject left
+   * needing another tutor.
    */
   router.post('/profile/:id/tutor', async (req, res, next) => {
-    const backTo = `${basePath}/profile/${req.params.id}`;
+    const backTo = `${basePath}/profile/${req.params.id}#tutor-schedule`;
     try {
       const student = await getUserById(req.params.id);
       if (!student || student.role !== 'student') {
@@ -674,14 +701,22 @@ function createAdminRouter(role) {
 
       const result = await setStudentTutorAndSchedule(
         student.id,
-        { tutorId: req.body.tutor_id, timeSlot: req.body.time_slot },
+        { tutorId: req.body.tutor_id, timeSlot: req.body.time_slot, subjectIds: normalizeArray(req.body.subject_ids) },
         req.session.user
       );
 
-      setFlash(req, 'success', result.tutorId
-        ? `${result.tutorName} is now the tutor for all ${result.subjectsUpdated} of this student's subjects`
-          + `${result.timeSlot ? `, at ${result.timeSlot}` : ''}.`
-        : `Tutor and schedule cleared across all ${result.subjectsUpdated} subjects.`);
+      const subjects = (result.subjectNames || []).join(', ');
+      let message;
+      if (result.tutorId) {
+        message = `${result.tutorName} is now the tutor for ${subjects}${result.timeSlot ? `, at ${result.timeSlot}` : ''}.`;
+        if ((result.skippedSubjects || []).length) {
+          message += ` ${result.tutorName} does not teach ${result.skippedSubjects.join(', ')} — `
+            + `choose another tutor for ${result.skippedSubjects.length === 1 ? 'it' : 'them'} below.`;
+        }
+      } else {
+        message = `Tutor and schedule cleared for ${subjects}.`;
+      }
+      setFlash(req, 'success', message);
       return res.redirect(backTo);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not update the tutor or schedule.');
@@ -782,10 +817,48 @@ function createAdminRouter(role) {
           archived_subjects: archivedSubjects
         }
       });
+      // Your own new photo shows in the topbar straight away, not at next login.
+      if (req.file && Number(profileUser.id) === Number(req.session.user.id)) {
+        req.session.user.image_path = `/uploads/profiles/${req.file.filename}`;
+      }
       setFlash(req, 'success', 'Profile updated successfully.');
       res.redirect(`${basePath}/profile/${req.params.id}`);
     } catch (error) {
       next(error);
+    }
+  });
+
+  /**
+   * An Assistant Admin's profile photo. Registration no longer asks for a
+   * photo — everyone sets their own once logged in — and the assistant's
+   * account is edited from its roster page, which had no way to add one.
+   * The assistant may change their own; the main admin, any assistant's.
+   */
+  router.post('/profile/:id/photo', profileUploader.single('image'), async (req, res) => {
+    const backTo = `${basePath}/profile/${Number(req.params.id)}`;
+    try {
+      const profileUser = await getUserById(req.params.id);
+      if (!profileUser || profileUser.role !== 'admin_assistant') {
+        setFlash(req, 'error', 'Account not found.');
+        return res.redirect(`${basePath}/users`);
+      }
+      const isSelf = Number(profileUser.id) === Number(req.session.user.id);
+      if (!isSelf && req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'You can only change your own photo.');
+        return res.redirect(backTo);
+      }
+      if (!req.file) {
+        setFlash(req, 'error', describeUploadRejection(req) || 'Choose a photo first.');
+        return res.redirect(backTo);
+      }
+      const imagePath = `/uploads/profiles/${req.file.filename}`;
+      await query('UPDATE users SET image_path = ?, updated_at = DATEADD(hour, 8, GETUTCDATE()) WHERE id = ?', [imagePath, profileUser.id]);
+      if (isSelf) req.session.user.image_path = imagePath;
+      setFlash(req, 'success', 'Profile photo updated.');
+      return res.redirect(backTo);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not save the photo.');
+      return res.redirect(backTo);
     }
   });
 
@@ -1084,12 +1157,20 @@ function createAdminRouter(role) {
    * or the SOA panel for that student, which is what the old links pointed at.
    * `slip` opens the counter form for one waiting slip.
    */
+  /** The branch Student Bill covers: an assistant's own, or every branch. */
+  function billingScopeBranchId(req) {
+    return req.session.user.role === 'admin_assistant'
+      ? Number(req.session.user.assistant_scope_branch_id)
+      : null;
+  }
+
   router.get('/billing', async (req, res, next) => {
     try {
-      const scopeBranchId = getScopeBranchId(req);
-      const search = String(req.query.search || '').trim();
-      const status = req.query.status || 'all';
-      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+      // No search, status or branch filters any more, and no page numbers: every
+      // account is listed in a table that shows ten rows and scrolls, and the
+      // search icon in its heading finds a student by anything in their row.
+      const scopeBranchId = billingScopeBranchId(req);
+      const scope = resolveScope(req.session.user);
 
       // ---- the counter (was /pos) ------------------------------------------
       // Slips still waiting to be paid, oldest first: that is the queue at the
@@ -1098,11 +1179,10 @@ function createAdminRouter(role) {
         .slice()
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-      // A slip code in `slip` (or typed into the search box) opens that slip's
-      // counter form. Staff should not have to know whether what the student
-      // handed them is a slip code or a name.
+      // `slip` opens that slip's counter form ("Record a different amount", and
+      // the link a slip's staff alert carries).
       let selectedSlip = null;
-      const byCode = parseSlipCode(req.query.slip || search);
+      const byCode = parseSlipCode(req.query.slip);
       if (byCode) {
         const request = await getPaymentRequestById(byCode);
         if (request && request.status === 'pending' && canActOnBranch(req.session.user, request.branch_id)) {
@@ -1110,46 +1190,38 @@ function createAdminRouter(role) {
         }
       }
 
-      const rawRows = await getBillingRows(scopeBranchId, 'all', { search, status });
-
-      // Page BEFORE attaching ledgers: each row carries its full payment history
-      // and renders three dialogs, so building that for every student in the
-      // branch would be the slowest thing on the page and none of it would show.
-      const pageSize = Math.min(100, Math.max(10, Number(req.query.page_size) || 25));
-      const pageCount = Math.max(1, Math.ceil(rawRows.length / pageSize));
-      const page = Math.min(pageCount, Math.max(1, Number(req.query.page) || 1));
-      const pageRows = rawRows.slice((page - 1) * pageSize, page * pageSize);
-
-      const billingRows = await attachPaymentLedgers(pageRows);
+      // Every account, each with its ledger totals (one query for all the
+      // entries). The three dialogs a row opens are NOT built here: they are
+      // fetched when a row's button is pressed (GET /billing/:id/dialogs), so
+      // the page does not carry six hundred hidden forms. The one a link asks
+      // to open (?info=, ?pay=, ?edit=) is rendered with the page.
+      const billingRows = await attachPaymentLedgers(await getBillingRows(scopeBranchId, 'all', {}));
       const paymentHistory = await getPaymentHistory(scopeBranchId);
 
       const billingStudentIds = new Set(billingRows.map((row) => String(row.student_id)));
       const openEditStudentId = billingStudentIds.has(String(req.query.edit || '')) ? String(req.query.edit) : '';
       const openInfoStudentId = billingStudentIds.has(String(req.query.info || '')) ? String(req.query.info) : '';
       const openPayStudentId = billingStudentIds.has(String(req.query.pay || '')) ? String(req.query.pay) : '';
+      const preloadIds = new Set([openEditStudentId, openInfoStudentId, openPayStudentId].filter(Boolean));
 
-      // The summary describes the whole filtered set, not just this page — a
-      // total that changed when you turned the page would be worse than useless.
-      const totals = rawRows.reduce((acc, row) => {
+      const totals = billingRows.reduce((acc, row) => {
         acc.billed += Number(row.full_bill || 0);
         acc.paid += Number(row.partial_payment || 0);
         acc.remaining += Number(row.for_settlement || 0);
         if (row.payment_status === 'paid') acc.settled += 1;
         return acc;
-      }, { billed: 0, paid: 0, remaining: 0, settled: 0, accounts: rawRows.length });
+      }, { billed: 0, paid: 0, remaining: 0, settled: 0, accounts: billingRows.length });
 
       const shell = await buildShellData(req, {
         pageTitle: 'Student Bill',
         section: 'billing',
         contentView: '../content/admin-billing',
         billingRows,
+        preloadRows: billingRows.filter((row) => preloadIds.has(String(row.student_id))),
         paymentHistory,
         billingTotals: totals,
         paymentMethods: PAYMENT_METHODS,
         paymentPurposes: PAYMENT_PURPOSES,
-        pager: { page, pageCount, total: rawRows.length, pageSize },
-        search,
-        selectedStatus: status,
         query: req.query,
         openEditStudentId,
         openInfoStudentId,
@@ -1162,6 +1234,36 @@ function createAdminRouter(role) {
       res.render('shells/dashboard', shell);
     } catch (error) {
       next(error);
+    }
+  });
+
+  /**
+   * The three dialogs one Student Bill row opens — add payment, payment record
+   * & SOA, edit the bill — rendered on demand when one of its buttons is
+   * pressed. Same partial the page uses for a dialog a link opens directly.
+   */
+  router.get('/billing/:studentId/dialogs', async (req, res) => {
+    try {
+      const studentId = normalizeRouteId(req.params.studentId);
+      const rows = studentId
+        ? await getBillingRows(billingScopeBranchId(req), 'all', { studentId: Number(studentId) })
+        : [];
+      if (!rows.length || !canActOnBranch(req.session.user, rows[0].branch_id)) {
+        return res.status(404).type('text/plain').send('Billing record not found.');
+      }
+      const [row] = await attachPaymentLedgers(rows);
+      return res.render('partials/billing-dialogs', {
+        row,
+        basePath,
+        currentUser: req.session.user,
+        paymentMethods: PAYMENT_METHODS,
+        paymentPurposes: PAYMENT_PURPOSES,
+        openPayStudentId: '',
+        openInfoStudentId: '',
+        openEditStudentId: ''
+      });
+    } catch (error) {
+      return res.status(500).type('text/plain').send(error.message || 'Could not load this billing record.');
     }
   });
 
@@ -1221,28 +1323,18 @@ function createAdminRouter(role) {
    */
   router.get('/income-report', async (req, res, next) => {
     try {
-      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
-      const filters = {
-        search: String(req.query.search || '').trim(),
-        from: req.query.from || '',
-        to: req.query.to || '',
-        method: req.query.method || 'all',
-        purpose: req.query.purpose || 'all',
-        branchId: req.query.branch_id || 'all'
-      };
-
-      const rows = await getPaymentLedger(scope, filters);
+      // Every transaction in scope (an assistant: their branch). The search,
+      // date, branch, method and purpose filters, Print, and the page numbers
+      // are gone: the table shows ten rows and scrolls, and the search icon in
+      // its heading finds any transaction by what is in its row.
+      const scope = resolveScope(req.session.user);
+      const rows = await getPaymentLedger(scope, {});
       const summary = summarisePaymentLedger(rows);
 
       // Outstanding is a property of the accounts, not of the transactions, so it
       // is read from billing rather than derived from the rows above.
-      const outstandingRows = await getBillingRows(getScopeBranchId(req), false);
+      const outstandingRows = await getBillingRows(billingScopeBranchId(req), false);
       const outstanding = outstandingRows.reduce((sum, row) => sum + Number(row.for_settlement || 0), 0);
-
-      const pageSize = Math.min(200, Math.max(10, Number(req.query.page_size) || 50));
-      const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
-      const page = Math.min(pageCount, Math.max(1, Number(req.query.page) || 1));
-      const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
 
       const shell = await buildShellData(req, {
         // Phase 7.3: "Income Report" -> "Payment Collection". The page reports
@@ -1252,16 +1344,9 @@ function createAdminRouter(role) {
         pageTitle: 'Payment Collection',
         section: 'income',
         contentView: '../content/admin-income-report',
-        rows: pageRows,
-        allRows: rows,
+        rows,
         summary: { ...summary, outstanding: Math.round(outstanding * 100) / 100 },
-        pager: { page, pageCount, total: rows.length, pageSize },
-        query: req.query,
-        filters,
-        paymentMethods: PAYMENT_METHODS,
-        paymentPurposes: PAYMENT_PURPOSES,
-        branches: req.session.user.role === 'admin' ? await getBranches() : [],
-        selectedBranch: req.query.branch_id || 'all'
+        query: req.query
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -1461,36 +1546,22 @@ function createAdminRouter(role) {
         getAppNotifications(req.session.user, { search })
       ]);
 
-      // Both lists are paged: a busy branch produces a payment request per
-      // student per month, and the page renders a dialog per request.
-      const pageSize = Math.min(100, Math.max(10, Number(req.query.page_size) || 20));
-      const pageCount = Math.max(1, Math.ceil(allRequests.length / pageSize));
-      const page = Math.min(pageCount, Math.max(1, Number(req.query.page) || 1));
-      const requests = allRequests.slice((page - 1) * pageSize, page * pageSize);
-
-      const alertPageCount = Math.max(1, Math.ceil(allAlerts.length / pageSize));
-      const alertPage = Math.min(alertPageCount, Math.max(1, Number(req.query.alert_page) || 1));
-      const alerts = allAlerts.slice((alertPage - 1) * pageSize, alertPage * pageSize);
-
-      // A request opened straight from a notification link may be on any page,
-      // so it is added to this page rather than the link landing on nothing.
+      // Every slip and every alert: each table shows ten rows and scrolls, with
+      // a search icon in its heading, instead of page numbers.
+      const requests = allRequests;
+      const alerts = allAlerts;
       const openRequestId = req.query.request ? String(req.query.request) : '';
-      if (openRequestId && !requests.some((r) => String(r.id) === openRequestId)) {
-        const wanted = allRequests.find((r) => String(r.id) === openRequestId);
-        if (wanted) requests.unshift(wanted);
-      }
 
       const shell = await buildShellData(req, {
         pageTitle: 'Notifications',
         section: 'notifications',
         contentView: '../content/admin-notifications',
         requests,
+        // The topbar bell's own list of unread alerts is separate (buildShellData).
         alerts,
         // Requests are payment slips now (Phase 3), and the page labels them
         // with the same code the student is holding.
         slipCode,
-        requestPager: { page, pageCount, total: allRequests.length, pageSize },
-        alertPager: { page: alertPage, pageCount: alertPageCount, total: allAlerts.length, pageSize },
         search,
         selectedStatus: status,
         query: req.query,
@@ -1875,12 +1946,34 @@ function createAdminRouter(role) {
   router.get('/subjects/:id', async (req, res, next) => {
     try {
       const scopeBranchId = getScopeBranchId(req);
-      const { subject, students, tutors } = await getSubjectMembers(req.params.id, scopeBranchId);
-      const [archivedAssignments, archivedTutors, adminResources] = await Promise.all([
+      // Everything the tabs show, fetched together rather than one after
+      // another: the database is remote, and each round trip is the cost.
+      const [
+        members, archivedAssignments, archivedTutors, subjectAssessments, modules,
+        preResults, preStatus, postAssessment, comparisons
+      ] = await Promise.all([
+        getSubjectMembers(req.params.id, scopeBranchId),
         getSubjectArchivedAssignments(req.params.id),
         getSubjectArchivedTutors(req.params.id, scopeBranchId),
-        getAdminSubjectResourcesWithArchived(req.params.id)
+        // The Legacy Modules panel and its upload/archive/recover routes are
+        // gone. "Subject Assessments" lists the assessments that exist today —
+        // the Pre-Assessment, every tutor's module assessments, the
+        // Post-Assessment — instead of the retired table, which was empty.
+        getSubjectAssessmentsOverview(req.params.id),
+        // Module system (overhaul Phase 3): All Subjects -> subject -> Modules
+        getSubjectModules(req.params.id),
+        getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' }),
+        getPreAssessmentStatus(req.params.id),
+        // Post-Assessment (overhaul Phase 8): Admin reads the before-and-after,
+        // but the tutor is the one who opens it.
+        getPostAssessment(req.params.id),
+        getSubjectPrePostComparison(req.params.id)
       ]);
+      const { subject, students, tutors } = members;
+      if (!subject) {
+        setFlash(req, 'error', 'Subject not found.');
+        return res.redirect(`${basePath}/subjects`);
+      }
       const assignableStudentsByTutorId = Object.fromEntries(
         tutors.map((tutor) => [String(tutor.id), getAssignableStudentsForTutor(tutor, students)])
       );
@@ -1895,19 +1988,15 @@ function createAdminRouter(role) {
         archivedTutors,
         assignmentStudents: students,
         assignableStudentsByTutorId,
-        adminResources,
-        subjectAssessments: await getSubjectAssessments(req.params.id),
-        // Module system (overhaul Phase 3): All Subjects -> subject -> Modules
-        modules: await getSubjectModules(req.params.id),
+        subjectAssessments,
+        modules,
         maxModuleNumber: MAX_MODULE_NUMBER,
         moduleTargetOptions: getModuleTargetOptions(),
-        preResults: await getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' }),
-        preStatus: await getPreAssessmentStatus(req.params.id),
+        preResults,
+        preStatus,
         warmup: getWarmupState(req.params.id),
-        // Post-Assessment (overhaul Phase 8): Admin reads the before-and-after,
-        // but the tutor is the one who opens it.
-        postAssessment: await getPostAssessment(req.params.id),
-        comparisons: await getSubjectPrePostComparison(req.params.id)
+        postAssessment,
+        comparisons
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -2157,112 +2246,17 @@ function createAdminRouter(role) {
     }
   });
 
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-  router.post('/subjects/:id/resources', resourceUploader.single('attachment'), async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can upload modules.');
-        return res.redirect(`${basePath}/subjects/${req.params.id}`);
-      }
-
-      let contentText = '';
-      if (req.file) {
-        // Read the bytes the upload already produced. The file may live in remote
-        // storage now, where there is no path for a parser to open.
-        const dataBuffer = req.file.buffer;
-
-        try {
-          if (req.file.mimetype === 'application/pdf') {
-            const pdfParse = require('pdf-parse');
-            const data = await pdfParse(dataBuffer);
-            contentText = data.text;
-          } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-            const mammoth = require('mammoth');
-            const result = await mammoth.extractRawText({ buffer: dataBuffer });
-            contentText = result.value;
-          } else if (req.file.mimetype === 'text/plain') {
-            contentText = dataBuffer.toString('utf8');
-          }
-        } catch (parseError) {
-          console.error('[AI File Parser] Error extracting text:', parseError);
-          // Non-fatal error, we still save the file
-        }
-      }
-
-      await addSubjectResource(req.session.user.id, req.params.id, req.body.title, req.body.description, req.file ? {
-        path: `/uploads/resources/${req.file.filename}`,
-        mimetype: req.file.mimetype
-      } : null, {
-        created_by_role: 'admin_template',
-        type_of_module: req.body.type_of_module || null,
-        content_text: contentText.substring(0, 50000) // limit to 50k chars
-      });
-      setFlash(req, 'success', 'Module uploaded successfully.');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Route: Create pre/post assessment for a subject
-  // Removed in Phase 1: POST /subjects/:id/assessments/create.
-  // Admin no longer authors assessments. Pre/Post assessments are generated from
-  // module handouts (Phase 5) and module assessments belong to the Tutor (Phase 7).
-
-  // Route: Publish a post assessment
-  router.post('/subjects/:id/assessments/:assessmentId/publish', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can publish assessments.');
-        return res.redirect(`${basePath}/subjects/${req.params.id}`);
-      }
-      await query('UPDATE assessments SET is_published = 1 WHERE id = ? AND subject_id = ?', [req.params.assessmentId, req.params.id]);
-      setFlash(req, 'success', 'Post-Assessment published! Students can now take it.');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not publish assessment.');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    }
-  });
-
-  // Removed in Phase 1: POST /subjects/:id/assessments/:assessmentId/copy-as-post.
-  // It never worked — it required '../../lib/data', which resolves outside the
-  // project root, so the button always threw MODULE_NOT_FOUND. The pre -> post
-  // cloning it was meant to do is rebuilt properly in Phase 8, keyed on
-  // source_pre_assessment_id instead of duplicating question rows blindly.
-
-  // Route: Archive a module
-  router.post('/subjects/:id/resources/:resourceId/archive', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can archive modules.');
-        return res.redirect(`${basePath}/subjects/${req.params.id}`);
-      }
-      await archiveSubjectResource(req.params.resourceId);
-      setFlash(req, 'success', 'Module archived.');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Route: Recover an archived module
-  router.post('/subjects/:id/resources/:resourceId/recover', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can recover modules.');
-        return res.redirect(`${basePath}/subjects/${req.params.id}`);
-      }
-      await recoverSubjectResource(req.params.resourceId);
-      setFlash(req, 'success', 'Module recovered.');
-      res.redirect(`${basePath}/subjects/${req.params.id}`);
-    } catch (error) {
-      next(error);
-    }
-  });
+  // ==========================================================================
+  // Legacy modules — removed.
+  //
+  // POST /subjects/:id/resources (upload), /subjects/:id/resources/:id/archive
+  // and /recover, and /subjects/:id/assessments/:id/publish served the
+  // pre-overhaul "Legacy Modules" panel and its subject_resources /
+  // assessments rows. That panel is gone from the subject page, and every
+  // module now lives in Modules (Module 1..N with handouts), so the routes went
+  // with it rather than staying reachable with nothing on screen to call them.
+  // Existing rows are untouched.
+  // ==========================================================================
 
   // Route: Student analytics per subject (admin view)
   router.get('/subjects/:id/students/:studentId/analytics', async (req, res, next) => {
@@ -2272,11 +2266,18 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Student or subject not found.');
         return res.redirect(`${basePath}/subjects/${req.params.id}`);
       }
+      if (!canActOnBranch(req.session.user, analytics.student.branch_id)) {
+        setFlash(req, 'error', 'You can only view students from your branch.');
+        return res.redirect(`${basePath}/subjects/${req.params.id}`);
+      }
       const shell = await buildShellData(req, {
         pageTitle: `Analytics: ${analytics.student.first_name} ${analytics.student.last_name}`,
         section: 'subjects',
         contentView: '../content/admin-student-analytics',
-        analytics
+        student: analytics.student,
+        analyticsList: [analytics],
+        backUrl: `${basePath}/subjects/${req.params.id}`,
+        backLabel: `Back to ${analytics.subject.name}`
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -2295,7 +2296,7 @@ function createAdminRouter(role) {
     try {
       await archiveTutorSubject(req.params.id, req.params.tutorId);
       setFlash(req, 'success', 'Tutor archived from subject.');
-      res.redirect('back');
+      redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
       next(error);
     }
@@ -2309,7 +2310,7 @@ function createAdminRouter(role) {
     try {
       await recoverTutorSubject(req.params.id, req.params.tutorId);
       setFlash(req, 'success', 'Tutor recovered into subject.');
-      res.redirect('back');
+      redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
       next(error);
     }
@@ -2338,7 +2339,7 @@ function createAdminRouter(role) {
     try {
       await archiveAssignment(req.params.id);
       setFlash(req, 'success', 'Assignment archived.');
-      res.redirect('back');
+      redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
       next(error);
     }
@@ -2352,7 +2353,7 @@ function createAdminRouter(role) {
     try {
       await recoverAssignment(req.params.id);
       setFlash(req, 'success', 'Assignment recovered.');
-      res.redirect('back');
+      redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
       next(error);
     }
@@ -2600,17 +2601,13 @@ function createAdminRouter(role) {
    */
   router.get('/analytics', async (req, res, next) => {
     try {
-      const filters = {
-        search: String(req.query.search || '').trim(),
-        subjectId: req.query.subject_id || 'all',
-        kind: req.query.kind || 'all',
-        from: req.query.from || '',
-        to: req.query.to || '',
-        branchId: req.query.branch_id || 'all'
-      };
+      // The filter bar (search, subject, assessment, dates, branch) is gone:
+      // the page reports the whole scope, and each table has its own search
+      // icon and scrolls after ten rows.
+      const filters = { search: '', subjectId: 'all', kind: 'all', from: '', to: '', branchId: 'all' };
 
       const data = await getAnalyticsDashboard(req.session.user, filters);
-      const focus = await getFocusHandouts(data.scope, { search: filters.search }).catch(() => []);
+      const focus = await getFocusHandouts(data.scope, {}).catch(() => []);
 
       const shell = await buildShellData(req, {
         pageTitle: 'Analytics & Reports',
@@ -2654,27 +2651,34 @@ function createAdminRouter(role) {
     }
   });
 
-  // Student analytics detail page (from Analytics & Reports page)
+  // One learner's Analytics & Reports, opened from the Learner performance
+  // table: a score chart and history for EVERY subject they are enrolled in.
+  // It used to show only their first subject.
   router.get('/students/:studentId/analytics', async (req, res, next) => {
     try {
-      const studentAssignments = await getStudentAssignments(req.params.studentId);
-      if (!studentAssignments.length) {
-        setFlash(req, 'error', 'No analytics data found for this student.');
+      const student = await getUserById(req.params.studentId);
+      if (!student || student.role !== 'student') {
+        setFlash(req, 'error', 'Student not found.');
+        return res.redirect(`${basePath}/analytics`);
+      }
+      if (!canActOnBranch(req.session.user, student.branch_id)) {
+        setFlash(req, 'error', 'You can only view students from your branch.');
         return res.redirect(`${basePath}/analytics`);
       }
 
-      // Get analytics for the first subject (primary view)
-      const primaryAnalytics = await getStudentAnalytics(req.params.studentId, studentAssignments[0].subject_id);
-      if (!primaryAnalytics) {
-        setFlash(req, 'error', 'Student or subject not found.');
-        return res.redirect(`${basePath}/analytics`);
-      }
+      const studentAssignments = await getStudentAssignments(student.id);
+      const analyticsList = (await Promise.all(
+        studentAssignments.map((assignment) => getStudentAnalytics(student.id, assignment.subject_id))
+      )).filter(Boolean);
 
       const shell = await buildShellData(req, {
-        pageTitle: `Analytics: ${primaryAnalytics.student.first_name} ${primaryAnalytics.student.last_name}`,
+        pageTitle: `Analytics: ${student.first_name} ${student.last_name}`,
         section: 'analytics',
         contentView: '../content/admin-student-analytics',
-        analytics: primaryAnalytics
+        student,
+        analyticsList,
+        backUrl: `${basePath}/analytics`,
+        backLabel: 'Back to Analytics & Reports'
       });
       res.render('shells/dashboard', shell);
     } catch (error) {

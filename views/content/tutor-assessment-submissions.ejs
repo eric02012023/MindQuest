@@ -4,7 +4,11 @@
     Closes the loop the tutor works in: they write an assessment on a module, the
     student answers it inside that same module, and this is where the tutor comes
     to check it. Students who have not answered are listed too — knowing who is
-    outstanding is half of checking a class. %>
+    outstanding is half of checking a class.
+
+    Only THIS tutor's students in the subject, and only those the module is
+    aimed at (routes/tutor.js). It used to list every learner taking the
+    subject in every branch. %>
 <%
   const rows = submissions || [];
   const answered = rows.filter((r) => r.submission_id);
@@ -56,7 +60,7 @@
     </div>
 
     <% if (!rows.length) { %>
-      <p class="empty-state">No student is enrolled in this subject yet, so there is nothing to check.</p>
+      <p class="empty-state">None of your students in this subject can see this module yet, so there is nothing to check.</p>
     <% } else { %>
       <div class="table-wrap">
         <table>

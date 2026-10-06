@@ -55,23 +55,10 @@
     <% } %>
   </div>
 
-  <% if (totals.remaining > 0 && floor.kind === 'instalment' && floor.amount > 1) { %>
-    <p class="mq-form-note">
-      <% if (floor.remaining <= floor.amount) { %>
-        Your last instalment: pay the remaining <strong><%= money(floor.remaining) %></strong> and this account is fully paid.
-      <% } else { %>
-        Your down payment is in. The remaining <strong><%= money(floor.remaining) %></strong> is cleared in at most
-        <%= floor.split %> payments of at least <strong><%= money(floor.amount) %></strong> each (a third of the
-        <%= money(floor.billed) %> bill) — you can always pay more, up to the full balance.
-      <% } %>
-    </p>
-  <% } %>
-
   <% if (!bill) { %>
     <div class="mq-panel">
       <div class="mq-empty">
         <strong>No billing record yet</strong>
-        Your account has not been billed. The office will post a statement here once it is ready.
       </div>
     </div>
   <% } else { %>
@@ -79,10 +66,7 @@
     <%# --------------------------------------------------------- Pay action %>
     <section class="mq-panel">
       <div class="mq-panel-head">
-        <div>
-          <h2>Make a payment</h2>
-          <p>Pay online, or generate a payment slip and settle it in cash at your branch counter.</p>
-        </div>
+        <h2>Make a payment</h2>
         <% if (totals.remaining > 0) { %>
           <span class="mq-status mq-status-unpaid"><%= money(totals.remaining) %> outstanding</span>
         <% } else { %>
@@ -98,9 +82,8 @@
           <div class="mq-detail-item is-wide">
             <span>You have a payment slip open</span>
             <strong>
-              Slip for <%= money(pending.amount) %>, issued <%= formatDateTime(pending.created_at) %>.
-              Show it at <%= pending.branch_name || 'your branch' %> — the cashier records the payment
-              on the POS. A new slip can be issued once this one has been recorded or cancelled.
+              Slip for <%= money(pending.amount) %>, issued <%= formatDateTime(pending.created_at) %>
+              — pay at <%= pending.branch_name || 'your branch' %>.
             </strong>
           </div>
         </div>
@@ -109,7 +92,7 @@
           <a class="mq-btn" href="/student/billing/slip.pdf" target="_blank" rel="noopener">Open PDF</a>
         </div>
       <% } else if (totals.remaining <= 0) { %>
-        <div class="mq-empty">Nothing to pay right now. Your account is fully settled.</div>
+        <div class="mq-empty">Your account is fully settled.</div>
       <% } else { %>
         <div class="mq-form">
           <label class="is-wide">Payment method
@@ -121,7 +104,6 @@
               <% }) %>
             </select>
           </label>
-          <p class="mq-form-note" id="pay-method-note"><%= cashMethod ? cashMethod.description : '' %></p>
         </div>
 
         <%# Phase 3 — the cash panel is a SLIP generator, not a transaction.
@@ -153,33 +135,21 @@
           <%# Phase 2.3: no standing note here. The hint below is empty until the
               amount typed is actually short, so a student paying a valid amount
               is not told off for it. %>
+          <%# Never more than the balance: a red note says so, with the exact
+              amount to pay, and the form will not submit (public/js/main.js).
+              The "Purpose of payment" field is gone — a student pays tuition. %>
           <label>Amount you intend to pay
             <input type="number" name="amount" step="0.01" min="<%= minimumPayment.toFixed(2) %>"
-                   max="<%= totals.remaining %>"
+                   max="<%= totals.remaining.toFixed(2) %>"
                    value="<%= totals.remaining.toFixed(2) %>" required
-                   data-pay-amount data-minimum="<%= minimumPayment %>" />
+                   data-pay-amount data-minimum="<%= minimumPayment %>"
+                   data-balance="<%= totals.remaining.toFixed(2) %>" data-balance-audience="student" />
             <small class="mq-field-hint mq-field-hint-error" data-pay-warning hidden></small>
-          </label>
-
-          <label>Purpose of payment
-            <select name="purpose">
-              <% (paymentPurposes || []).forEach((purpose) => { %>
-                <option value="<%= purpose %>"><%= purpose %></option>
-              <% }) %>
-            </select>
           </label>
 
           <label class="is-wide">Notes for the office (optional)
             <input type="text" name="reference_note" placeholder="e.g. with my guardian on Saturday" />
           </label>
-
-          <p class="mq-form-note">
-            This produces a <strong>payment slip</strong> — a statement of what you owe, which you can
-            show on your phone, save as a PDF or print. <strong>No money is taken here.</strong>
-            You pay at the counter, the cashier records it on the POS, and it appears in your
-            Payment History straight away. The amount above is what you <em>intend</em> to pay; the
-            cashier records whatever actually changes hands.
-          </p>
 
           <div class="mq-form-foot">
             <button class="mq-btn mq-btn-primary" type="submit"><%- icon('receipt') %> Generate payment slip</button>
@@ -196,18 +166,12 @@
 
           <label>Amount to pay
             <input type="number" name="amount" step="0.01" min="<%= minimumPayment.toFixed(2) %>"
-                   max="<%= totals.remaining %>"
+                   max="<%= totals.remaining.toFixed(2) %>"
                    value="<%= totals.remaining.toFixed(2) %>" required
-                   data-pay-amount data-minimum="<%= minimumPayment %>" />
+                   data-pay-amount data-minimum="<%= minimumPayment %>"
+                   data-balance="<%= totals.remaining.toFixed(2) %>" data-balance-audience="student" />
             <small class="mq-field-hint mq-field-hint-error" data-pay-warning hidden></small>
           </label>
-
-          <p class="mq-form-note">
-            This one <strong>does</strong> move money. You are taken to a secure
-            payment page for card, GCash, GrabPay or Maya, and your balance updates
-            as soon as the payment is confirmed — no trip to the branch, and nothing
-            for the office to confirm by hand.
-          </p>
 
           <div class="mq-form-foot">
             <button class="mq-btn mq-btn-primary" type="submit"><%- icon('money') %> Pay now</button>
@@ -219,10 +183,7 @@
     <%# ------------------------------------------------------ Payment history %>
     <section class="mq-panel">
       <div class="mq-panel-head">
-        <div>
-          <h2>Payment history</h2>
-          <p>Every payment recorded against your account, oldest first.</p>
-        </div>
+        <h2>Payment history</h2>
         <span class="mq-count"><%= totals.paymentCount %> payment<%= totals.paymentCount === 1 ? '' : 's' %></span>
       </div>
 
@@ -238,7 +199,6 @@
         <% if (!data.entries.length) { %>
           <div class="mq-empty">
             <strong>No payments yet</strong>
-            Payments appear here as soon as the office records them.
           </div>
         <% } %>
 
@@ -292,10 +252,7 @@
     <%# ---------------------------------------------------- Posted statements %>
     <section class="mq-panel">
       <div class="mq-panel-head">
-        <div>
-          <h2>Statements posted by the office</h2>
-          <p>Each is a snapshot of your account on the day it was issued.</p>
-        </div>
+        <h2>Statements posted by the office</h2>
         <span class="mq-count"><%= data.statements.length %></span>
       </div>
 

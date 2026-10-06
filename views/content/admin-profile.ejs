@@ -17,8 +17,10 @@
             supportOptions, branches, assignableTutors, currentTutor,
             tutorSlotUsage, timeSlots %>
 <%
-const userSubjects = safeJsonArray(profileUser.subjects_json || profileUser.subjects || []);
-const userSupports = safeJsonArray(profileUser.support_json || profileUser.supports || []);
+// The parsed (and repaired) lists, not the raw JSON: an account whose list was
+// damaged by the old profile save shows — and saves back — its real subjects.
+const userSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : safeJsonArray(profileUser.subjects_json || []);
+const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
 const archivedSubjects = safeJsonArray(profileUser.extra?.archived_subjects || []);
 const isStudent = profileUser.role === 'student';
 const isTutor = profileUser.role === 'tutor';
@@ -84,14 +86,17 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
           <span class="mq-card-icon"><%- icon('book', 18) %></span>
           <div><span>Subjects</span><strong><%= userSubjects.length %></strong></div>
         </div>
-        <% if (isStudent) { %>
+        <% if (isStudent) {
+             // A subject's tutor is that subject's own, so a student can have more than one.
+             const tutorNames = [...new Set(assignments.filter((item) => item.tutor_internal_id).map((item) => item.tutor_name))];
+             const scheduleSlots = [...new Set(assignments.map((item) => item.time_slot).filter(Boolean))]; %>
           <div class="mq-profile-stat">
             <span class="mq-card-icon"><%- icon('award', 18) %></span>
-            <div><span>Tutor</span><b><%= currentTutor ? currentTutor.tutor_name : 'Not yet assigned' %></b></div>
+            <div><span><%= tutorNames.length > 1 ? 'Tutors' : 'Tutor' %></span><b><%= tutorNames.join(', ') || 'Not yet assigned' %></b></div>
           </div>
           <div class="mq-profile-stat">
             <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
-            <div><span>Schedule</span><b><%= tutorSlot || 'Not set yet' %></b></div>
+            <div><span>Schedule</span><b><%= scheduleSlots.join(', ') || 'Not set yet' %></b></div>
           </div>
         <% } else { %>
           <div class="mq-profile-stat">
@@ -323,49 +328,39 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
   </section>
   <% } %>
 
-  <%# ------------------------------------------------ tutor & schedule (Phase 5)
-      Admin-only, and deliberately ONE control for the whole student rather than
-      one per subject: the centre runs one tutor per learner, so a per-subject
-      picker would offer a combination it cannot timetable. The time slot sits in
-      the same form because it moves with the tutor — a new tutor has a different
-      diary — and because the student is not allowed to change either once set. %>
+  <%# ------------------------------------------------ tutors & time schedule
+      A tutor teaches only the subjects they teach. So each of the student's
+      subjects has its own row here — its tutor and time — and the tutors
+      offered for a row are only those who teach that subject at the student's
+      branch. The quick form at the top gives one tutor every subject of this
+      student's that they teach, and says which are left for another tutor.
+      Admin and assistant only: a student cannot change a tutor once set. %>
   <% if (isStudent) { %>
     <%
-      const tutors = assignableTutors || [];
       const slots = timeSlots || [];
       const usage = tutorSlotUsage || [];
-      // Which slots each tutor already has taken by SOMEONE ELSE. Shown rather
-      // than hidden, so an admin can see why a slot is not on offer.
+      const bySubject = typeof tutorsBySubject !== 'undefined' ? (tutorsBySubject || {}) : {};
+      const branchTutors = (assignableTutors || []).filter((tutor) => Object.values(bySubject).some((list) => list.some((t) => Number(t.id) === Number(tutor.id))));
+      // Which slots each tutor already has with SOMEONE ELSE. Shown rather than
+      // hidden, so an admin can see why a slot is not on offer.
       const takenByTutor = {};
       usage.forEach((row) => {
         if (Number(row.student_id) === Number(profileUser.id)) return;
         const key = String(row.tutor_id);
         (takenByTutor[key] = takenByTutor[key] || []).push(row.time_slot);
       });
-      const currentTutorId = currentTutor ? String(currentTutor.tutor_id) : '';
-      const currentSlot = currentTutor ? (currentTutor.time_slot || '') : '';
+      const tutorLabel = (tutor) => `${titleCaseName(tutor.first_name)} ${titleCaseName(tutor.last_name || '')}`.trim()
+        + (tutor.matchesLevel === false ? ' (different year level)' : '');
+      const openCount = assignments.filter((item) => !item.tutor_internal_id).length;
     %>
     <section class="mq-card" id="tutor-schedule">
       <div class="mq-card-head">
         <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
         <div>
-          <h3>Tutor &amp; time schedule</h3>
-          <p>Applies to <strong>all <%= assignments.length %></strong> of this student's subjects — one tutor per student.</p>
+          <h3>Tutors &amp; time schedule</h3>
+          <p>Each subject is taught by a tutor who teaches it.<%= openCount ? ` ${openCount} subject${openCount === 1 ? ' needs' : 's need'} a tutor.` : '' %></p>
         </div>
       </div>
-
-      <% if (currentTutor) { %>
-        <div class="mq-card-body mq-current-tutor">
-          <a class="mq-person" href="<%= basePath %>/profile/<%= currentTutor.tutor_id %>">
-            <%- include('../partials/avatar', { avatarSrc: currentTutor.tutor_image_path, avatarName: currentTutor.tutor_name, avatarSize: 'md' }) %>
-            <span class="mq-person-body">
-              <strong><%= currentTutor.tutor_name %></strong>
-              <span>Current tutor · <%= currentSlot || 'No schedule set' %></span>
-            </span>
-            <%- icon('view') %>
-          </a>
-        </div>
-      <% } %>
 
       <% if (!assignments.length) { %>
         <div class="mq-empty">
@@ -373,70 +368,124 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
           Enrol this student in a subject first — there is nothing to assign a tutor to.
         </div>
       <% } else { %>
-        <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor"
-              data-confirm-message="Assign this tutor and schedule to every subject this student is enrolled in?">
+        <%# One tutor for every subject of this student's that they teach. %>
+        <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor" data-tutor-form
+              data-confirm-message="Assign this tutor and time to every subject of this student's that the tutor teaches?">
           <div class="mq-card-body mq-fields">
-            <label class="is-wide">Tutor
-              <select name="tutor_id" data-tutor-select>
-                <option value="">— No tutor assigned —</option>
-                <% tutors.forEach((tutor) => { %>
-                  <option value="<%= tutor.id %>" <%= currentTutorId === String(tutor.id) ? 'selected' : '' %>
-                          data-taken="<%= (takenByTutor[String(tutor.id)] || []).join('|') %>">
-                    <%= titleCaseName(tutor.first_name) %> <%= titleCaseName(tutor.last_name || '') %><%= tutor.branch_name ? ` — ${tutor.branch_name}` : '' %>
+            <label class="is-wide">Tutor for every subject they teach
+              <select name="tutor_id" data-tutor-select required>
+                <option value="">— Choose a tutor —</option>
+                <% branchTutors.forEach((tutor) => {
+                     const teaches = assignments.filter((item) => (bySubject[String(item.subject_id)] || []).some((t) => Number(t.id) === Number(tutor.id))).map((item) => item.subject_name); %>
+                  <option value="<%= tutor.id %>" data-taken="<%= (takenByTutor[String(tutor.id)] || []).join('|') %>">
+                    <%= tutorLabel(tutor) %> — teaches <%= teaches.join(', ') %>
                   </option>
                 <% }) %>
               </select>
             </label>
-
             <label>Time schedule
               <select name="time_slot" data-slot-select>
                 <option value="">— No schedule set —</option>
-                <% slots.forEach((slot) => { %>
-                  <option value="<%= slot %>" <%= currentSlot === slot ? 'selected' : '' %>><%= slot %></option>
-                <% }) %>
+                <% slots.forEach((slot) => { %><option value="<%= slot %>"><%= slot %></option><% }) %>
               </select>
               <small class="mq-field-hint" data-slot-note></small>
             </label>
           </div>
           <div class="mq-card-foot">
-            <span class="mq-card-foot-note">
-              Saving writes this tutor to <strong>every</strong> subject this student is enrolled in.
-              The student cannot change their tutor or schedule themselves.
-            </span>
-            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save tutor &amp; schedule</button>
+            <span class="mq-card-foot-note">A subject the tutor does not teach is left for another tutor below.</span>
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Assign</button>
           </div>
         </form>
+
+        <%# One row per subject: its tutor and time, changed on its own. %>
+        <div class="mq-table" data-no-table-search style="--mq-min-width: 760px; --mq-cols: minmax(150px, 1.2fr) minmax(220px, 2fr) minmax(170px, 1.3fr) 110px;">
+          <div class="mq-head">
+            <span>Subject</span><span>Tutor</span><span>Time schedule</span><span style="text-align:right;">Save</span>
+          </div>
+          <% assignments.forEach((item) => {
+               const options = bySubject[String(item.subject_id)] || [];
+               const formId = `tutor-row-${item.subject_id}`;
+               // This student's OTHER subjects' times, by tutor: a learner cannot be with two tutors at once.
+               const ownTaken = assignments
+                 .filter((other) => Number(other.subject_id) !== Number(item.subject_id) && other.tutor_internal_id && other.time_slot)
+                 .map((other) => `${other.time_slot}=${other.tutor_internal_id}`)
+                 .join('|'); %>
+            <form class="mq-row" id="<%= formId %>" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor"
+                  data-tutor-form data-own-taken="<%= ownTaken %>"
+                  data-confirm-message="Save the tutor and time for <%= item.subject_name %>?">
+              <input type="hidden" name="subject_ids" value="<%= item.subject_id %>" />
+              <span class="mq-cell mq-cell-primary" data-label="Subject">
+                <span class="mq-name"><%= item.subject_name %></span>
+                <span class="mq-sub"><%= item.tutor_internal_id ? `Now: ${item.tutor_name}` : 'No tutor yet' %></span>
+              </span>
+              <span class="mq-cell" data-label="Tutor">
+                <% if (!options.length && !item.tutor_internal_id) { %>
+                  <span class="mq-sub">No tutor at this branch teaches <%= item.subject_name %>.</span>
+                  <input type="hidden" name="tutor_id" value="" />
+                <% } else { %>
+                  <select name="tutor_id" data-tutor-select aria-label="Tutor for <%= item.subject_name %>">
+                    <option value="">— No tutor —</option>
+                    <% options.forEach((tutor) => { %>
+                      <option value="<%= tutor.id %>" <%= Number(item.tutor_internal_id) === Number(tutor.id) ? 'selected' : '' %>
+                              data-taken="<%= (takenByTutor[String(tutor.id)] || []).join('|') %>"><%= tutorLabel(tutor) %></option>
+                    <% }) %>
+                    <% if (item.tutor_internal_id && !options.some((t) => Number(t.id) === Number(item.tutor_internal_id))) { %>
+                      <option value="<%= item.tutor_internal_id %>" selected><%= item.tutor_name %> (does not teach <%= item.subject_name %>)</option>
+                    <% } %>
+                  </select>
+                <% } %>
+              </span>
+              <span class="mq-cell" data-label="Time schedule">
+                <select name="time_slot" data-slot-select aria-label="Time for <%= item.subject_name %>">
+                  <option value="">— No schedule —</option>
+                  <% slots.forEach((slot) => { %>
+                    <option value="<%= slot %>" <%= item.time_slot === slot ? 'selected' : '' %>><%= slot %></option>
+                  <% }) %>
+                </select>
+                <small class="mq-field-hint" data-slot-note></small>
+              </span>
+              <span class="mq-cell mq-cell-actions">
+                <button class="mq-btn mq-btn-sm mq-btn-primary" type="submit"><%- icon('check') %> Save</button>
+              </span>
+            </form>
+          <% }) %>
+        </div>
       <% } %>
     </section>
 
     <script>
-      // Grey out the slots the chosen tutor already teaches at, and say so. The
-      // server refuses a clash regardless — this only stops the admin finding
-      // out after a round trip.
+      // Grey out the slots the chosen tutor already teaches someone else at, and
+      // the ones this student already spends with a DIFFERENT tutor. The server
+      // refuses a clash regardless — this only saves the admin a round trip.
       (function () {
-        var tutorSelect = document.querySelector('[data-tutor-select]');
-        var slotSelect = document.querySelector('[data-slot-select]');
-        var note = document.querySelector('[data-slot-note]');
-        if (!tutorSelect || !slotSelect) return;
-
-        function refresh() {
-          var option = tutorSelect.options[tutorSelect.selectedIndex];
-          var taken = (option && option.getAttribute('data-taken') || '').split('|').filter(Boolean);
-          Array.prototype.forEach.call(slotSelect.options, function (slot) {
-            if (!slot.value) return;
-            var clash = taken.indexOf(slot.value) !== -1;
-            slot.disabled = clash;
-            slot.textContent = clash ? slot.value + ' — already taken' : slot.value;
+        document.querySelectorAll('[data-tutor-form]').forEach(function (form) {
+          var tutorSelect = form.querySelector('[data-tutor-select]');
+          var slotSelect = form.querySelector('[data-slot-select]');
+          var note = form.querySelector('[data-slot-note]');
+          if (!tutorSelect || !slotSelect) return;
+          var own = (form.getAttribute('data-own-taken') || '').split('|').filter(Boolean).map(function (pair) {
+            var parts = pair.split('=');
+            return { slot: parts[0], tutor: parts[1] };
           });
-          if (slotSelect.selectedOptions[0] && slotSelect.selectedOptions[0].disabled) slotSelect.value = '';
-          if (note) {
-            note.textContent = taken.length
-              ? 'This tutor is already booked at: ' + taken.join(', ')
-              : '';
+
+          function refresh() {
+            var option = tutorSelect.options[tutorSelect.selectedIndex];
+            var tutorId = tutorSelect.value;
+            var taken = (option && option.getAttribute('data-taken') || '').split('|').filter(Boolean);
+            var busy = own.filter(function (o) { return tutorId && o.tutor !== tutorId; }).map(function (o) { return o.slot; });
+            Array.prototype.forEach.call(slotSelect.options, function (slot) {
+              if (!slot.value) return;
+              var reason = taken.indexOf(slot.value) !== -1 ? ' — tutor already booked'
+                : busy.indexOf(slot.value) !== -1 ? ' — student has another subject then' : '';
+              slot.disabled = !!reason;
+              slot.textContent = slot.value + reason;
+            });
+            if (slotSelect.selectedOptions[0] && slotSelect.selectedOptions[0].disabled) slotSelect.value = '';
+            if (note) note.textContent = taken.length ? 'Booked at: ' + taken.join(', ') : '';
           }
-        }
-        tutorSelect.addEventListener('change', refresh);
-        refresh();
+          tutorSelect.addEventListener('change', refresh);
+          refresh();
+        });
       })();
     </script>
   <% } %>

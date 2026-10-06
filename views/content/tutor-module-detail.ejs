@@ -101,9 +101,12 @@
                       : a.assessment_kind === 'post_assessment' ? 'Post-Assessment' : 'Tutor Assessment' %>
                   </span>
                 </td>
+                <%# fill_blank used to fall through to "Essay" — a type a module
+                    assessment cannot even have. %>
                 <td><%= a.question_type === 'mixed' || !a.question_type ? 'Mixed'
                       : a.question_type === 'multiple_choice' ? 'Multiple Choice'
-                      : a.question_type === 'true_false' ? 'True or False' : 'Essay' %></td>
+                      : a.question_type === 'true_false' ? 'True or False'
+                      : a.question_type === 'fill_blank' ? 'Fill in the Blank' : 'Mixed' %></td>
                 <td><%= a.question_count %></td>
                 <td><%= a.submission_count %></td>
                 <td>

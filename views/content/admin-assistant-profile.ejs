@@ -37,11 +37,27 @@
   <%# ------------------------------------------------------------- identity %>
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <div>
-        <h2><%= displayName %></h2>
-        <p><%= profileUser.user_id || '—' %> · Assistant Admin · <%= branchName %></p>
+      <div class="mq-assistant-id">
+        <div data-avatar-preview>
+          <%- include('../partials/avatar', { avatarSrc: profileUser.image_path, avatarName: displayName, avatarSize: 'lg' }) %>
+        </div>
+        <div>
+          <h2><%= displayName %></h2>
+          <p><%= profileUser.user_id || '—' %> · Assistant Admin · <%= branchName %></p>
+        </div>
       </div>
-      <span class="mq-status <%= isArchived ? 'mq-status-cancelled' : 'mq-status-active' %>"><%= isArchived ? 'Archived' : 'Active' %></span>
+      <div class="mq-panel-head-actions">
+        <%# Registration takes no photo; an assistant sets theirs here (the main
+            admin may too). %>
+        <% if (isSelf || isAdminViewer) { %>
+          <form method="post" action="<%= profileUrl %>/photo" enctype="multipart/form-data" class="mq-photo-form">
+            <input type="file" name="image" accept="image/*" id="assistant-photo-input" class="mq-visually-hidden" data-avatar-input
+                   onchange="if (this.files && this.files.length) this.form.submit()" />
+            <label class="mq-btn mq-btn-sm mq-btn-primary" for="assistant-photo-input"><%- icon('edit') %> Change photo</label>
+          </form>
+        <% } %>
+        <span class="mq-status <%= isArchived ? 'mq-status-cancelled' : 'mq-status-active' %>"><%= isArchived ? 'Archived' : 'Active' %></span>
+      </div>
     </div>
 
     <div class="mq-detail">
@@ -229,3 +245,9 @@
   <% } %>
 
 </section>
+
+<style>
+  .mq-assistant-id { display: flex; align-items: center; gap: 14px; }
+  .mq-photo-form { margin: 0; display: inline-flex; }
+  .mq-photo-form label { cursor: pointer; }
+</style>

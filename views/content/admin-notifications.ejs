@@ -31,7 +31,7 @@
 
   <div class="mq-summary">
     <div class="mq-summary-item is-negative">
-      <span>Waiting on you</span><strong><%= summary.waiting || 0 %></strong>
+      <span>Waiting for approval</span><strong><%= summary.waiting || 0 %></strong>
     </div>
     <div class="mq-summary-item is-negative">
       <span>Pending slips</span><strong><%= summary.pending %></strong>
@@ -40,7 +40,7 @@
       <span>Completed</span><strong><%= summary.completed %></strong>
     </div>
     <div class="mq-summary-item is-accent">
-      <span>Unread alerts</span><strong><%= summary.unreadAlerts %></strong>
+      <span>Unread notifications</span><strong><%= summary.unreadAlerts %></strong>
     </div>
   </div>
 
@@ -70,18 +70,14 @@
   <%# ------------------------------------------ registrations & subject requests %>
   <section class="mq-panel" id="inbox">
     <div class="mq-panel-head">
-      <div>
-        <h2>Registrations &amp; subject requests</h2>
-        <p>New learners and tutors waiting to be accepted, and students asking to add a subject.
-           Either Admin or Assistant Admin can decide — whoever gets to it first.</p>
-      </div>
+      <h2>Registrations &amp; subject requests</h2>
       <span class="mq-count"><%= inbox.length %> waiting</span>
     </div>
 
     <div class="mq-table" style="--mq-min-width: 900px; --mq-cols: 130px minmax(150px, 2fr) minmax(140px, 1.6fr) minmax(95px, 1fr) 125px 180px;">
       <div class="mq-head">
         <span>Type</span>
-        <span>Who</span>
+        <span data-search-col>Who</span>
         <span>Request</span>
         <span>Branch</span>
         <span>Submitted</span>
@@ -133,18 +129,14 @@
 
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <div>
-        <h2>Payment slips</h2>
-        <p>Slips students have generated. Take the money on the <a href="<%= basePath %>/pos">POS</a> —
-           either Admin or Assistant Admin, whoever is at the counter.</p>
-      </div>
+      <h2>Payment slips</h2>
       <span class="mq-count"><%= requests.length %> slip<%= requests.length === 1 ? '' : 's' %></span>
     </div>
 
     <div class="mq-table" style="--mq-min-width: 890px; --mq-cols: 140px minmax(150px, 2fr) minmax(90px, 1fr) 95px 120px 105px 80px;">
       <div class="mq-head">
         <span>Submitted</span>
-        <span>Student</span>
+        <span data-search-col>Student</span>
         <span>Branch</span>
         <span class="mq-num">Amount</span>
         <span>Preferred date</span>
@@ -186,27 +178,18 @@
           </span>
         </div>
       <% }) %>
-
-      <% if (typeof requestPager !== 'undefined') { %>
-        <%- include('../partials/mq-pager', {
-          pager: requestPager, baseUrl: `${basePath}/notifications`, params: currentQuery, noun: 'request'
-        }) %>
-      <% } %>
     </div>
   </section>
 
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <div>
-        <h2>System alerts</h2>
-        <p>Automatic notices addressed to your role.</p>
-      </div>
+      <h2>System alerts</h2>
       <span class="mq-count"><%= alerts.length %></span>
     </div>
 
     <div class="mq-table" style="--mq-cols: 150px minmax(220px, 3fr) 1fr 110px 96px;">
       <div class="mq-head">
-        <span>When</span><span>Alert</span><span>Branch</span><span>Read</span><span style="text-align:right;">Actions</span>
+        <span>When</span><span data-search-col>Alert</span><span>Branch</span><span>Read</span><span style="text-align:right;">Actions</span>
       </div>
 
       <% if (!alerts.length) { %>
@@ -239,18 +222,6 @@
           </span>
         </div>
       <% }) %>
-
-      <%# The alert list pages on its own key, so turning a page here does not
-          reset the request list above it. %>
-      <% if (typeof alertPager !== 'undefined') { %>
-        <%- include('../partials/mq-pager', {
-          pager: alertPager,
-          baseUrl: `${basePath}/notifications`,
-          params: currentQuery,
-          noun: 'alert',
-          pageParam: 'alert_page'
-        }) %>
-      <% } %>
     </div>
   </section>
 
@@ -355,8 +326,12 @@
         <% if (request.status === 'pending') { %>
           <form class="mq-form" method="post" action="<%= basePath %>/payment-requests/<%= request.id %>/complete"
                 data-confirm-message="Confirm the cash was received and add it to this student's ledger?">
+            <% const balanceDue = request.balance_due == null ? null : Number(request.balance_due); %>
             <label>Amount actually received
-              <input type="number" name="amount" step="0.01" min="0.01" value="<%= Number(request.amount).toFixed(2) %>" required />
+              <input type="number" name="amount" step="0.01" min="0.01"
+                     <% if (balanceDue !== null) { %>max="<%= balanceDue.toFixed(2) %>" data-balance="<%= balanceDue.toFixed(2) %>"<% } %>
+                     value="<%= (balanceDue !== null ? Math.min(Number(request.amount), balanceDue) : Number(request.amount)).toFixed(2) %>" required />
+              <% if (balanceDue !== null) { %><small class="mq-field-hint">Balance still owed: <%= money(balanceDue) %></small><% } %>
             </label>
             <label class="is-wide">Note (optional)
               <input type="text" name="note" placeholder="e.g. paid in full at the front desk" />

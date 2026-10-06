@@ -1,35 +1,52 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-subjects.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/tutor-subjects.ejs
+    Purpose: The subjects a tutor teaches, and their day — every one of the
+    centre's time slots with the student who holds it.
+
+    The schedule is read from the enrolments (see getTutorScheduleOverview), so
+    a slot an admin assigned shows as taken. It used to read only the students'
+    own accepted requests, and most taken slots showed "Available". %>
 <section class="panel-card">
   <div class="panel-card-head"><h2>My Subjects</h2></div>
   <div class="subject-list-cards">
     <% if (!subjects.length) { %><p class="empty-state">No subject assignment yet.</p><% } %>
     <% subjects.forEach((subject) => { %>
       <a class="subject-list-card" href="/tutor/subjects/<%= subject.subject_id %>">
-        <div><strong><%= subject.subject_name %></strong><span><%= subject.total_students %> students</span></div>
+        <div><strong><%= subject.subject_name %></strong><span><%= subject.total_students %> student<%= Number(subject.total_students) === 1 ? '' : 's' %></span></div>
       </a>
     <% }) %>
   </div>
 </section>
 <section class="panel-card">
-  <div class="panel-card-head"><h3>My Time Schedule</h3></div>
+  <div class="panel-card-head">
+    <h3>My Time Schedule</h3>
+    <% const takenCount = (scheduleOverview || []).filter((item) => item.raw_status !== 'available' && item.raw_status !== 'pending').length; %>
+    <span class="badge badge-info"><%= takenCount %> of <%= (scheduleOverview || []).length %> slots taken</span>
+  </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Time Slot</th><th>Status</th><th>Student</th><th>Action</th></tr></thead>
+      <thead><tr><th>Time Slot</th><th>Status</th><th>Student</th><th>Subject</th><th>Action</th></tr></thead>
       <tbody>
-        <% if (!(scheduleOverview || []).length) { %><tr><td colspan="4">No time schedule available yet.</td></tr><% } %>
+        <% if (!(scheduleOverview || []).length) { %><tr><td colspan="5">No time schedule available yet.</td></tr><% } %>
         <% (scheduleOverview || []).forEach((item) => { %>
           <tr>
-            <td><%= item.time_slot %></td>
+            <td><strong><%= item.time_slot %></strong></td>
             <td>
-              <% if (item.raw_status === 'finished') { %>
-                <span class="badge badge-finished">Finished</span>
-              <% } else if (item.raw_status === 'available') { %>
+              <% if (item.raw_status === 'available') { %>
                 <span class="badge badge-available">Available</span>
+              <% } else if (item.raw_status === 'pending') { %>
+                <span class="badge badge-warning">Requested</span>
               <% } else { %>
-                <%= item.status %>
+                <span class="badge badge-success">Taken</span>
               <% } %>
             </td>
-            <td><%= item.student_name || '-' %></td>
+            <td>
+              <% if (item.student_id && item.raw_status !== 'pending') { %>
+                <a href="/tutor/students/<%= item.student_id %>"><%= item.student_name %></a>
+              <% } else { %>
+                <%= item.student_name || '-' %>
+              <% } %>
+            </td>
+            <td><%= item.subject_name || '-' %></td>
             <td>
               <% if (['accepted', 'ongoing'].includes(item.raw_status) && item.application_id) { %>
                 <form method="POST" action="/tutor/schedule/<%= item.application_id %>/finish" data-confirm-message="Mark this session as finished? The time slot will become available again.">

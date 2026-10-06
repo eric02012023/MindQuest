@@ -1,0 +1,215 @@
+<%#
+  File: views/partials/billing-dialogs.ejs
+  Purpose: The three dialogs one Student Bill row opens — add a payment, the
+  payment record & SOA, and edit the bill.
+
+  Rendered on demand: GET <basePath>/billing/:studentId/dialogs returns this
+  when a row's button is pressed, and the page renders it directly only for
+  the one student a link asks to open (?info=, ?pay=, ?edit=). Every row used
+  to carry all three dialogs, which with paging gone would have been some six
+  hundred hidden forms on one page.
+
+  Locals: row (a billing row with .entries and .totals), basePath, currentUser,
+          paymentMethods, paymentPurposes, openPayStudentId, openInfoStudentId,
+          openEditStudentId
+%>
+<%
+  const t = row.totals;
+  const name = `${titleCaseName(row.first_name)} ${titleCaseName(row.middle_name || '')} ${titleCaseName(row.last_name)}`.replace(/\s+/g, ' ').trim();
+  const today = new Date().toISOString().slice(0, 10);
+  const isOpen = (value) => String(value || '') === String(row.student_id);
+  const payOpen = isOpen(typeof openPayStudentId === 'undefined' ? '' : openPayStudentId);
+  const infoOpen = isOpen(typeof openInfoStudentId === 'undefined' ? '' : openInfoStudentId);
+  const editOpen = isOpen(typeof openEditStudentId === 'undefined' ? '' : openEditStudentId);
+%>
+<div class="mq-billing-dialogs" data-billing-dialogs="<%= row.student_id %>">
+
+  <%# ---------------------------------------------------- + Add Payment %>
+  <div class="global-modal <%= payOpen ? 'is-open' : '' %>" id="pay-<%= row.student_id %>" <%= payOpen ? 'data-force-open="true"' : '' %>>
+    <div class="global-modal-card wide">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Add payment — <%= name %></h3>
+
+      <div class="mq-summary" style="margin-bottom:12px;">
+        <div class="mq-summary-item"><span>Total billed</span><strong><%= money(t.totalBilled) %></strong></div>
+        <div class="mq-summary-item is-positive"><span>Total paid</span><strong><%= money(t.totalPaid) %></strong></div>
+        <div class="mq-summary-item is-negative"><span>Remaining</span><strong><%= money(t.remaining) %></strong></div>
+      </div>
+
+      <% if (t.remaining <= 0) { %>
+        <div class="mq-empty"><strong>Fully paid</strong>This account has nothing left to pay.</div>
+      <% } else { %>
+        <form class="mq-form" method="post" action="<%= basePath %>/billing/<%= row.student_id %>/payments"
+              data-confirm-message="Add this payment to <%= name %>'s record? Payments cannot be edited or removed afterwards.">
+          <input type="hidden" name="student_id" value="<%= row.student_id %>" />
+
+          <%# Never more than is still owed: the field warns and will not submit,
+              and the server refuses it too (lib/billing.js). %>
+          <label>Amount received
+            <input type="number" name="amount" step="0.01" min="0.01" max="<%= t.remaining.toFixed(2) %>"
+                   data-balance="<%= t.remaining.toFixed(2) %>"
+                   value="<%= t.remaining.toFixed(2) %>" required autocomplete="off" />
+          </label>
+
+          <label>Payment method
+            <select name="payment_method">
+              <% (paymentMethods || []).forEach((method) => { %>
+                <option value="<%= method.value %>"><%= method.label %></option>
+              <% }) %>
+            </select>
+          </label>
+
+          <label>Purpose
+            <select name="purpose">
+              <% (paymentPurposes || []).forEach((purpose) => { %>
+                <option value="<%= purpose %>"><%= purpose %></option>
+              <% }) %>
+            </select>
+          </label>
+
+          <label>Date received
+            <input type="date" name="paid_at" value="<%= today %>" />
+          </label>
+
+          <label>Reference / OR number
+            <input type="text" name="reference_no" placeholder="Optional" autocomplete="off" />
+          </label>
+
+          <label class="is-wide">Notes
+            <textarea name="notes" rows="2" placeholder="Optional — e.g. paid at Mabuhay branch, received by front desk"></textarea>
+          </label>
+
+          <p class="mq-form-note">
+            This will be recorded as payment <strong>#<%= t.paymentCount + 1 %></strong> for <%= name %>,
+            logged against <strong><%= titleCaseName(currentUser.first_name) %> <%= titleCaseName(currentUser.last_name || '') %></strong>
+            (<%= currentUser.role === 'admin' ? 'Admin' : 'Assistant Admin' %>) with today's date and time.
+            Previous payments are not affected.
+          </p>
+
+          <div class="mq-form-foot">
+            <button type="button" class="mq-btn" data-close-modal>Cancel</button>
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Record payment</button>
+          </div>
+        </form>
+      <% } %>
+    </div>
+  </div>
+
+  <%# --------------------------------------------- Payment record + SOA %>
+  <div class="global-modal <%= infoOpen ? 'is-open' : '' %>" id="bill-<%= row.student_id %>" <%= infoOpen ? 'data-force-open="true"' : '' %>>
+    <div class="global-modal-card extra-wide">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Payment record — <%= name %></h3>
+
+      <div class="bill-print-area">
+        <div class="mq-detail">
+          <div class="mq-detail-item"><span>Student ID</span><strong><%= row.user_id %></strong></div>
+          <div class="mq-detail-item"><span>Branch</span><strong><%= row.branch_name || '—' %></strong></div>
+          <div class="mq-detail-item"><span>Contact</span><strong><%= row.contact_number || '—' %></strong></div>
+          <div class="mq-detail-item"><span>SOA type</span><strong><%= row.soa_type || 'Regular SOA' %></strong></div>
+          <div class="mq-detail-item"><span>Payment due</span><strong><%= row.payment_due ? formatDate(row.payment_due) : 'Not set' %></strong></div>
+          <div class="mq-detail-item is-wide"><span>Address</span><strong><%= row.address || '—' %></strong></div>
+        </div>
+
+        <div class="mq-summary" style="margin:0 16px 12px;">
+          <div class="mq-summary-item"><span>Total billed</span><strong><%= money(t.totalBilled) %></strong></div>
+          <div class="mq-summary-item is-positive"><span>Total paid</span><strong><%= money(t.totalPaid) %></strong></div>
+          <div class="mq-summary-item is-negative"><span>Remaining balance</span><strong><%= money(t.remaining) %></strong></div>
+          <div class="mq-summary-item"><span>Payments made</span><strong><%= t.paymentCount %></strong></div>
+        </div>
+
+        <div class="mq-panel" style="margin:0 16px 16px;">
+          <div class="mq-panel-head"><h3>Payment history</h3><span class="mq-count"><%= t.paymentCount %> entr<%= t.paymentCount === 1 ? 'y' : 'ies' %></span></div>
+          <%# The reference/OR number is part of the record, so it prints with it.
+              Without it a printed SOA cannot be reconciled against the
+              gateway's own report. %>
+          <div class="mq-table" style="--mq-cols: 48px 150px 110px 120px minmax(120px, 1fr) minmax(140px, 1.4fr) 110px;">
+            <div class="mq-head">
+              <span>#</span><span data-search-col>Date &amp; time</span><span class="mq-num">Amount</span>
+              <span>Method</span><span>Reference no.</span><span>Recorded by</span><span class="mq-num">Balance</span>
+            </div>
+            <% if (!row.entries.length) { %>
+              <div class="mq-empty">No payments recorded yet. Use the <strong>+</strong> button to add the first one.</div>
+            <% } %>
+            <% row.entries.forEach((entry) => { %>
+              <div class="mq-row">
+                <span class="mq-cell" data-label="#">
+                  <%= entry.sequence_no %>
+                  <% if (Number(entry.is_locked) === 1) { %>
+                    <span title="First payment — locked" aria-label="Locked" style="color:var(--mq-text-soft);"><%- icon('lock', 12) %></span>
+                  <% } %>
+                </span>
+                <span class="mq-cell mq-sub" data-label="Date"><%= formatDateTime(entry.paid_at) %></span>
+                <span class="mq-cell mq-money" data-label="Amount"><%= money(entry.amount) %></span>
+                <span class="mq-cell" data-label="Method"><span class="mq-chip"><%= entry.payment_method || 'Cash' %></span></span>
+                <span class="mq-cell mq-sub mq-ref" data-label="Reference no.">
+                  <% if (entry.reference_no) { %><code><%= entry.reference_no %></code><% } else { %>—<% } %>
+                </span>
+                <span class="mq-cell mq-sub" data-label="Recorded by">
+                  <%= entry.recorded_by_name
+                      || (entry.recorder_first_name ? `${entry.recorder_first_name} ${entry.recorder_last_name || ''}` : 'System') %>
+                  <% if (entry.recorded_by_role) { %>(<%= entry.recorded_by_role === 'admin' ? 'Admin' : entry.recorded_by_role === 'admin_assistant' ? 'Assistant' : entry.recorded_by_role %>)<% } %>
+                </span>
+                <span class="mq-cell mq-num mq-sub" data-label="Balance after"><%= money(entry.balance_after) %></span>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      </div>
+
+      <div class="mq-form-foot print-hide" style="padding:0 16px 16px;">
+        <% if (t.remaining > 0) { %>
+          <button type="button" class="mq-btn mq-btn-primary" onclick="openBillingModal('pay-<%= row.student_id %>')"><%- icon('add') %> Add payment</button>
+        <% } %>
+        <form method="post" action="<%= basePath %>/billing/<%= row.student_id %>/post-soa" data-confirm-message="Post this SOA to the student's Billing Data page?">
+          <input type="hidden" name="student_id" value="<%= row.student_id %>" />
+          <button class="mq-btn" type="submit"><%- icon('receipt') %> Post SOA</button>
+        </form>
+        <button class="mq-btn" type="button" onclick="printBillModal('bill-<%= row.student_id %>')"><%- icon('print') %> Print</button>
+      </div>
+    </div>
+  </div>
+
+  <%# ------------------------------------------------- Edit the header %>
+  <div class="global-modal <%= editOpen ? 'is-open' : '' %>" id="edit-bill-<%= row.student_id %>" <%= editOpen ? 'data-force-open="true"' : '' %>>
+    <div class="global-modal-card wide">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Edit bill — <%= name %></h3>
+
+      <form class="mq-form" method="post" action="<%= basePath %>/billing/<%= row.student_id %>/update">
+        <input type="hidden" name="student_id" value="<%= row.student_id %>" />
+        <input type="hidden" name="billing_student_id" value="<%= row.student_id %>" />
+        <input type="hidden" name="user_id" value="<%= row.user_id %>" />
+
+        <label>Student<input type="text" value="<%= name %>" readonly /></label>
+        <label>Total billed
+          <input type="number" step="0.01" min="<%= t.totalPaid %>" name="full_bill" value="<%= Number(row.full_bill).toFixed(2) %>" required />
+        </label>
+        <label>SOA type
+          <select name="soa_type">
+            <option value="Regular SOA" <%= row.soa_type === 'Regular SOA' ? 'selected' : '' %>>Regular SOA</option>
+            <option value="Promissory SOA" <%= row.soa_type === 'Promissory SOA' ? 'selected' : '' %>>Promissory SOA</option>
+          </select>
+        </label>
+        <label>Payment due date
+          <input type="date" name="payment_due" value="<%= toInputDate(row.payment_due) %>" />
+        </label>
+        <label class="is-wide">Notes
+          <textarea name="notes" rows="2"><%= row.notes || '' %></textarea>
+        </label>
+
+        <p class="mq-form-note">
+          This form sets what the student <em>owes</em>. Money <em>received</em> is not editable here —
+          it is the sum of the <%= t.paymentCount %> ledger entr<%= t.paymentCount === 1 ? 'y' : 'ies' %>
+          (<%= money(t.totalPaid) %>), so the total billed cannot be set below that.
+          To record another payment, use the <strong>+</strong> button.
+        </p>
+
+        <div class="mq-form-foot">
+          <button type="button" class="mq-btn" data-close-modal>Cancel</button>
+          <button class="mq-btn mq-btn-primary" type="submit">Save bill</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

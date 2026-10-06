@@ -43,7 +43,7 @@ function answer(text, params = []) {
   if (/FROM payment_requests/i.test(sql) && /^SELECT/i.test(sql)) return [{ ...slip }];
   if (/^UPDATE payment_requests SET status = 'completed'/i.test(sql)) { slip = { ...slip, status: 'completed' }; return [{ claimed_id: 6 }]; }
   if (/^UPDATE payment_requests SET status = 'pending'/i.test(sql)) { slip = { ...slip, status: 'pending' }; return []; }
-  if (/^SELECT TOP 1 id, full_bill FROM billing/i.test(sql)) return []; // no account: the ledger refuses
+  if (/^SELECT TOP 1 id, full_bill(, partial_payment)? FROM billing/i.test(sql)) return []; // no account: the ledger refuses
   return [];
 }
 

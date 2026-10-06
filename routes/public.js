@@ -7,7 +7,6 @@
 
 const express = require('express');
 const { ensureGuest } = require('../middleware/auth');
-const { createUploader } = require('../lib/uploads');
 const {
   getBranches,
   getSubjects,
@@ -18,7 +17,6 @@ const {
 const { validateStrongPassword, validateGmailAddress } = require('../lib/utils');
 
 const router = express.Router();
-const profileUpload = createUploader('profiles');
 const TUTOR_YEAR_LEVEL_OPTIONS = ['Preschool', 'Primary School', 'Junior High School', 'Senior High School'];
 
 // Function: computeAge
@@ -76,7 +74,9 @@ function buildDetailsPayload(req, submissionType) {
     parent_contact_number: submissionType === 'student' ? parentContactNumber : '',
     parent_email: body.parent_email,
     parent_facebook: body.parent_facebook,
-    image_path: req.file ? `/uploads/profiles/${req.file.filename}` : (body.existing_image_path || null),
+    // Registration no longer takes a photo: students, tutors, admins and
+    // assistants each set their own from their profile once logged in.
+    image_path: null,
     subjects,
     supports,
     extra: {
@@ -143,7 +143,7 @@ router.get('/register/:type', ensureGuest, async (req, res, next) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.post('/register/:type/details', ensureGuest, profileUpload.single('image'), async (req, res, next) => {
+router.post('/register/:type/details', ensureGuest, async (req, res, next) => {
   try {
     const type = req.params.type === 'tutor' ? 'tutor' : 'student';
     const payload = buildDetailsPayload(req, type);

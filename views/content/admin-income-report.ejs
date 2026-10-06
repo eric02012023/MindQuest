@@ -21,12 +21,13 @@
     Every row is one payment_entries record, so the report and a student's ledger
     can never disagree: they are the same rows.
 
-    Locals: rows (this page), allRows (the whole filtered set), summary, pager,
-            filters, paymentMethods, paymentPurposes, alerts, inboxNotifications %>
-<%
-  const pagerState = typeof pager === 'undefined' ? null : pager;
-  const currentQuery = typeof query === 'undefined' ? {} : query;
-%>
+    WHAT WENT (this release)
+    The filter bar — search, From/To dates, branch, method, purpose, Apply,
+    Clear, Print — and the page numbers. Every transaction is listed in a table
+    that shows ten rows and scrolls; the search icon in its heading finds a
+    transaction by anything in its row (public/js/mq-tables.js).
+
+    Locals: rows (every transaction in scope), summary, alerts, inboxNotifications %>
 <section class="mq-page">
 
   <div class="mq-summary">
@@ -47,71 +48,16 @@
     </div>
   </div>
 
-  <form class="mq-toolbar" method="get" action="<%= basePath %>/income-report">
-    <div class="mq-filters">
-      <label class="mq-field mq-field-search">
-        <span>Search</span>
-        <input type="search" name="search" value="<%= filters.search || '' %>" placeholder="Student, ID or reference" />
-      </label>
-      <label class="mq-field">
-        <span>From</span>
-        <input type="date" name="from" value="<%= filters.from || '' %>" />
-      </label>
-      <label class="mq-field">
-        <span>To</span>
-        <input type="date" name="to" value="<%= filters.to || '' %>" />
-      </label>
-      <% if (currentUser.role === 'admin' && (branches || []).length) { %>
-        <label class="mq-field">
-          <span>Branch</span>
-          <select name="branch_id">
-            <option value="all">All branches</option>
-            <% (branches || []).forEach((branch) => { %>
-              <option value="<%= branch.id %>" <%= String(selectedBranch) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
-            <% }) %>
-          </select>
-        </label>
-      <% } %>
-      <label class="mq-field">
-        <span>Method</span>
-        <select name="method">
-          <option value="all">All methods</option>
-          <% (paymentMethods || []).forEach((method) => { %>
-            <option value="<%= method.value %>" <%= filters.method === method.value ? 'selected' : '' %>><%= method.value %></option>
-          <% }) %>
-        </select>
-      </label>
-      <label class="mq-field">
-        <span>Purpose</span>
-        <select name="purpose">
-          <option value="all">All purposes</option>
-          <% (paymentPurposes || []).forEach((purpose) => { %>
-            <option value="<%= purpose %>" <%= filters.purpose === purpose ? 'selected' : '' %>><%= purpose %></option>
-          <% }) %>
-        </select>
-      </label>
-      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
-      <a class="mq-btn" href="<%= basePath %>/income-report">Clear</a>
-    </div>
-
-    <div class="mq-toolbar-actions">
-      <button type="button" class="mq-btn" onclick="window.print()"><%- icon('print') %> Print</button>
-    </div>
-  </form>
-
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <div>
-        <h2>Transactions</h2>
-        <p>One row per payment received. Figures come straight from the student ledgers.</p>
-      </div>
+      <h2>Transactions</h2>
       <span class="mq-count"><%= summary.transactionCount %> record<%= summary.transactionCount === 1 ? '' : 's' %></span>
     </div>
 
     <div class="mq-table" style="--mq-min-width: 890px; --mq-cols: 140px minmax(150px, 2fr) minmax(90px, 1fr) 100px 90px 100px minmax(110px, 1fr);">
       <div class="mq-head">
         <span>Date &amp; time</span>
-        <span>Student</span>
+        <span data-search-col>Student</span>
         <span>Branch</span>
         <span class="mq-num">Amount</span>
         <span>Method</span>
@@ -121,8 +67,8 @@
 
       <% if (!rows.length) { %>
         <div class="mq-empty">
-          <strong>No transactions in this range</strong>
-          Widen the date range, or clear the filters above.
+          <strong>No transactions yet</strong>
+          Payments appear here as soon as they are recorded.
         </div>
       <% } %>
 
@@ -145,10 +91,6 @@
           </span>
         </div>
       <% }) %>
-
-      <% if (pagerState) { %>
-        <%- include('../partials/mq-pager', { pager: pagerState, baseUrl: `${basePath}/income-report`, params: currentQuery, noun: 'transaction' }) %>
-      <% } %>
     </div>
   </section>
 
