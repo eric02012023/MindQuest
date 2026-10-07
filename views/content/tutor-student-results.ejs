@@ -32,7 +32,7 @@
       </article>
       <article class="tr-tile">
         <span class="tr-tile-label">Active Learners</span>
-        <strong class="tr-tile-value"><%= summary.completedStudents %></strong>
+        <strong class="tr-tile-value"><%= summary.activeStudents %></strong>
       </article>
       <article class="tr-tile">
         <span class="tr-tile-label">Submissions</span>
@@ -62,7 +62,7 @@
               <th>Level</th>
               <th>Avg Score</th>
               <th>Modules Read</th>
-              <th>Completed</th>
+              <th>Activities Done</th>
               <th>Current Module</th>
               <th>Violations</th>
             </tr>
@@ -78,14 +78,23 @@
                 </td>
                 <td><%= student.subjects %></td>
                 <td>
-                  <span class="badge badge-<%= student.current_level === 'Advance' ? 'success' : student.current_level === 'Intermediate' ? 'info' : 'warning' %>">
-                    <%= student.current_level %>
-                  </span>
+                  <%# One level per subject this tutor teaches the student, from that
+                      subject's Pre-Assessment. The subject is named only when
+                      there is more than one. %>
+                  <% student.levels.forEach((item) => { %>
+                    <div class="tr-level">
+                      <span class="badge badge-<%= item.level === 'Advance' ? 'success' : item.level === 'Intermediate' ? 'info' : item.level === 'Beginner' ? 'warning' : 'muted' %>"><%= item.level %></span>
+                      <% if (student.levels.length > 1) { %><span class="tr-sub"><%= item.subject_name %></span><% } %>
+                    </div>
+                  <% }) %>
                 </td>
                 <td><%= student.avg_score %></td>
                 <td><%= student.modules_read %></td>
-                <td><%= student.completed_modules %></td>
-                <td><%= student.current_module %></td>
+                <td><%= student.activities_done %></td>
+                <td>
+                  <%= student.current_module %>
+                  <% if (student.current_module_subject) { %><span class="tr-sub"><%= student.current_module_subject %></span><% } %>
+                </td>
                 <td>
                   <% if (Number(student.total_violations) > 0) { %>
                     <span class="badge badge-danger"><%= student.total_violations %></span>

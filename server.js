@@ -28,7 +28,7 @@ const { resolvePageStyles } = require('./lib/pageStyles');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
 const { getFile, usingSupabase, describeBackend, checkBackend } = require('./lib/storage');
 const { startPaymentReminders } = require('./lib/paymentReminders');
-const { resolveOnlinePaymentMethods } = require('./lib/data');
+const { resolveOnlinePaymentMethods, repairShortSubjectCycles } = require('./lib/data');
 
 const app = express();
 const server = http.createServer(app);
@@ -477,6 +477,19 @@ async function start() {
           }
         })
         .catch((error) => console.error('[PayMongo] could not re-file online payments:', error.message));
+
+      // Subjects enrolled between 12 AM and 8 AM Manila time ended a day early
+      // (the end was counted on the server's UTC clock). They get the day back.
+      repairShortSubjectCycles()
+        .then((outcome) => {
+          if (outcome.changed.length) {
+            console.log(`Subject end dates moved one day later: ${outcome.changed.map((c) => `#${c.id} ${c.subject} ${c.from} -> ${c.to}`).join(', ')}`);
+          }
+          if (outcome.dueDates.length) {
+            console.log(`Payment due dates moved with them: ${outcome.dueDates.map((d) => `student ${d.studentId} ${d.from} -> ${d.to}`).join(', ')}`);
+          }
+        })
+        .catch((error) => console.error('[enrolment] could not repair subject end dates:', error.message));
     });
   } catch (error) {
     console.error('Failed to bootstrap the database before start.');

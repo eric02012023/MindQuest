@@ -55,6 +55,7 @@ const {
   getSubmissionsByAssessment,
   getTutorAssessmentById,
   getTutorStudentResults,
+  tutorTeachesStudentIn,
   // Module -> Handout -> Assessment overhaul (Phase 6)
   getSubjectModules,
   getSubjectSubmissions,
@@ -1247,12 +1248,15 @@ router.post('/modules/:id/create-assessment', async (req, res, next) => {
 //
 // This is also the old Analytics & Reports page: the per-student roll-up at the
 // top, then every individual attempt underneath. The search box filters the
-// roll-up, which is what it filtered on the page it came from.
+// roll-up, which is what it filtered on the page it came from. Both lists hold
+// only the tutor's own students, in the subjects the tutor teaches them.
 router.get('/student-results', async (req, res, next) => {
   try {
     const search = String(req.query.search || '').trim();
-    const results = await getTutorStudentResults(req.session.user.id);
-    const analytics = await getTutorStudentsForAnalytics(req.session.user.id, search);
+    const [results, analytics] = await Promise.all([
+      getTutorStudentResults(req.session.user.id),
+      getTutorStudentsForAnalytics(req.session.user.id, search)
+    ]);
 
     const shell = await buildShell(req, {
       pageTitle: 'Student Results',
@@ -1294,10 +1298,11 @@ router.get('/results/:submissionId', async (req, res, next) => {
       return res.redirect('/tutor/student-results');
     }
 
-    // A tutor may only read results for subjects they are assigned to.
-    const assigned = await getTutorAssignedSubjects(req.session.user.id);
-    if (!assigned.some((a) => Number(a.subject_id) === Number(submission.subject_id))) {
-      setFlash(req, 'error', 'That result belongs to a subject you are not assigned to.');
+    // A tutor may only read their OWN students' results, in a subject they
+    // teach that student. Teaching the subject alone used to be enough, which
+    // opened every other tutor's students in it to a typed URL.
+    if (!(await tutorTeachesStudentIn(req.session.user.id, submission.student_id, submission.subject_id))) {
+      setFlash(req, 'error', 'That result belongs to a student you do not teach in that subject.');
       return res.redirect('/tutor/student-results');
     }
 

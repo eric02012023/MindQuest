@@ -1318,6 +1318,14 @@ body {
   color: var(--text-soft);
 }
 
+/* One level per subject in the Level column. */
+.tr-level + .tr-level {
+  margin-top: 6px;
+}
+
+/* "Not assessed": no Pre-Assessment in that subject yet. */
+.badge-muted { background: rgba(100, 116, 139, .12); color: #475569; }
+
 .result-bar-container {
   position: relative;
   /* 110px pushed the eight-column results table past its card at 1024px. */
