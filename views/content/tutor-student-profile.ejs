@@ -8,8 +8,10 @@
 <%
   const studentName = [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(' ');
   const logs = attendanceLogs || [];
-  const presentCount = logs.filter((log) => log.status === 'present').length;
-  const attendanceRate = logs.length ? Math.round((presentCount / logs.length) * 100) : null;
+  // Late still attended; an excused day is not held against the student.
+  const attendedCount = logs.filter((log) => ['present', 'late'].includes(String(log.status).toLowerCase())).length;
+  const countedDays = logs.filter((log) => String(log.status).toLowerCase() !== 'excused').length;
+  const attendanceRate = countedDays ? Math.round((attendedCount / countedDays) * 100) : null;
   const combinedAssessments = [
     ...(studentAssessments || []),
     ...(studentAssessmentHistory || [])
@@ -109,9 +111,7 @@
                 <td><%= formatDate(log.attendance_date) %></td>
                 <td><%= log.subject_name %></td>
                 <td>
-                  <span class="badge badge-<%= log.status === 'present' ? 'success' : 'danger' %>">
-                    <%= log.status %>
-                  </span>
+                  <span class="badge <%= attendanceBadge(log.status) %>"><%= attendanceLabel(log.status) %></span>
                 </td>
               </tr>
             <% }) %>

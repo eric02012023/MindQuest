@@ -1,0 +1,31 @@
+<%# File: views/content/user-notification-archive.ejs
+    Purpose: View Archived Notifications (the ☰ menu) for a student or a
+    tutor — the updates they archived, each of which can be recovered.
+
+    Locals: archivedAlerts %>
+<% const archived = archivedAlerts || []; %>
+<section class="panel-card">
+  <div class="panel-card-head">
+    <h2>Archived Notifications</h2>
+    <span class="badge badge-info"><%= archived.length %></span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th data-search-col>Notification</th><th>Recover</th></tr></thead>
+      <tbody>
+        <% if (!archived.length) { %><tr><td colspan="3">No archived notifications.</td></tr><% } %>
+        <% archived.forEach((alert) => { %>
+          <tr>
+            <td><%= formatDateTime(alert.created_at) %></td>
+            <td><strong><%= alert.title %></strong><br /><small><%= alert.message || '' %></small></td>
+            <td>
+              <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/recover">
+                <button type="submit" class="btn btn-primary btn-sm">Recover</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

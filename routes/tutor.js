@@ -19,6 +19,7 @@ const {
   shareAdminResourceToStudents,
   deleteSubjectResource,
   saveAttendance,
+  updateAttendanceStatus,
   getAttendanceByTutor,
   getAllowedContacts,
   getConversation,
@@ -81,8 +82,14 @@ const {
   getAnalyticsDashboard,
   // In-app notifications addressed to this tutor
   getAppNotifications,
-  markAppNotificationReferenceRead
+  markAppNotificationReferenceRead,
+  markOwnAppNotificationRead,
+  markAllAppNotificationsRead,
+  archiveAppNotification,
+  recoverAppNotification,
+  getScheduleRequestHistory
 } = require('../lib/data');
+const { buildBellItems } = require('../lib/bell');
 const { normalizeArray } = require('../lib/utils');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
 const { TUTOR_ASSESSMENT_MIN_ITEMS, TUTOR_ASSESSMENT_MAX_ITEMS } = require('../config/assessmentDefaults');
@@ -121,6 +128,7 @@ async function buildShell(req, extra = {}) {
     getAppNotifications(req.session.user, { unreadOnly: true }).catch(() => []),
     countUnviewedFocusHandouts(req.session.user.id).catch(() => 0)
   ]);
+  const bellItems = buildBellItems({ basePath: '/tutor', scheduleRequests: allNotifications, alerts });
 
   return {
     pageTitle: extra.pageTitle || 'Tutor Dashboard',
@@ -129,12 +137,18 @@ async function buildShell(req, extra = {}) {
     section: extra.section || 'dashboard',
     contentView: extra.contentView,
     currentUser: req.session.user,
-    notificationCount: allNotifications.length + alerts.length,
+    notificationCount: bellItems.length,
     inboxNotifications: allNotifications,
     alerts,
+    bellItems,
     focusHandoutCount,
     ...extra
   };
+}
+
+/** A background request from the bell's × wants no page and no flash back. */
+function isBackgroundRequest(req) {
+  return req.get('X-Requested-With') === 'fetch';
 }
 
 // Route handler: GET request
@@ -261,12 +275,99 @@ router.post('/notifications/:id/accept', async (req, res, next) => {
 router.post('/notifications/:id/cancel', async (req, res, next) => {
   try {
     await cancelTutorScheduleApplication(Number(req.params.id), req.session.user.id);
-    setFlash(req, 'success', 'Schedule application cancelled.');
+    setFlash(req, 'success', 'Request declined. The student will be told.');
     res.redirect('back');
   } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not cancel application.');
+    setFlash(req, 'error', error.message || 'Could not decline the request.');
     res.redirect('back');
   }
+});
+
+// ---------------------------------------------------------------------------
+// Notifications — the bell's "See all", its "Mark all read", and the ☰ menu's
+// View Archived Notifications and Notification History.
+// ---------------------------------------------------------------------------
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const [scheduleRequests, alerts] = await Promise.all([
+      getTutorScheduleNotifications(req.session.user.id),
+      getAppNotifications(req.session.user).catch(() => [])
+    ]);
+    const shell = await buildShell(req, {
+      pageTitle: 'Notifications',
+      section: 'notifications',
+      contentView: '../content/user-notifications',
+      viewerRole: 'tutor',
+      scheduleRequests,
+      scheduleUpdates: [],
+      allAlerts: alerts
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.post('/notifications/mark-all-read', async (req, res, next) => {
+  try {
+    await markAllAppNotificationsRead(req.session.user);
+    setFlash(req, 'success', 'All notifications marked as read. Student requests stay until you accept or decline them.');
+    res.redirect(req.get('Referer') || '/tutor/notifications');
+  } catch (error) { next(error); }
+});
+
+router.get('/notifications/archive', async (req, res, next) => {
+  try {
+    const archived = await getAppNotifications(req.session.user, { archivedOnly: true }).catch(() => []);
+    const shell = await buildShell(req, {
+      pageTitle: 'Archived Notifications',
+      section: 'archive_notifications',
+      contentView: '../content/user-notification-archive',
+      archivedAlerts: archived
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.get('/notifications/history', async (req, res, next) => {
+  try {
+    const [requests, readAlerts] = await Promise.all([
+      getScheduleRequestHistory(req.session.user.id, 'tutor'),
+      getAppNotifications(req.session.user, { readOnly: true, includeArchived: true }).catch(() => [])
+    ]);
+    const shell = await buildShell(req, {
+      pageTitle: 'Notification History',
+      section: 'notification_history',
+      contentView: '../content/user-notification-history',
+      viewerRole: 'tutor',
+      requestHistory: requests,
+      readAlerts
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.post('/alerts/:id/read', async (req, res, next) => {
+  try {
+    await markOwnAppNotificationRead(Number(req.params.id), req.session.user);
+    if (isBackgroundRequest(req)) return res.status(204).end();
+    setFlash(req, 'success', 'Notification marked as read.');
+    res.redirect('back');
+  } catch (error) { next(error); }
+});
+
+router.post('/alerts/:id/archive', async (req, res, next) => {
+  try {
+    await archiveAppNotification(Number(req.params.id), req.session.user);
+    setFlash(req, 'success', 'Notification archived.');
+    res.redirect('/tutor/notifications');
+  } catch (error) { next(error); }
+});
+
+router.post('/alerts/:id/recover', async (req, res, next) => {
+  try {
+    await recoverAppNotification(Number(req.params.id), req.session.user);
+    setFlash(req, 'success', 'Notification recovered.');
+    res.redirect('/tutor/notifications/archive');
+  } catch (error) { next(error); }
 });
 
 // Route handler: POST request
@@ -568,7 +669,23 @@ router.post('/attendance', async (req, res, next) => {
     }
     setFlash(req, 'success', 'Attendance saved successfully.');
     res.redirect(selectedSubjectId ? `/tutor/attendance?subject_id=${encodeURIComponent(selectedSubjectId)}` : '/tutor/attendance');
-  } catch (error) { next(error); }
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not save the attendance.');
+    res.redirect('/tutor/attendance');
+  }
+});
+
+// Attendance Logs: change one record's status (Present / Late / Absent /
+// Excused). Nothing else about the record can be edited.
+router.post('/attendance/:id/status', async (req, res) => {
+  const back = req.body.subject_id ? `/tutor/attendance?subject_id=${encodeURIComponent(req.body.subject_id)}` : '/tutor/attendance';
+  try {
+    await updateAttendanceStatus(Number(req.params.id), req.session.user.id, req.body.status);
+    setFlash(req, 'success', 'Attendance status updated.');
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not update the attendance status.');
+  }
+  res.redirect(`${back}#attendance-logs`);
 });
 
 
@@ -817,7 +934,7 @@ router.get('/profile', async (req, res, next) => {
       getTutorStudentsBySubject(req.session.user.id)
     ]);
     const shell = await buildShell(req, {
-      pageTitle: 'Profile',
+      pageTitle: 'My Profile',
       section: 'profile',
       contentView: '../content/tutor-profile',
       profileUser,
@@ -1217,8 +1334,6 @@ router.post('/modules/:id/create-assessment', async (req, res, next) => {
       return res.redirect(backToForm);
     }
 
-    const questionType = SPEC_QUESTION_TYPES.includes(req.body.question_type) ? req.body.question_type : 'mixed';
-
     await createTutorAssessment({
       subject_id: mod.subject_id,
       module_id: mod.id,
@@ -1231,7 +1346,8 @@ router.post('/modules/:id/create-assessment', async (req, res, next) => {
       // second, competing "Pre-Assessment" for the same subject.
       purpose: 'activity',
       assessment_kind: 'tutor_assessment',
-      question_type: questionType,
+      // No "Question type" to pick any more: the assessment's type is read
+      // from the questions it actually holds (createTutorAssessment).
       item_count: parsedQuestions.length,
       questions: parsedQuestions
     });

@@ -27,7 +27,9 @@ const {
   submitAssessment,
   getAttendanceBySubject,
   getTutorAvailabilityForSubject,
-  getTutorAvailabilityForStudent,
+  getTutorChoicesForStudent,
+  keepCurrentTutorForSubject,
+  normalizePreferredDays,
   createTutorScheduleApplication,
   createTutorScheduleApplicationForAllSubjects,
   getStudentScheduleNotifications,
@@ -94,8 +96,14 @@ const {
   runPreAssessmentFollowUp,
   // Payment reminders in the bell (lib/paymentReminders.js)
   getAppNotifications,
-  markOwnAppNotificationRead
+  markOwnAppNotificationRead,
+  markAllAppNotificationsRead,
+  archiveAppNotification,
+  recoverAppNotification,
+  markAllStudentScheduleNotificationsRead,
+  getScheduleRequestHistory
 } = require('../lib/data');
+const { buildBellItems } = require('../lib/bell');
 const { determineLevel } = require('../config/levelThresholds');
 const { normalizeArray } = require('../lib/utils');
 // Phase 3: cash is a POS transaction now. The student's side ends at a slip.
@@ -112,12 +120,13 @@ router.use(authorize(['student']));
 // Role: Handles a reusable server-side operation used by this module.
 
 async function buildShell(req, extra = {}) {
-  // The bell carries the schedule decisions and, beside them, the alerts
-  // addressed to this student — the weekly payment reminders.
+  // The bell carries the tutors' answers to this student's requests and,
+  // beside them, the alerts addressed to them — the payment reminders.
   const [inboxNotifications, alerts] = await Promise.all([
     getStudentScheduleNotifications(req.session.user.id),
     getAppNotifications(req.session.user, { unreadOnly: true }).catch(() => [])
   ]);
+  const bellItems = buildBellItems({ basePath: '/student', scheduleUpdates: inboxNotifications, alerts });
   return {
     pageTitle: extra.pageTitle || 'Student Dashboard',
     roleName: 'Student',
@@ -125,11 +134,17 @@ async function buildShell(req, extra = {}) {
     section: extra.section || 'dashboard',
     contentView: extra.contentView,
     currentUser: req.session.user,
-    notificationCount: inboxNotifications.length + alerts.length,
+    notificationCount: bellItems.length,
     inboxNotifications,
     alerts,
+    bellItems,
     ...extra
   };
+}
+
+/** A background request from the bell's × wants no page and no flash back. */
+function isBackgroundRequest(req) {
+  return req.get('X-Requested-With') === 'fetch';
 }
 
 // Route handler: GET request
@@ -157,16 +172,28 @@ router.get('/', async (req, res, next) => {
 
 router.get('/subjects', async (req, res, next) => {
   try {
-    const subjectOverview = await getStudentSubjectsOverview(req.session.user.id);
-    // Single unified tutor availability list for all enrolled subjects (Fix C)
-    const tutorOptions = await getTutorAvailabilityForStudent(req.session.user.id);
+    const [subjectOverview, tutorChoices, pendingRequests] = await Promise.all([
+      getStudentSubjectsOverview(req.session.user.id),
+      // Per subject still without a tutor: who could take it, when each is
+      // busy, and which of the student's current tutors also teach it.
+      getTutorChoicesForStudent(req.session.user.id),
+      query(
+        `SELECT tsa.id, tsa.tutor_id, tsa.subject_id, tsa.time_slot, tsa.preferred_days, tsa.created_at,
+                u.first_name, u.last_name
+           FROM tutor_schedule_applications tsa
+           INNER JOIN users u ON u.id = tsa.tutor_id
+          WHERE tsa.student_id = ? AND tsa.status = 'pending'`,
+        [req.session.user.id]
+      )
+    ]);
     const shell = await buildShell(req, {
-      pageTitle: 'My Subject',
+      pageTitle: 'My Subjects',
       section: 'subjects',
       contentView: '../content/student-subjects',
       assignments: subjectOverview.enrolledSubjects,
       allSubjects: subjectOverview.allSubjects,
-      tutorOptions
+      tutorChoices,
+      pendingRequests
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -281,22 +308,48 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
 // Purpose: Processes this endpoint and returns the correct view or action result.
 router.post('/apply-tutor', async (req, res, next) => {
   try {
+    // Days and time come first in the dialog, so a request without them is a
+    // stale form rather than a choice.
+    const preferredDays = normalizePreferredDays(req.body.preferred_days);
+    if (!preferredDays) {
+      setFlash(req, 'error', 'Choose Weekdays or Weekend first.');
+      return res.redirect('/student/subjects');
+    }
     // A tutor takes only the subjects they teach, and only ones with no tutor
     // yet. The request says which; any other subject is picked separately.
+    const subjectId = Number(req.body.subject_id) || null;
     const result = await createTutorScheduleApplicationForAllSubjects(
       req.session.user.id,
       Number(req.body.tutor_id),
-      String(req.body.time_slot || '').trim()
+      String(req.body.time_slot || '').trim(),
+      { preferredDays, subjectIds: subjectId ? [subjectId] : [] }
     );
     const covered = (result && result.subjects) || [];
     setFlash(req, 'success', covered.length
-      ? `Schedule request sent to the tutor for ${covered.join(', ')}. You will be notified once they accept.`
-      : 'Schedule request sent to the tutor.');
+      ? `Your request was sent to the tutor for ${covered.join(', ')} (${preferredDays}, ${String(req.body.time_slot || '').trim()}). You will be notified once they accept.`
+      : 'Your request was sent to the tutor.');
     res.redirect('/student/subjects');
   } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not submit schedule application.');
+    setFlash(req, 'error', error.message || 'Could not send your request to the tutor.');
     res.redirect('/student/subjects');
   }
+});
+
+// A newly enrolled subject that one of the student's current tutors teaches:
+// "keep my tutor" adds it to the sessions they already have together.
+router.post('/subjects/:subjectId/keep-tutor', async (req, res) => {
+  try {
+    const result = await keepCurrentTutorForSubject(
+      req.session.user.id,
+      Number(req.params.subjectId),
+      Number(req.body.tutor_id)
+    );
+    const when = [result.preferredDays, result.timeSlot].filter(Boolean).join(', ');
+    setFlash(req, 'success', `${result.tutorName} is now your ${result.subjectName} tutor too${when ? ` (${when})` : ''}.`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not keep that tutor for this subject.');
+  }
+  res.redirect('/student/subjects');
 });
 
 // Keep per-subject apply route for backwards compatibility (subject-detail page)
@@ -304,8 +357,13 @@ router.post('/apply-tutor', async (req, res, next) => {
 // Purpose: Processes this endpoint and returns the correct view or action result.
 router.post('/subjects/:subjectId/apply', async (req, res, next) => {
   try {
-    await createTutorScheduleApplication(req.session.user.id, Number(req.params.subjectId), Number(req.body.tutor_id), String(req.body.time_slot || '').trim());
-    setFlash(req, 'success', 'Schedule application sent to tutor.');
+    const preferredDays = normalizePreferredDays(req.body.preferred_days);
+    if (!preferredDays) throw new Error('Choose Weekdays or Weekend first.');
+    await createTutorScheduleApplicationForAllSubjects(
+      req.session.user.id, Number(req.body.tutor_id), String(req.body.time_slot || '').trim(),
+      { subjectIds: [Number(req.params.subjectId)], preferredDays }
+    );
+    setFlash(req, 'success', 'Your request was sent to the tutor.');
     res.redirect(`/student/subjects/${req.params.subjectId}`);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not submit schedule application.');
@@ -320,6 +378,7 @@ router.post('/subjects/:subjectId/apply', async (req, res, next) => {
 router.post('/notifications/:id/read', async (req, res, next) => {
   try {
     await markStudentScheduleNotificationRead(Number(req.params.id), req.session.user.id);
+    if (isBackgroundRequest(req)) return res.status(204).end();
     setFlash(req, 'success', 'Notification marked as read.');
     res.redirect('back');
   } catch (error) { next(error); }
@@ -330,8 +389,90 @@ router.post('/notifications/:id/read', async (req, res, next) => {
 router.post('/alerts/:id/read', async (req, res, next) => {
   try {
     await markOwnAppNotificationRead(Number(req.params.id), req.session.user);
+    if (isBackgroundRequest(req)) return res.status(204).end();
     setFlash(req, 'success', 'Notification marked as read.');
     res.redirect('back');
+  } catch (error) { next(error); }
+});
+
+// ---------------------------------------------------------------------------
+// Notifications — the bell's "See all", its "Mark all read", and the ☰ menu's
+// View Archived Notifications and Notification History.
+// ---------------------------------------------------------------------------
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const [scheduleUpdates, alerts] = await Promise.all([
+      getStudentScheduleNotifications(req.session.user.id),
+      getAppNotifications(req.session.user).catch(() => [])
+    ]);
+    const shell = await buildShell(req, {
+      pageTitle: 'Notifications',
+      section: 'notifications',
+      contentView: '../content/user-notifications',
+      viewerRole: 'student',
+      scheduleUpdates,
+      scheduleRequests: [],
+      allAlerts: alerts
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.post('/notifications/mark-all-read', async (req, res, next) => {
+  try {
+    await Promise.all([
+      markAllStudentScheduleNotificationsRead(req.session.user.id),
+      markAllAppNotificationsRead(req.session.user)
+    ]);
+    setFlash(req, 'success', 'All notifications marked as read.');
+    res.redirect(req.get('Referer') || '/student/notifications');
+  } catch (error) { next(error); }
+});
+
+router.get('/notifications/archive', async (req, res, next) => {
+  try {
+    const archived = await getAppNotifications(req.session.user, { archivedOnly: true }).catch(() => []);
+    const shell = await buildShell(req, {
+      pageTitle: 'Archived Notifications',
+      section: 'archive_notifications',
+      contentView: '../content/user-notification-archive',
+      archivedAlerts: archived
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.get('/notifications/history', async (req, res, next) => {
+  try {
+    const [requests, readAlerts] = await Promise.all([
+      getScheduleRequestHistory(req.session.user.id, 'student'),
+      getAppNotifications(req.session.user, { readOnly: true, includeArchived: true }).catch(() => [])
+    ]);
+    const shell = await buildShell(req, {
+      pageTitle: 'Notification History',
+      section: 'notification_history',
+      contentView: '../content/user-notification-history',
+      viewerRole: 'student',
+      requestHistory: requests,
+      readAlerts
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.post('/alerts/:id/archive', async (req, res, next) => {
+  try {
+    await archiveAppNotification(Number(req.params.id), req.session.user);
+    setFlash(req, 'success', 'Notification archived.');
+    res.redirect('/student/notifications');
+  } catch (error) { next(error); }
+});
+
+router.post('/alerts/:id/recover', async (req, res, next) => {
+  try {
+    await recoverAppNotification(Number(req.params.id), req.session.user);
+    setFlash(req, 'success', 'Notification recovered.');
+    res.redirect('/student/notifications/archive');
   } catch (error) { next(error); }
 });
 
@@ -730,7 +871,7 @@ router.get('/profile', async (req, res, next) => {
     const user = await getUserById(req.session.user.id);
     const subjectOverview = await getStudentSubjectsOverview(req.session.user.id);
     const shell = await buildShell(req, {
-      pageTitle: 'Profile',
+      pageTitle: 'My Profile',
       section: 'profile',
       contentView: '../content/student-profile',
       profileUser: user,

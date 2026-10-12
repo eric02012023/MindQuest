@@ -14,13 +14,12 @@
     multi-select structure and the Manage Subject modal.
 
     Locals: profileUser, studentAssignments, tutorAssignments, subjectOptions,
-            supportOptions, branches, assignableTutors, currentTutor,
-            tutorSlotUsage, timeSlots %>
+            branches, assignableTutors, currentTutor, tutorSlotUsage, timeSlots,
+            preferredDayOptions %>
 <%
 // The parsed (and repaired) lists, not the raw JSON: an account whose list was
 // damaged by the old profile save shows — and saves back — its real subjects.
 const userSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : safeJsonArray(profileUser.subjects_json || []);
-const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
 const archivedSubjects = safeJsonArray(profileUser.extra?.archived_subjects || []);
 const isStudent = profileUser.role === 'student';
 const isTutor = profileUser.role === 'tutor';
@@ -225,7 +224,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
       <section class="mq-card">
         <div class="mq-card-head">
           <span class="mq-card-icon"><%- icon('book', 18) %></span>
-          <div><h3>Subjects &amp; support</h3><p><%= isTutor ? 'What this tutor teaches.' : 'Change these with Manage subjects.' %></p></div>
+          <div><h3>Subjects</h3><p><%= isTutor ? 'What this tutor teaches.' : 'Change these with Manage subjects.' %></p></div>
         </div>
         <div class="mq-card-body mq-fields">
           <% if (isTutor) { %>
@@ -247,19 +246,12 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
               <% } else { %><em>None yet</em><% } %>
             </div>
           <% } %>
-          <div class="mq-field-block is-wide">
-            <span>Additional academic support</span>
-            <% if (userSupports.length) { %>
-              <div class="mq-chip-list"><% userSupports.forEach((support) => { %><span class="mq-subject-chip"><%= support %></span><% }) %></div>
-            <% } else { %><em>None</em><% } %>
-          </div>
         </div>
       </section>
     <% } %>
 
     <% if (!canReassignBranch) { %><input type="hidden" name="branch_id" value="<%= profileUser.branch_id || '' %>" /><% } %>
     <% if (!isTutor) { %><input type="hidden" name="subjects" value="<%= userSubjects.join(',') %>" /><% } %>
-    <input type="hidden" name="supports" value="<%= userSupports.join(',') %>" />
 
     <div class="mq-profile-savebar is-full">
       <span class="mq-card-foot-note" data-avatar-note>Press Edit, change what you need, then save.</span>
@@ -288,7 +280,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
         <span>Subject</span>
         <span><%= isStudent ? 'Tutor' : 'Learner' %></span>
         <span>Schedule</span>
-        <span>Enrolment period</span>
+        <span>Enrollment period</span>
       </div>
 
       <% if (!assignments.length) { %>
@@ -316,8 +308,8 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
               </a>
             <% } else { %>—<% } %>
           </span>
-          <span class="mq-cell mq-sub" data-label="Schedule"><%= item.time_slot || '—' %></span>
-          <span class="mq-cell mq-sub" data-label="Enrolment period">
+          <span class="mq-cell mq-sub" data-label="Schedule"><%= [item.preferred_days, item.time_slot].filter(Boolean).join(', ') || '—' %></span>
+          <span class="mq-cell mq-sub" data-label="Enrollment period">
             <% if (item.start_date || item.end_date) { %>
               <%= formatDate(item.start_date) %> &ndash; <%= formatDate(item.end_date) %>
             <% } else { %>—<% } %>
@@ -347,11 +339,12 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
       usage.forEach((row) => {
         if (Number(row.student_id) === Number(profileUser.id)) return;
         const key = String(row.tutor_id);
-        (takenByTutor[key] = takenByTutor[key] || []).push(row.time_slot);
+        (takenByTutor[key] = takenByTutor[key] || []).push(`${row.time_slot}~${row.preferred_days || ''}`);
       });
       const tutorLabel = (tutor) => `${titleCaseName(tutor.first_name)} ${titleCaseName(tutor.last_name || '')}`.trim()
         + (tutor.matchesLevel === false ? ' (different year level)' : '');
       const openCount = assignments.filter((item) => !item.tutor_internal_id).length;
+      const dayOptions = typeof preferredDayOptions === 'undefined' ? ['Weekdays', 'Weekend'] : preferredDayOptions;
     %>
     <section class="mq-card" id="tutor-schedule">
       <div class="mq-card-head">
@@ -365,7 +358,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
       <% if (!assignments.length) { %>
         <div class="mq-empty">
           <strong>No active subjects</strong>
-          Enrol this student in a subject first — there is nothing to assign a tutor to.
+          Enroll this student in a subject first — there is nothing to assign a tutor to.
         </div>
       <% } else { %>
         <%# One tutor for every subject of this student's that they teach. %>
@@ -390,6 +383,12 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
               </select>
               <small class="mq-field-hint" data-slot-note></small>
             </label>
+            <label>Preferred days
+              <select name="preferred_days" data-days-select>
+                <option value="">— Keep as chosen —</option>
+                <% dayOptions.forEach((day) => { %><option value="<%= day %>"><%= day %></option><% }) %>
+              </select>
+            </label>
           </div>
           <div class="mq-card-foot">
             <span class="mq-card-foot-note">A subject the tutor does not teach is left for another tutor below.</span>
@@ -398,9 +397,9 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
         </form>
 
         <%# One row per subject: its tutor and time, changed on its own. %>
-        <div class="mq-table" data-no-table-search style="--mq-min-width: 760px; --mq-cols: minmax(150px, 1.2fr) minmax(220px, 2fr) minmax(170px, 1.3fr) 110px;">
+        <div class="mq-table" data-no-table-search style="--mq-min-width: 900px; --mq-cols: minmax(150px, 1.2fr) minmax(220px, 2fr) minmax(170px, 1.3fr) minmax(130px, 1fr) 110px;">
           <div class="mq-head">
-            <span>Subject</span><span>Tutor</span><span>Time schedule</span><span style="text-align:right;">Save</span>
+            <span>Subject</span><span>Tutor</span><span>Time schedule</span><span>Preferred days</span><span style="text-align:right;">Save</span>
           </div>
           <% assignments.forEach((item) => {
                const options = bySubject[String(item.subject_id)] || [];
@@ -408,7 +407,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
                // This student's OTHER subjects' times, by tutor: a learner cannot be with two tutors at once.
                const ownTaken = assignments
                  .filter((other) => Number(other.subject_id) !== Number(item.subject_id) && other.tutor_internal_id && other.time_slot)
-                 .map((other) => `${other.time_slot}=${other.tutor_internal_id}`)
+                 .map((other) => `${other.time_slot}=${other.tutor_internal_id}=${other.preferred_days || ''}`)
                  .join('|'); %>
             <form class="mq-row" id="<%= formId %>" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor"
                   data-tutor-form data-own-taken="<%= ownTaken %>"
@@ -444,6 +443,14 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
                 </select>
                 <small class="mq-field-hint" data-slot-note></small>
               </span>
+              <span class="mq-cell" data-label="Preferred days">
+                <select name="preferred_days" data-days-select aria-label="Preferred days for <%= item.subject_name %>">
+                  <option value="" <%= item.preferred_days ? '' : 'selected' %>>— Not chosen —</option>
+                  <% dayOptions.forEach((day) => { %>
+                    <option value="<%= day %>" <%= item.preferred_days === day ? 'selected' : '' %>><%= day %></option>
+                  <% }) %>
+                </select>
+              </span>
               <span class="mq-cell mq-cell-actions">
                 <button class="mq-btn mq-btn-sm mq-btn-primary" type="submit"><%- icon('check') %> Save</button>
               </span>
@@ -463,27 +470,41 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
           var slotSelect = form.querySelector('[data-slot-select]');
           var note = form.querySelector('[data-slot-note]');
           if (!tutorSelect || !slotSelect) return;
+          var daysSelect = form.querySelector('[data-days-select]');
           var own = (form.getAttribute('data-own-taken') || '').split('|').filter(Boolean).map(function (pair) {
             var parts = pair.split('=');
-            return { slot: parts[0], tutor: parts[1] };
+            return { slot: parts[0], tutor: parts[1], days: parts[2] || '' };
           });
+          // Weekdays and the weekend are separate sessions; "not chosen"
+          // could be either, so it collides with both.
+          function overlaps(a, b) { return !a || !b || a === b; }
 
           function refresh() {
             var option = tutorSelect.options[tutorSelect.selectedIndex];
             var tutorId = tutorSelect.value;
-            var taken = (option && option.getAttribute('data-taken') || '').split('|').filter(Boolean);
-            var busy = own.filter(function (o) { return tutorId && o.tutor !== tutorId; }).map(function (o) { return o.slot; });
+            var days = daysSelect ? daysSelect.value : '';
+            var taken = (option && option.getAttribute('data-taken') || '').split('|').filter(Boolean).map(function (entry) {
+              var parts = entry.split('~');
+              return { slot: parts[0], days: parts[1] || '' };
+            });
+            var tutorBusy = taken.filter(function (t) { return overlaps(t.days, days); }).map(function (t) { return t.slot; });
+            var busy = own.filter(function (o) { return tutorId && o.tutor !== tutorId && overlaps(o.days, days); }).map(function (o) { return o.slot; });
             Array.prototype.forEach.call(slotSelect.options, function (slot) {
               if (!slot.value) return;
-              var reason = taken.indexOf(slot.value) !== -1 ? ' — tutor already booked'
+              var reason = tutorBusy.indexOf(slot.value) !== -1 ? ' — tutor already booked'
                 : busy.indexOf(slot.value) !== -1 ? ' — student has another subject then' : '';
               slot.disabled = !!reason;
               slot.textContent = slot.value + reason;
             });
             if (slotSelect.selectedOptions[0] && slotSelect.selectedOptions[0].disabled) slotSelect.value = '';
-            if (note) note.textContent = taken.length ? 'Booked at: ' + taken.join(', ') : '';
+            if (note) {
+              note.textContent = taken.length
+                ? 'Booked: ' + taken.map(function (t) { return t.days ? t.slot + ' (' + t.days + ')' : t.slot; }).join(', ')
+                : '';
+            }
           }
           tutorSelect.addEventListener('change', refresh);
+          if (daysSelect) daysSelect.addEventListener('change', refresh);
           refresh();
         });
       })();
@@ -568,13 +589,6 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
           <% (subjectOptions || []).forEach((subject) => { if (!archivedSubjects.includes(subject.name)) { %>
             <label><input type="checkbox" name="subjects" value="<%= subject.name %>" <%= userSubjects.includes(subject.name) ? 'checked' : '' %> /> <%= subject.name %></label>
           <% } }) %>
-        </div>
-
-        <label>Additional Academic Support</label>
-        <div class="checkbox-list tall">
-          <% (supportOptions || []).forEach((support) => { %>
-            <label><input type="checkbox" name="supports" value="<%= support %>" <%= userSupports.includes(support) ? 'checked' : '' %> /> <%= support %></label>
-          <% }) %>
         </div>
 
         <div class="form-actions right"><button class="btn btn-primary" type="submit">Confirm</button></div>

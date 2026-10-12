@@ -1,14 +1,50 @@
 <%# File: views/content/admin-branch-detail.ejs
-    Purpose: One branch's students and tutors.
+    Purpose: One branch — who runs it (its Assistant Admin), and its students
+    and tutors, each with the date they became one.
 
-    The Students table had a "Grade Level" heading and no cell under it, so the
-    grade never showed and every column after it sat one place to the left.
-    Both tables show ten rows and scroll, with a search icon in the Name
-    heading (public/js/mq-tables.js). %>
+    "Student since" / "Tutor since" is the day the office accepted their
+    registration (accepted_at), or the day the account was made when there was
+    no registration behind it. "Assistant admin since" is the day the account
+    was created. The tables show ten rows and scroll, with a search icon in the
+    Name heading (public/js/mq-tables.js). %>
+<%
+  const branchAssistants = typeof assistants === 'undefined' ? [] : (assistants || []);
+  const currentAssistants = branchAssistants.filter((a) => !Number(a.is_archived));
+  const formerAssistants = branchAssistants.filter((a) => Number(a.is_archived));
+  const since = (user) => formatDate(user.accepted_at || user.created_at);
+%>
 <section class="page-stack">
   <section class="panel-card">
-    <div class="panel-card-head"><h2><%= branch.name %></h2></div>
-    <p>Click a student or tutor name to view the full profile and registration data.</p>
+    <div class="panel-card-head">
+      <h2><%= branch.name %></h2>
+      <button type="button" class="btn btn-secondary btn-sm" data-modal-target="#rename-branch">Edit Name</button>
+    </div>
+    <p>Click a name to view the full profile and registration data.</p>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Assistant Admin of this branch</h3>
+      <span class="badge badge-info"><%= currentAssistants.length ? currentAssistants.map((a) => titleCaseName(a.display_name)).join(', ') : 'None yet' %></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>User ID</th><th>Name</th><th>Email</th><th>Contact Number</th><th>Assistant Admin Since</th><th>Status</th></tr></thead>
+        <tbody>
+          <% if (!branchAssistants.length) { %><tr><td colspan="6">No assistant admin runs this branch yet. Create one from User Management.</td></tr><% } %>
+          <% [...currentAssistants, ...formerAssistants].forEach((assistant) => { %>
+            <tr>
+              <td><%= assistant.user_id %></td>
+              <td><a href="<%= basePath %>/profile/<%= assistant.id %>"><%= titleCaseName(assistant.display_name) %></a></td>
+              <td><%= assistant.email || '-' %></td>
+              <td><%= assistant.contact_number || '-' %></td>
+              <td><%= formatDate(assistant.created_at) %></td>
+              <td><span class="badge <%= Number(assistant.is_archived) ? 'badge-danger' : 'badge-success' %>"><%= Number(assistant.is_archived) ? 'Former (archived)' : 'Current' %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section class="panel-card">
@@ -18,15 +54,16 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Grade Level</th></tr></thead>
+        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Grade Level</th><th>Student Since</th></tr></thead>
         <tbody>
-          <% if (!students.length) { %><tr><td colspan="4">No students in this branch.</td></tr><% } %>
+          <% if (!students.length) { %><tr><td colspan="5">No students in this branch.</td></tr><% } %>
           <% students.forEach((user) => { %>
             <tr>
               <td><%= user.user_id %></td>
               <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= user.first_name %> <%= user.last_name %></a></td>
               <td><%= user.year_level || '-' %></td>
               <td><%= user.grade_level || '-' %></td>
+              <td><%= since(user) %></td>
             </tr>
           <% }) %>
         </tbody>
@@ -41,19 +78,37 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Subjects</th></tr></thead>
+        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Subjects</th><th>Tutor Since</th></tr></thead>
         <tbody>
-          <% if (!tutors.length) { %><tr><td colspan="4">No tutors in this branch.</td></tr><% } %>
+          <% if (!tutors.length) { %><tr><td colspan="5">No tutors in this branch.</td></tr><% } %>
           <% tutors.forEach((user) => { %>
             <tr>
               <td><%= user.user_id %></td>
               <td><a href="<%= basePath %>/profile/<%= user.id %>"><%= user.first_name %> <%= user.last_name %></a></td>
               <td><%= user.year_level || '-' %></td>
               <td><%= (user.subjects || []).join(', ') || '-' %></td>
+              <td><%= since(user) %></td>
             </tr>
           <% }) %>
         </tbody>
       </table>
     </div>
   </section>
+
+  <div class="global-modal" id="rename-branch">
+    <div class="global-modal-card small">
+      <button type="button" class="modal-close" data-close-modal>&times;</button>
+      <h3>Edit Branch Name</h3>
+      <form method="post" action="<%= basePath %>/branches/<%= branch.id %>/rename" class="stack-form"
+            data-confirm-message="Rename this branch? Everyone in it stays in it.">
+        <input type="hidden" name="return_to" value="detail" />
+        <label>Branch Name
+          <input type="text" name="name" value="<%= branch.name %>" required maxlength="120"
+                 oninput="this.value=this.value.toUpperCase()" pattern="[A-Za-z0-9\s]+BRANCH"
+                 title="Use letters, numbers and spaces only, ending with BRANCH" />
+        </label>
+        <button class="btn btn-primary" type="submit">Save Name</button>
+      </form>
+    </div>
+  </div>
 </section>

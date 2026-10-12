@@ -1,35 +1,55 @@
 <%# File: views/content/student-subjects.ejs
     Purpose: The student's subjects, who teaches each, and picking a tutor.
 
-    A tutor teaches only the subjects they teach. So each subject shows its own
-    tutor (or "No tutor yet"), and "Select Tutor" offers, for the subjects that
-    still have none, the tutors who teach them — each with the subjects they
-    would take. Once a tutor accepts, any subject they do not teach stays open,
-    and the student picks another tutor for that subject alone.
+    PICKING A TUTOR (one dialog per subject that has no tutor yet)
+      0. If one of the student's current tutors also teaches this subject, the
+         dialog first offers to keep them — the subject joins the sessions the
+         student already has with that tutor. "Choose another tutor" goes on.
+      1. The student picks the days (Weekdays or Weekend) and the time.
+      2. Only then are tutors listed: the ones in the student's branch who teach
+         this subject, teach the student's year level, and are free on those
+         days at that time. Each has "View profile" before they are chosen.
 
-    Locals: assignments (enrolled, with tutor_*), allSubjects, tutorOptions %>
+    The chosen tutor takes every open subject they teach once they accept; a
+    subject they do not teach stays open for another tutor.
+
+    Locals: assignments (enrolled, with tutor_*), allSubjects,
+            tutorChoices { subjects: [{ subject_id, subject_name, tutors, currentTutors }],
+                           timeSlots, preferredDays },
+            pendingRequests (the student's requests still waiting on a tutor) %>
 <%
-  const openSubjects = (assignments || []).filter((item) => !item.tutor_internal_id);
+  const choices = (typeof tutorChoices !== 'undefined' && tutorChoices) || { subjects: [], timeSlots: [], preferredDays: [] };
+  const waiting = typeof pendingRequests === 'undefined' ? [] : (pendingRequests || []);
+  const choiceFor = (subjectId) => choices.subjects.find((s) => Number(s.subject_id) === Number(subjectId)) || null;
+  // A waiting request covers the subject it named and every other open subject
+  // its tutor teaches.
+  const requestFor = (subjectId) => {
+    const choice = choiceFor(subjectId);
+    return waiting.find((r) => Number(r.subject_id) === Number(subjectId)
+      || (choice && choice.tutors.some((t) => Number(t.id) === Number(r.tutor_id)))) || null;
+  };
+  const scheduleText = (days, slot) => [days, slot].filter(Boolean).join(', ');
 %>
 <section class="page-stack">
   <section class="panel-card">
     <div class="panel-card-head">
       <h2>Enrolled Subjects</h2>
-      <% if (openSubjects.length) { %>
-        <button type="button" class="btn btn-primary btn-sm" data-modal-target="#select-tutor-modal">Select Tutor</button>
-      <% } %>
     </div>
     <div class="subject-list-cards">
       <% if (!assignments.length) { %>
         <p class="empty-state">No enrolled subjects yet.</p>
       <% } %>
-      <% assignments.forEach((assignment) => { %>
+      <% assignments.forEach((assignment) => {
+           const pending = assignment.tutor_internal_id ? null : requestFor(assignment.subject_id);
+           const canChoose = !assignment.tutor_internal_id && !pending && choiceFor(assignment.subject_id); %>
         <div class="subject-list-card">
           <div>
             <strong><%= assignment.subject_name %></strong>
             <span>
               <% if (assignment.tutor_internal_id) { %>
-                Tutor: <%= assignment.tutor_name %><%= assignment.time_slot ? ` · ${assignment.time_slot}` : '' %>
+                Tutor: <a href="/student/tutors/<%= assignment.tutor_internal_id %>"><%= assignment.tutor_name %></a><%= scheduleText(assignment.preferred_days, assignment.time_slot) ? ` · ${scheduleText(assignment.preferred_days, assignment.time_slot)}` : '' %>
+              <% } else if (pending) { %>
+                Waiting for <%= pending.first_name %> <%= pending.last_name %> to accept · <%= scheduleText(pending.preferred_days, pending.time_slot) %>
               <% } else { %>
                 No tutor yet
               <% } %>
@@ -38,8 +58,8 @@
           <span>Enrolled <%= formatDate(assignment.enrolled_at) %></span>
           <div class="row-actions wrap-row-actions">
             <a class="btn btn-secondary btn-sm" href="/student/subjects/<%= assignment.subject_id %>">View Subject</a>
-            <% if (!assignment.tutor_internal_id) { %>
-              <button type="button" class="btn btn-primary btn-sm" data-modal-target="#select-tutor-modal">Select Tutor</button>
+            <% if (canChoose) { %>
+              <button type="button" class="btn btn-primary btn-sm" data-modal-target="#select-tutor-<%= assignment.subject_id %>">Select Tutor</button>
             <% } %>
           </div>
         </div>
@@ -47,57 +67,96 @@
     </div>
   </section>
 
-  <% if (openSubjects.length) { %>
-  <div class="global-modal" id="select-tutor-modal">
-    <div class="global-modal-card wide modal-scroll-box" style="max-height:85vh;overflow:auto;">
+  <%# ------------------------------------------------ one dialog per subject %>
+  <% choices.subjects.forEach((subject) => { if (requestFor(subject.subject_id)) return; %>
+  <div class="global-modal" id="select-tutor-<%= subject.subject_id %>">
+    <div class="global-modal-card wide st-dialog" data-tutor-picker data-subject-id="<%= subject.subject_id %>">
       <button type="button" class="modal-close" data-close-modal>&times;</button>
-      <h3>Select Tutor</h3>
-      <p class="select-tutor-for">For: <strong><%= openSubjects.map((item) => item.subject_name).join(', ') %></strong></p>
-      <div class="list-stack">
-        <% if (!(tutorOptions || []).length) { %>
-          <p class="empty-state">No tutor in your branch teaches <%= openSubjects.map((item) => item.subject_name).join(', ') %> yet. The office will assign one.</p>
-        <% } %>
-        <% (tutorOptions || []).forEach((availableTutor) => { %>
-          <article class="list-card">
-            <div>
-              <strong><%= availableTutor.first_name %> <%= availableTutor.last_name %></strong>
-              <p>Teaches your: <strong><%= (availableTutor.teachable_subjects || []).join(', ') %></strong></p>
-              <p>Year Level: <%= availableTutor.year_level || '-' %></p>
-              <div class="stack-small">
-                <div>
-                  <strong>Available Time Slots</strong>
-                  <div class="bubble-row">
-                    <% if (!(availableTutor.available_slots || []).length) { %>
-                      <span class="empty-state">No available time slots.</span>
-                    <% } %>
-                    <% (availableTutor.available_slots || []).forEach((slot) => { %>
-                      <form method="post" action="/student/apply-tutor" class="inline-form"
-                            data-confirm-message="Ask <%= availableTutor.first_name %> <%= availableTutor.last_name %> to teach you <%= (availableTutor.teachable_subjects || []).join(', ') %> at <%= slot %>?">
-                        <input type="hidden" name="tutor_id" value="<%= availableTutor.id %>" />
-                        <input type="hidden" name="time_slot" value="<%= slot %>" />
-                        <button class="btn btn-secondary btn-sm" type="submit"><%= slot %></button>
-                      </form>
-                    <% }) %>
-                  </div>
+      <h3>Select a tutor for <%= subject.subject_name %></h3>
+
+      <% if (subject.currentTutors.length) { %>
+        <%# Step 0 — keep a tutor the student already has. %>
+        <div class="st-step" data-step="keep">
+          <p class="st-lead">Your current tutor also teaches <strong><%= subject.subject_name %></strong>. Do you want to keep them for this subject, or choose a different tutor?</p>
+          <div class="st-tutor-list">
+            <% subject.currentTutors.forEach((kept) => { %>
+              <article class="st-tutor-card">
+                <%- include('../partials/avatar', { avatarSrc: kept.image_path, avatarName: kept.name, avatarSize: 'md' }) %>
+                <div class="st-tutor-info">
+                  <strong><%= kept.name %></strong>
+                  <span>Teaches you <%= kept.subjects.join(', ') %></span>
+                  <span>Your sessions: <%= scheduleText(kept.preferred_days, kept.time_slot) || 'not scheduled yet' %></span>
                 </div>
-                <% if ((availableTutor.unavailable_slots || []).length) { %>
-                  <div>
-                    <strong>Unavailable Time Slots</strong>
-                    <div class="bubble-row">
-                      <% (availableTutor.unavailable_slots || []).forEach((slot) => { %>
-                        <span class="pill unpaid"><%= slot %></span>
-                      <% }) %>
-                    </div>
-                  </div>
-                <% } %>
-              </div>
-            </div>
-          </article>
-        <% }) %>
+                <div class="st-tutor-actions">
+                  <a class="btn btn-secondary btn-sm" href="/student/tutors/<%= kept.tutor_id %>" target="_blank" rel="noopener">View profile</a>
+                  <form method="post" action="/student/subjects/<%= subject.subject_id %>/keep-tutor"
+                        data-confirm-message="Keep <%= kept.name %> as your <%= subject.subject_name %> tutor<%= kept.time_slot ? `, in your ${scheduleText(kept.preferred_days, kept.time_slot)} sessions` : '' %>?">
+                    <input type="hidden" name="tutor_id" value="<%= kept.tutor_id %>" />
+                    <button class="btn btn-primary btn-sm" type="submit">Keep this tutor</button>
+                  </form>
+                </div>
+              </article>
+            <% }) %>
+          </div>
+          <div class="st-step-foot">
+            <button type="button" class="btn btn-secondary" data-picker-go="when">Choose another tutor</button>
+          </div>
+        </div>
+      <% } %>
+
+      <%# Step 1 — the days and the time, before any tutor is shown. Not a
+          <form>: nothing is sent yet, and the shell treats any form submit as
+          a page load (its loading overlay). %>
+      <div class="st-step" data-step="when" <%= subject.currentTutors.length ? 'hidden' : '' %> data-picker-when>
+        <p class="st-lead"><strong>Step 1.</strong> When do you want your sessions?</p>
+        <fieldset class="st-days">
+          <legend>Preferred days</legend>
+          <% choices.preferredDays.forEach((day) => { %>
+            <label class="st-day-option">
+              <input type="radio" name="preferred_days_<%= subject.subject_id %>" value="<%= day %>" />
+              <span>
+                <strong><%= day %></strong>
+                <small><%= day === 'Weekdays' ? 'Monday to Friday' : 'Saturday and Sunday' %></small>
+              </span>
+            </label>
+          <% }) %>
+        </fieldset>
+        <label class="st-time">Preferred time
+          <select data-picker-slot>
+            <option value="">Select a time</option>
+            <% choices.timeSlots.forEach((slot) => { %>
+              <option value="<%= slot %>"><%= slot %></option>
+            <% }) %>
+          </select>
+        </label>
+        <p class="st-error" data-picker-error hidden role="alert"></p>
+        <div class="st-step-foot">
+          <% if (subject.currentTutors.length) { %>
+            <button type="button" class="btn btn-secondary" data-picker-go="keep">Back</button>
+          <% } %>
+          <button type="button" class="btn btn-primary" data-picker-find>Show available tutors</button>
+        </div>
+      </div>
+
+      <%# Step 2 — filled in from the data below once a time is chosen. %>
+      <div class="st-step" data-step="tutors" hidden>
+        <p class="st-lead"><strong>Step 2.</strong> Tutors free on <strong data-picker-summary></strong> who teach <%= subject.subject_name %> at your year level:</p>
+        <div class="st-tutor-list" data-picker-list></div>
+        <div class="st-step-foot">
+          <button type="button" class="btn btn-secondary" data-picker-go="when">Change days or time</button>
+        </div>
+      </div>
+
+      <%# A tutor's profile, opened from the list without leaving the dialog. %>
+      <div class="st-step" data-step="profile" hidden>
+        <div class="st-profile" data-picker-profile></div>
+        <div class="st-step-foot">
+          <button type="button" class="btn btn-secondary" data-picker-go="tutors">Back to tutors</button>
+        </div>
       </div>
     </div>
   </div>
-  <% } %>
+  <% }) %>
 
   <section class="panel-card">
     <div class="panel-card-head"><h2>All Subjects</h2></div>
@@ -107,7 +166,7 @@
           <tr>
             <th>Subject</th>
             <th>Status</th>
-            <th>Action</th>
+            <th>Option</th>
           </tr>
         </thead>
         <tbody>
@@ -132,7 +191,7 @@
                 <% } else if (subject.has_pending_request) { %>
                   <button type="button" class="btn btn-secondary btn-sm" disabled>Request Sent</button>
                 <% } else { %>
-                  <form method="post" action="/student/subjects/<%= subject.id %>/enroll" data-confirm-message="Send enrollment request for this subject?">
+                  <form method="post" action="/student/subjects/<%= subject.id %>/enroll" data-confirm-message="Send an enrollment request for <%= subject.name %>?">
                     <button class="btn btn-primary btn-sm" type="submit">Enroll Subject</button>
                   </form>
                 <% } %>
@@ -145,6 +204,207 @@
   </section>
 </section>
 
+<%# The tutors per subject, read by the dialog script. JSON in a script tag is
+    data, never run; "<" is escaped so a name cannot close the tag. %>
+<script type="application/json" id="tutor-choices-data"><%- JSON.stringify(choices.subjects.map((s) => ({ subject_id: s.subject_id, subject_name: s.subject_name, tutors: s.tutors }))).replace(/</g, '\\u003c') %></script>
+
+<script>
+(function () {
+  var dataNode = document.getElementById('tutor-choices-data');
+  if (!dataNode) return;
+  var subjects = [];
+  try { subjects = JSON.parse(dataNode.textContent || '[]'); } catch (_e) { subjects = []; }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function avatar(tutor) {
+    if (tutor.image_path) {
+      var img = el('img', 'mq-avatar mq-avatar-md');
+      img.src = tutor.image_path;
+      img.alt = tutor.name;
+      img.loading = 'lazy';
+      return img;
+    }
+    var parts = String(tutor.name || '').trim().split(/\s+/).filter(Boolean);
+    var initials = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : (parts[0] || 'MQ').slice(0, 2);
+    var span = el('span', 'mq-avatar mq-avatar-md mq-avatar-initials', initials.toUpperCase());
+    span.setAttribute('role', 'img');
+    span.setAttribute('aria-label', tutor.name);
+    return span;
+  }
+
+  function show(picker, step) {
+    picker.querySelectorAll('[data-step]').forEach(function (node) {
+      node.hidden = node.getAttribute('data-step') !== step;
+    });
+  }
+
+  function fact(label, value) {
+    var row = el('div', 'st-fact');
+    row.appendChild(el('span', '', label));
+    row.appendChild(el('strong', '', value || '—'));
+    return row;
+  }
+
+  function renderProfile(picker, tutor) {
+    var box = picker.querySelector('[data-picker-profile]');
+    box.innerHTML = '';
+    var head = el('div', 'st-profile-head');
+    var big = avatar(tutor);
+    big.className = big.className.replace('mq-avatar-md', 'mq-avatar-lg');
+    head.appendChild(big);
+    var who = el('div');
+    who.appendChild(el('h4', '', tutor.name));
+    who.appendChild(el('span', 'st-muted', ['Tutor', tutor.user_id, tutor.branch_name].filter(Boolean).join(' · ')));
+    head.appendChild(who);
+    box.appendChild(head);
+
+    var facts = el('div', 'st-facts');
+    facts.appendChild(fact('Year levels taught', (tutor.year_levels || []).join(', ') || 'All levels'));
+    facts.appendChild(fact('Subjects taught', (tutor.subjects || []).join(', ')));
+    facts.appendChild(fact('Gender', tutor.gender));
+    facts.appendChild(fact('Email', tutor.email));
+    facts.appendChild(fact('Contact number', tutor.contact_number));
+    facts.appendChild(fact('Branch', tutor.branch_name));
+    box.appendChild(facts);
+
+    var full = el('a', 'btn btn-secondary btn-sm', 'Open full profile');
+    full.href = '/student/tutors/' + tutor.id;
+    full.target = '_blank';
+    full.rel = 'noopener';
+    box.appendChild(full);
+    show(picker, 'profile');
+  }
+
+  function renderTutors(picker, subject, days, slot) {
+    var list = picker.querySelector('[data-picker-list]');
+    var summary = picker.querySelector('[data-picker-summary]');
+    summary.textContent = days + ', ' + slot;
+    list.innerHTML = '';
+    var key = days + '|' + slot;
+    var free = (subject.tutors || []).filter(function (t) { return (t.blocked || []).indexOf(key) === -1; });
+
+    if (!free.length) {
+      var empty = el('p', 'empty-state', 'No tutor who teaches ' + subject.subject_name
+        + ' is free on ' + days.toLowerCase() + ' at ' + slot + '. Try another time or other days.');
+      list.appendChild(empty);
+    }
+
+    free.forEach(function (tutor) {
+      var card = el('article', 'st-tutor-card');
+      card.appendChild(avatar(tutor));
+
+      var info = el('div', 'st-tutor-info');
+      info.appendChild(el('strong', '', tutor.name));
+      info.appendChild(el('span', '', 'Year levels: ' + ((tutor.year_levels || []).join(', ') || 'All levels')));
+      if ((tutor.also_teaches || []).length) {
+        info.appendChild(el('span', 'st-also', 'Also teaches your ' + tutor.also_teaches.join(', ') + ' — they would take it too.'));
+      }
+      card.appendChild(info);
+
+      var actions = el('div', 'st-tutor-actions');
+      var view = el('button', 'btn btn-secondary btn-sm', 'View profile');
+      view.type = 'button';
+      view.addEventListener('click', function () { renderProfile(picker, tutor); });
+      actions.appendChild(view);
+
+      var form = el('form');
+      form.method = 'post';
+      form.action = '/student/apply-tutor';
+      form.setAttribute('data-confirm-message', 'Ask ' + tutor.name + ' to be your ' + subject.subject_name
+        + ' tutor on ' + days.toLowerCase() + ', ' + slot + '?');
+      [['tutor_id', tutor.id], ['subject_id', subject.subject_id], ['time_slot', slot], ['preferred_days', days]]
+        .forEach(function (pair) {
+          var input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = pair[0];
+          input.value = pair[1];
+          form.appendChild(input);
+        });
+      var choose = el('button', 'btn btn-primary btn-sm', 'Select tutor');
+      choose.type = 'submit';
+      form.appendChild(choose);
+      actions.appendChild(form);
+
+      card.appendChild(actions);
+      list.appendChild(card);
+    });
+    show(picker, 'tutors');
+  }
+
+  document.querySelectorAll('[data-tutor-picker]').forEach(function (picker) {
+    var subjectId = Number(picker.getAttribute('data-subject-id'));
+    var subject = subjects.find(function (s) { return Number(s.subject_id) === subjectId; });
+    if (!subject) return;
+
+    var when = picker.querySelector('[data-picker-when]');
+    var error = when.querySelector('[data-picker-error]');
+
+    picker.addEventListener('click', function (event) {
+      var go = event.target.closest('[data-picker-go]');
+      if (go) show(picker, go.getAttribute('data-picker-go'));
+
+      if (event.target.closest('[data-picker-find]')) {
+        var picked = when.querySelector('input[type="radio"]:checked');
+        var days = picked ? picked.value : '';
+        var slot = when.querySelector('[data-picker-slot]').value;
+        var problem = !days && !slot ? 'Choose your preferred days and time first.'
+          : !days ? 'Choose Weekdays or Weekend first.'
+          : !slot ? 'Choose your preferred time first.' : '';
+        error.textContent = problem;
+        error.hidden = !problem;
+        if (!problem) renderTutors(picker, subject, days, slot);
+      }
+    });
+  });
+})();
+</script>
+
 <style>
-  .select-tutor-for { margin: 0 0 12px; color: var(--text-soft, #5f7084); }
+  .st-dialog { max-height: 88vh; overflow: auto; }
+  .st-dialog h3 { margin-bottom: 6px; }
+  .st-step { display: grid; gap: 14px; margin-top: 8px; }
+  .st-step[hidden] { display: none; }
+  .st-lead { margin: 0; color: var(--text-soft, #5f7084); line-height: 1.5; }
+  .st-days { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .st-days legend { font-weight: 700; margin-bottom: 8px; font-size: 14px; }
+  .st-day-option {
+    display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer;
+    border: 1px solid var(--border, #d7e2ea); border-radius: 14px; background: #fff;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .st-day-option:has(input:checked) { border-color: #1c9a22; box-shadow: 0 0 0 3px rgba(28, 154, 34, .15); }
+  .st-day-option span { display: grid; gap: 2px; }
+  .st-day-option small { color: var(--text-soft, #5f7084); font-weight: 500; }
+  .st-time { display: grid; gap: 6px; font-weight: 700; font-size: 14px; max-width: 320px; }
+  .st-error { margin: 0; color: #d54c4c; font-size: 13px; font-weight: 600; }
+  .st-step-foot { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+  .st-tutor-list { display: grid; gap: 10px; }
+  .st-tutor-card {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px;
+    padding: 12px 14px; border: 1px solid var(--border, #d7e2ea); border-radius: 16px; background: #fff;
+  }
+  .st-tutor-info { display: grid; gap: 3px; min-width: 0; }
+  .st-tutor-info span { color: var(--text-soft, #5f7084); font-size: 13px; overflow-wrap: anywhere; }
+  .st-tutor-info .st-also { color: #1c7a22; font-weight: 600; }
+  .st-tutor-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .st-tutor-actions form { margin: 0; }
+  .st-profile { display: grid; gap: 14px; }
+  .st-profile-head { display: flex; align-items: center; gap: 14px; }
+  .st-profile-head h4 { margin: 0 0 2px; font-size: 18px; }
+  .st-muted { color: var(--text-soft, #5f7084); font-size: 13px; }
+  .st-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .st-fact { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: #f5f8fa; }
+  .st-fact span { font-size: 12px; color: var(--text-soft, #5f7084); }
+  .st-fact strong { overflow-wrap: anywhere; }
+  .st-profile > .btn { justify-self: start; }
+  @media (max-width: 640px) {
+    .st-tutor-card { grid-template-columns: auto 1fr; }
+    .st-tutor-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  }
 </style>

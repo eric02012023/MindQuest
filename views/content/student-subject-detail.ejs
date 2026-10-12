@@ -4,11 +4,12 @@
     <div class="panel-card-head"><h2><%= assignment.subject_name %></h2></div>
     <p><strong>Tutor:</strong> <%= assignment.tutor_name %></p>
     <p><strong>Time Schedule:</strong> <%= assignment.time_slot || '-' %></p>
+    <p><strong>Preferred Days:</strong> <%= assignment.preferred_days || '-' %></p>
     <%# Phase 4.2: this subject's own month, which is not the same as any other
         subject's — each runs from the day it was taken out. %>
     <% if (assignment.start_date || assignment.end_date) { %>
       <p>
-        <strong>Enrolment period:</strong>
+        <strong>Enrollment period:</strong>
         <%= formatDate(assignment.start_date) %> &ndash; <%= formatDate(assignment.end_date) %>
       </p>
     <% } %>
@@ -232,7 +233,7 @@
           <% (attendanceLogs || []).forEach((item) => { %>
           <tr>
             <td><%= formatDate(item.attendance_date) %></td>
-            <td><%= item.status %></td>
+            <td><span class="badge <%= attendanceBadge(item.status) %>"><%= attendanceLabel(item.status) %></span></td>
             <td><%= [item.tutor_first_name, item.tutor_middle_name, item.tutor_last_name].filter(Boolean).join(' ') || '-' %></td>
           </tr>
           <% }) %>

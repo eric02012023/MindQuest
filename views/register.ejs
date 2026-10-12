@@ -90,7 +90,7 @@
           </div>
 
           <div class="field-block checklist-block">
-            <label>Subject Field <span class="required-mark">*</span></label>
+            <label>Subjects <span class="required-mark">*</span></label>
             <div class="bullet-options checkbox-options multi-column-list">
               <% subjects.filter((subject) => !['Exam Preparation & Reviews', 'Homework Assistance', 'Project Guidance'].includes(subject.name)).forEach((subject) => { %>
                 <label><input type="checkbox" name="subjects" value="<%= subject.name %>" data-subject-checkbox <%= subjectSelections.includes(subject.name) ? 'checked' : '' %> /> <%= subject.name %></label>
@@ -135,7 +135,7 @@
           </div>
 
           <div class="field-block checklist-block">
-            <label>Subject Field <span class="required-mark">*</span></label>
+            <label>Subjects <span class="required-mark">*</span></label>
             <div class="bullet-options checkbox-options multi-column-list">
               <% subjects.filter((subject) => !['Exam Preparation & Reviews', 'Homework Assistance', 'Project Guidance'].includes(subject.name)).forEach((subject) => { %>
                 <label><input type="checkbox" name="subjects" value="<%= subject.name %>" data-subject-checkbox <%= subjectSelections.includes(subject.name) ? 'checked' : '' %> /> <%= subject.name %></label>

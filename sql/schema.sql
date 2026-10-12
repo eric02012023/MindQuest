@@ -1612,3 +1612,83 @@ IF OBJECT_ID('dbo.assistant_rosters', 'U') IS NOT NULL
        WHERE a.role = ''admin_assistant''
          AND a.is_archived = 0
          AND a.assistant_scope_branch_id IS NOT NULL;';
+
+
+-- ---------------------------------------------------------------------------
+-- 40. Preferred days.
+--
+-- A student picks Weekdays or the Weekend when they choose a tutor, and the
+-- tutor's schedule shows which. It lives on the enrolment (what was agreed) and
+-- on the request (what was asked for). A tutor can then hold 1:00-2:00 PM on
+-- weekdays for one student and on the weekend for another.
+--
+-- Rows from before this column read NULL ("not set"). They are NOT backfilled:
+-- writing "Weekdays" onto them would record a choice nobody made. A NULL row
+-- is treated as holding its slot on both, which is the safe reading.
+-- ---------------------------------------------------------------------------
+IF COL_LENGTH('dbo.user_subject_assignments', 'preferred_days') IS NULL
+  ALTER TABLE dbo.user_subject_assignments ADD preferred_days NVARCHAR(20) NULL;
+
+IF COL_LENGTH('dbo.tutor_schedule_applications', 'preferred_days') IS NULL
+  ALTER TABLE dbo.tutor_schedule_applications ADD preferred_days NVARCHAR(20) NULL;
+
+
+-- ---------------------------------------------------------------------------
+-- 41. Attendance has four statuses: present, late, absent and excused.
+--
+-- The original CHECK was unnamed (present/absent only), so it is found by its
+-- column and replaced with a named one. Existing rows are all present/absent,
+-- which the new constraint accepts.
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('dbo.attendance', 'U') IS NOT NULL
+BEGIN
+  DECLARE @ck_attendance SYSNAME, @drop_attendance NVARCHAR(MAX);
+  SET @ck_attendance = NULL;
+  SELECT TOP 1 @ck_attendance = cc.name
+    FROM sys.check_constraints cc
+    JOIN sys.columns c ON c.object_id = cc.parent_object_id AND c.column_id = cc.parent_column_id
+   WHERE cc.parent_object_id = OBJECT_ID('dbo.attendance') AND c.name = 'status'
+     AND cc.definition NOT LIKE '%excused%';
+  IF @ck_attendance IS NOT NULL
+  BEGIN
+    SET @drop_attendance = N'ALTER TABLE dbo.attendance DROP CONSTRAINT ' + QUOTENAME(@ck_attendance);
+    EXEC sp_executesql @drop_attendance;
+  END
+  IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+                  WHERE parent_object_id = OBJECT_ID('dbo.attendance') AND definition LIKE '%excused%')
+    EXEC sp_executesql N'ALTER TABLE dbo.attendance ADD CONSTRAINT ck_attendance_status
+      CHECK (status IN (''present'', ''late'', ''absent'', ''excused''));';
+END;
+
+
+-- ---------------------------------------------------------------------------
+-- 42. NEW TABLE: assistant_admin_profiles
+--
+-- An Assistant Admin is REGISTERED first — name, address, birthdate, contact
+-- number — and given a login afterwards, by picking them from this list. The
+-- person and the account are two steps because the office records who an
+-- assistant is before deciding which branch they will run.
+--
+-- user_id is filled in once an account is created for them, and is what keeps
+-- one person from being given two accounts.
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('dbo.assistant_admin_profiles', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.assistant_admin_profiles (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    first_name NVARCHAR(100) NOT NULL,
+    middle_name NVARCHAR(100) NOT NULL DEFAULT '',
+    last_name NVARCHAR(100) NOT NULL,
+    address NVARCHAR(MAX) NULL,
+    birth_date DATE NULL,
+    age INT NULL,
+    contact_number NVARCHAR(50) NOT NULL DEFAULT '',
+    user_id INT NULL,
+    created_by INT NULL,
+    is_archived BIT NOT NULL DEFAULT 0,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_assistant_profiles_user FOREIGN KEY (user_id) REFERENCES dbo.users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_assistant_profiles_creator FOREIGN KEY (created_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
+  );
+END;

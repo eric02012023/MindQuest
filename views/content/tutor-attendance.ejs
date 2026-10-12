@@ -1,4 +1,10 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/tutor-attendance.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/tutor-attendance.ejs
+    Purpose: The tutor marks attendance, and corrects it afterwards.
+
+    Four statuses: Present, Late, Absent, Excused. In the Attendance Logs only
+    the status of a record can be changed — its date, student and subject stay
+    as they were recorded (POST /tutor/attendance/:id/status). %>
+<% const statusOptions = ['present', 'late', 'absent', 'excused']; %>
 <section class="page-stack">
   <section class="panel-card">
     <div class="panel-card-head"><h2>Mark Attendance</h2></div>
@@ -14,7 +20,7 @@
           <% }) %>
         </select>
       </label>
-      <div class="form-actions"><button class="btn btn-secondary" type="submit">Load Assigned Student</button></div>
+      <div class="form-actions"><button class="btn btn-secondary" type="submit">Load Assigned Students</button></div>
     </form>
 
     <form method="post" action="/tutor/attendance" class="stack-form">
@@ -25,7 +31,7 @@
           <thead><tr><th>Select</th><th>Subject</th><th data-search-col>Student</th><th>Status</th></tr></thead>
           <tbody>
             <% if (!(students || []).length) { %>
-              <tr><td colspan="4">Select one subject first, then click Load Assigned Student.</td></tr>
+              <tr><td colspan="4">Select a subject first, then click Load Assigned Students.</td></tr>
             <% } %>
             <% (students || []).forEach((student) => { const key = `${student.student_id}:${student.subject_id}`; %>
               <tr>
@@ -34,8 +40,9 @@
                 <td><a href="/tutor/students/<%= student.student_id %>"><%= student.full_name %></a></td>
                 <td>
                   <select name="status[<%= key %>]">
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
+                    <% statusOptions.forEach((status) => { %>
+                      <option value="<%= status %>"><%= attendanceLabel(status) %></option>
+                    <% }) %>
                   </select>
                 </td>
               </tr>
@@ -47,18 +54,46 @@
     </form>
   </section>
 
-  <section class="panel-card">
-    <div class="panel-card-head"><h2>Attendance Logs</h2></div>
+  <section class="panel-card" id="attendance-logs">
+    <div class="panel-card-head">
+      <h2>Attendance Logs</h2>
+      <p>Change a status here if it was marked wrongly.</p>
+    </div>
     <div class="table-wrap scroll-table-box">
       <table>
-        <thead><tr><th>Date</th><th data-search-col>Student</th><th>Subject</th><th>Status</th></tr></thead>
+        <thead><tr><th>Date</th><th data-search-col>Student</th><th>Subject</th><th>Status</th><th>Edit Status</th></tr></thead>
         <tbody>
-          <% if (!(attendanceLogs || []).length) { %><tr><td colspan="4">No attendance logs yet.</td></tr><% } %>
+          <% if (!(attendanceLogs || []).length) { %><tr><td colspan="5">No attendance logs yet.</td></tr><% } %>
           <% (attendanceLogs || []).forEach((item) => { %>
-            <tr><td><%= formatDate(item.attendance_date) %></td><td><%= item.first_name %> <%= item.last_name %></td><td><%= item.subject_name %></td><td><%= item.status %></td></tr>
+            <tr>
+              <td><%= formatDate(item.attendance_date) %></td>
+              <td><%= item.first_name %> <%= item.last_name %></td>
+              <td><%= item.subject_name %></td>
+              <td><span class="badge <%= attendanceBadge(item.status) %>"><%= attendanceLabel(item.status) %></span></td>
+              <td>
+                <form method="post" action="/tutor/attendance/<%= item.id %>/status" class="attendance-edit-form"
+                      data-confirm-message="Change <%= item.first_name %> <%= item.last_name %>'s attendance on <%= formatDate(item.attendance_date) %>?">
+                  <input type="hidden" name="subject_id" value="<%= selectedSubjectId || '' %>" />
+                  <select name="status" aria-label="New status">
+                    <% statusOptions.forEach((status) => { %>
+                      <option value="<%= status %>" <%= String(item.status).toLowerCase() === status ? 'selected' : '' %>><%= attendanceLabel(status) %></option>
+                    <% }) %>
+                  </select>
+                  <button class="btn btn-secondary btn-sm" type="submit">Update</button>
+                </form>
+              </td>
+            </tr>
           <% }) %>
         </tbody>
       </table>
     </div>
   </section>
 </section>
+
+<style>
+  .attendance-edit-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+  .attendance-edit-form select {
+    min-width: 130px; padding: 8px 12px; border: 1px solid var(--border, #d7e2ea); border-radius: 12px;
+    background: #fff; font: inherit; font-size: 14px; color: inherit;
+  }
+</style>

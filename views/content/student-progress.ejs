@@ -61,18 +61,29 @@
     </section>
   <% } %>
 
-  <%# ---- One card per subject ---------------------------------------------- %>
+  <%# ---- One tab per subject, stacked; opening one closes the others, so the
+       student sees only the subject they clicked. ---------------------------- %>
+  <% if (subjectList.length) { %>
+    <p class="sp-hint">Click a subject to see your progress in it.</p>
+  <% } %>
   <% subjectList.forEach((s) => {
        const st = s.stats;
        const pre = st.preAssessment;
        const post = st.postAssessment;
        const done = s.completion || {};
        const modulePct = st.totalModules ? Math.round((st.totalModulesRead / st.totalModules) * 100) : 0; %>
-    <section class="panel-card">
-      <div class="panel-card-head">
-        <h3><a href="/student/subjects/<%= s.subject.id %>"><%= s.subject.name %></a></h3>
+    <details class="panel-card sp-subject" name="sp-subject" data-progress-subject>
+      <summary class="sp-subject-summary">
+        <span class="sp-subject-title">
+          <strong><%= s.subject.name %></strong>
+          <small><%= st.totalModulesRead %>/<%= st.totalModules %> modules opened · <%= st.completedAssessments ? `${st.avgPercentage}% average` : 'no scores yet' %></small>
+        </span>
         <span class="level-badge <%= levelClass(st.currentLevel) %>"><%= st.currentLevel %></span>
-      </div>
+        <span class="sp-chevron" aria-hidden="true"></span>
+      </summary>
+
+      <div class="sp-subject-body">
+      <p class="sp-open-subject"><a href="/student/subjects/<%= s.subject.id %>">Open <%= s.subject.name %> &rarr;</a></p>
 
       <div class="sp-ring-row">
         <div class="sp-ring" style="--pct: <%= pre ? Number(pre.percentage) || 0 : 0 %>">
@@ -141,11 +152,42 @@
           </tbody>
         </table>
       </div>
-    </section>
+      </div>
+    </details>
   <% }) %>
 </section>
 
+<script>
+  // One subject open at a time. Browsers that understand <details name> do this
+  // already; this covers the ones that do not.
+  document.querySelectorAll('[data-progress-subject]').forEach(function (item, _i, all) {
+    item.addEventListener('toggle', function () {
+      if (!item.open) return;
+      all.forEach(function (other) { if (other !== item) other.open = false; });
+    });
+  });
+</script>
+
 <style>
+  .sp-hint { margin: 0; color: var(--text-soft, #5f7084); font-size: 14px; }
+  .sp-subject { padding: 0; overflow: hidden; }
+  .sp-subject-summary {
+    display: flex; align-items: center; gap: 12px; padding: 16px 20px; cursor: pointer;
+    list-style: none; user-select: none;
+  }
+  .sp-subject-summary::-webkit-details-marker { display: none; }
+  .sp-subject-summary:hover { background: rgba(28, 154, 34, .05); }
+  .sp-subject-title { display: grid; gap: 2px; flex: 1; min-width: 0; }
+  .sp-subject-title strong { font-size: 16px; overflow-wrap: anywhere; }
+  .sp-subject-title small { color: var(--text-soft, #5f7084); font-size: 13px; }
+  .sp-chevron {
+    width: 10px; height: 10px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    transform: rotate(45deg); transition: transform .2s ease; margin: 0 4px 4px; flex: none; opacity: .6;
+  }
+  .sp-subject[open] .sp-chevron { transform: rotate(-135deg); margin-bottom: -4px; }
+  .sp-subject[open] .sp-subject-summary { border-bottom: 1px solid var(--border, #e3eaef); }
+  .sp-subject-body { padding: 16px 20px 20px; display: grid; gap: 12px; }
+  .sp-open-subject { margin: 0; font-weight: 600; }
   .sp-tile-value small { font-size: .55em; font-weight: 600; opacity: .7; }
   .sp-progress-track {
     height: 8px; border-radius: 999px; background: rgba(28, 154, 34, .12);

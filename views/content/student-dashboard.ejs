@@ -27,15 +27,13 @@
     </section>
     <section class="panel-card">
       <div class="panel-card-head"><h3>Attendance Summary</h3></div>
-      <div style="display: flex; gap: 2rem; padding: 0.5rem 0;">
-        <div>
-          <span style="font-size: 0.875rem; color: var(--text-muted, #868e96);">Present</span>
-          <div style="font-size: 2rem; font-weight: 700; color: var(--success);"><%= dashboard.attendance.present || 0 %></div>
-        </div>
-        <div>
-          <span style="font-size: 0.875rem; color: var(--text-muted, #868e96);">Absent</span>
-          <div style="font-size: 2rem; font-weight: 700; color: var(--danger);"><%= dashboard.attendance.absent || 0 %></div>
-        </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 1.25rem 2rem; padding: 0.5rem 0;">
+        <% [['Present', 'present', 'var(--success, #1a7a3a)'], ['Late', 'late', '#b7791f'], ['Absent', 'absent', 'var(--danger, #a43030)'], ['Excused', 'excused', '#0a6f8a']].forEach(([label, key, color]) => { %>
+          <div>
+            <span style="font-size: 0.875rem; color: var(--text-muted, #868e96);"><%= label %></span>
+            <div style="font-size: 2rem; font-weight: 700; color: <%= color %>;"><%= dashboard.attendance[key] || 0 %></div>
+          </div>
+        <% }) %>
       </div>
     </section>
     <section class="panel-card">
@@ -52,19 +50,6 @@
 
 
   <section class="panel-card">
-    <div class="panel-card-head"><h3>Additional Academic Support</h3></div>
-    <% const studentSupports = Array.isArray(dashboard.user.supports) ? dashboard.user.supports : safeJsonArray(dashboard.user.support_json || []); %>
-    <% if (!studentSupports.length) { %>
-      <p class="empty-state">No additional academic support selected yet.</p>
-    <% } else { %>
-      <div class="bubble-row">
-        <% studentSupports.forEach((support) => { %>
-          <div class="mini-bubble"><span><%= support %></span></div>
-        <% }) %>
-      </div>
-    <% } %>
-  </section>
-  <section class="panel-card">
     <div class="panel-card-head"><h3>My Subjects</h3></div>
     <div class="subject-list-cards">
       <% if (!dashboard.assignments.length) { %>
@@ -76,7 +61,7 @@
             <strong><%= item.subject_name %></strong>
             <span><%= item.tutor_name %></span>
           </div>
-          <span>Status: <%= formatDate(item.enrolled_at) %></span>
+          <span>Enrolled: <%= formatDate(item.enrolled_at) %></span>
         </a>
       <% }) %>
     </div>

@@ -1,0 +1,209 @@
+/**
+ * File: public/css/mq-shell.css
+ * Purpose: The parts of the dashboard shell that every role shares and no page
+ * sheet owns yet.
+ *
+ *   1. The notification bell's dropdown (views/partials/dashboard-topbar.ejs):
+ *      a list of who/what/when with an × each, "See all" and "Mark all read"
+ *      at the foot. The bell button and its red count are already styled by
+ *      every role's page sheet (.notification-pill); this only adds the panel.
+ *   2. Status badges for pages whose own sheet has none (attendance, a tutor's
+ *      student). Zero-specificity :where(), so any page that does style its
+ *      badges keeps its own look.
+ */
+
+/* ------------------------------------------------------------- 1. the bell */
+
+.mq-bell-wrap [hidden],
+.sidebar-badge[hidden] { display: none !important; }
+
+.mq-bell-wrap .notification-pill {
+  cursor: pointer;
+  color: var(--text, #102033);
+}
+
+.mq-bell-wrap .notification-pill .bell {
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
+}
+
+.mq-bell-wrap .notification-pill .count {
+  min-width: 22px;
+  width: auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  box-sizing: border-box;
+}
+
+.menu-panel.mq-bell-panel {
+  width: min(400px, calc(100vw - 24px));
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: min(560px, calc(100vh - 110px));
+  border-radius: 16px;
+  z-index: 60;
+}
+
+.mq-bell-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border, #e3eaef);
+}
+
+.mq-bell-head strong { font-size: 15px; }
+.mq-bell-head span { font-size: 12px; font-weight: 700; color: var(--text-soft, #5f7084); }
+
+.mq-bell-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+}
+
+.mq-bell-empty {
+  margin: 0;
+  padding: 28px 18px;
+  text-align: center;
+  color: var(--text-soft, #5f7084);
+  font-size: 14px;
+}
+
+.mq-bell-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-bottom: 1px solid #eef2f5;
+}
+
+.mq-bell-item:last-child { border-bottom: 0; }
+.mq-bell-item:hover { background: #f5f8fa; }
+
+/* The page sheets give .menu-panel a its own padding and hover; the item's link
+   is laid out here instead. */
+.menu-panel.mq-bell-panel .mq-bell-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 12px 8px 12px 16px;
+  border-radius: 0;
+  color: inherit;
+  text-decoration: none;
+  background: transparent;
+}
+
+.menu-panel.mq-bell-panel .mq-bell-link:hover { background: transparent; }
+
+.mq-bell-link .mq-avatar { flex: none; margin-top: 2px; }
+
+.mq-bell-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mq-bell-text strong {
+  font-size: 14px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.mq-bell-message {
+  font-size: 13px;
+  color: var(--text, #34465a);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mq-bell-text small { font-size: 12px; color: var(--text-soft, #6b7c8f); }
+
+.menu-panel.mq-bell-panel .mq-bell-dismiss {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: 10px 10px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-soft, #5f7084);
+  cursor: pointer;
+}
+
+.menu-panel.mq-bell-panel .mq-bell-dismiss:hover {
+  background: #e8eef2;
+  color: #b91c1c;
+}
+
+.mq-bell-dismiss:disabled { opacity: .45; cursor: progress; }
+
+.mq-bell-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border, #e3eaef);
+  background: #f8fafb;
+}
+
+.mq-bell-foot form { margin: 0; }
+
+.menu-panel.mq-bell-panel .mq-bell-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text, #102033);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menu-panel.mq-bell-panel .mq-bell-action:hover { background: #e9eff3; }
+.menu-panel.mq-bell-panel .mq-bell-action:disabled { opacity: .5; cursor: default; background: transparent; }
+
+@media (max-width: 760px) {
+  .menu-panel.mq-bell-panel {
+    position: fixed;
+    top: 64px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+}
+
+/* ------------------------------------------------------ 2. fallback badges */
+
+:where(.badge) {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+:where(.badge-success) { background: rgba(50, 166, 90, .14); color: #1a7a3a; }
+:where(.badge-info) { background: rgba(14, 116, 144, .12); color: #0a6f8a; }
+:where(.badge-warning) { background: rgba(210, 138, 31, .14); color: #8a5a0a; }
+:where(.badge-danger) { background: rgba(213, 76, 76, .14); color: #a43030; }
+:where(.badge-available) { background: rgba(50, 166, 90, .13); color: #257647; }

@@ -134,6 +134,9 @@ const {
   markAppNotificationRead,
   markAppNotificationReferenceRead,
   archiveAppNotification,
+  recoverAppNotification,
+  markVisibleAppNotificationRead,
+  markAllAppNotificationsRead,
   // Analytics & Reports (RBAC-scoped at the query level)
   getAnalyticsDashboard,
   getFocusHandouts,
@@ -155,10 +158,19 @@ const {
   // A tutor teaches only the subjects they teach
   tutorTeachesSubject,
   matchesTutorStudentScope,
+  // Preferred days (Weekdays / Weekend) on the admin's tutor & schedule editor
+  PREFERRED_DAYS,
+  // Registered Assistant Admins, and Branch Management's rename / assistants
+  registerAssistantProfile,
+  getAssistantProfiles,
+  getAssistantProfileForUser,
+  renameBranch,
+  getBranchAssistants,
   // All Subjects -> subject -> Subject Assessments (the live ones)
   getSubjectAssessmentsOverview
 } = require('../lib/data');
 const { normalizeArray } = require('../lib/utils');
+const { buildBellItems } = require('../lib/bell');
 const { normalizeAmount } = require('../lib/billing');
 const { slipCode, parseSlipCode } = require('../lib/paymentSlip');
 const { query } = require('../config/db');
@@ -299,18 +311,23 @@ function createAdminRouter(role) {
       getAppNotifications(req.session.user, { unreadOnly: true }).catch(() => [])
     ]);
 
+    // The bell (every role has one now): the registrations and subject
+    // requests waiting for a decision, and the unread alerts.
+    const bellItems = buildBellItems({ basePath, inbox: inboxNotifications, alerts });
+
     return {
       pageTitle: extra.pageTitle || 'Dashboard',
-      roleName: req.session.user.role === 'admin' ? 'Admin' : 'Admin Assistant',
+      roleName: req.session.user.role === 'admin' ? 'Admin' : 'Assistant Admin',
       basePath,
       section: extra.section || 'dashboard',
       contentView: extra.contentView,
       currentUser: req.session.user,
       branches,
       effectiveBranchId: scopeBranchId,
-      notificationCount: inboxNotifications.length + alerts.length,
+      notificationCount: bellItems.length,
       inboxNotifications,
       alerts,
+      bellItems,
       pendingPaymentCount: pendingPayments,
       availableAssistantBranches: [],
       ...extra
@@ -353,12 +370,17 @@ function createAdminRouter(role) {
   router.get('/notifications/archive', async (req, res, next) => {
     try {
       const scopeBranchId = getScopeBranchId(req);
-      const archivedNotifications = await getNotifications({ scopeBranchId, archived: true, history: false });
+      const [archivedNotifications, archivedAlerts] = await Promise.all([
+        getNotifications({ scopeBranchId, archived: true, history: false }),
+        // Payment slips and other activity archived from the Notifications page.
+        getAppNotifications(req.session.user, { archivedOnly: true }).catch(() => [])
+      ]);
       const shell = await buildShellData(req, {
         pageTitle: 'Archived Notifications',
         section: 'archive_notifications',
         contentView: '../content/admin-notification-archives',
-        archivedNotifications
+        archivedNotifications,
+        archivedAlerts
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -510,7 +532,8 @@ function createAdminRouter(role) {
       // the search icon beside "All users" finds anyone in it — by name, ID,
       // email, branch, role or status — without a round trip.
       // (public/js/mq-tables.js)
-      const [page, needsTutorCount, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts] = await Promise.all([
+      const isMainAdmin = req.session.user.role === 'admin';
+      const [page, needsTutorCount, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts, assistantProfiles] = await Promise.all([
         getUsersPaged({
           scopeBranchId,
           role: selectedRole,
@@ -525,7 +548,9 @@ function createAdminRouter(role) {
         req.session.user.role === 'admin' ? getAvailableAssistantBranches() : Promise.resolve([]),
         // How many tutors and students each assistant has today — and has ever
         // had, which is what survives the assistant being replaced.
-        req.session.user.role === 'admin' ? getAssistantRosterCounts().catch(() => new Map()) : Promise.resolve(new Map())
+        req.session.user.role === 'admin' ? getAssistantRosterCounts().catch(() => new Map()) : Promise.resolve(new Map()),
+        // Registered Assistant Admins: the people the account form picks from.
+        isMainAdmin ? getAssistantProfiles().catch(() => []) : Promise.resolve([])
       ]);
 
       const shell = await buildShellData(req, {
@@ -539,8 +564,10 @@ function createAdminRouter(role) {
         archivedAssistantAccounts,
         availableAssistantBranches,
         rosterCounts,
+        assistantProfiles,
         folder,
-        needsTutorCount
+        needsTutorCount,
+        openModal: String(req.query.open || '')
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -589,20 +616,23 @@ function createAdminRouter(role) {
           setFlash(req, 'error', 'You can only view your own account.');
           return res.redirect(`${basePath}/users`);
         }
-        const [roster, allBranches] = await Promise.all([
+        const [roster, allBranches, registeredDetails] = await Promise.all([
           getAssistantRoster(user, {
             role: req.query.role,
             period: req.query.period,
             search: req.query.search,
             page: req.query.page
           }),
-          getBranches()
+          getBranches(),
+          // Address, birthdate and contact number, from when they were registered.
+          getAssistantProfileForUser(user.id).catch(() => null)
         ]);
         const shell = await buildShellData(req, {
           pageTitle: isSelf ? 'My Profile' : 'Assistant Admin Profile',
           section: isSelf ? 'profile' : 'users',
           contentView: '../content/admin-assistant-profile',
           profileUser: user,
+          registeredDetails,
           roster,
           assistantBranches: allBranches,
           query: req.query
@@ -643,7 +673,7 @@ function createAdminRouter(role) {
       const currentTutor = user.role === 'student' ? await getAssignedTutorFor(user.id) : null;
       const tutorSlotUsage = user.role === 'student'
         ? await query(
-            `SELECT usa.tutor_id, usa.time_slot, usa.student_id, usa.subject_id
+            `SELECT usa.tutor_id, usa.time_slot, usa.preferred_days, usa.student_id, usa.subject_id
                FROM user_subject_assignments usa
               WHERE usa.is_archived = 0 AND usa.tutor_id IS NOT NULL AND usa.time_slot IS NOT NULL`
           )
@@ -669,7 +699,7 @@ function createAdminRouter(role) {
           ? normalizeTutorYearLevels([user.year_level || '', ...normalizeArray(user.extra?.year_levels || [])])
           : [],
         timeSlots: FIXED_TIME_SLOTS,
-        supportOptions: ['Exam Preparation & Reviews','Homework Assistance','Project Guidance']
+        preferredDayOptions: PREFERRED_DAYS
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -701,14 +731,20 @@ function createAdminRouter(role) {
 
       const result = await setStudentTutorAndSchedule(
         student.id,
-        { tutorId: req.body.tutor_id, timeSlot: req.body.time_slot, subjectIds: normalizeArray(req.body.subject_ids) },
+        {
+          tutorId: req.body.tutor_id,
+          timeSlot: req.body.time_slot,
+          preferredDays: req.body.preferred_days,
+          subjectIds: normalizeArray(req.body.subject_ids)
+        },
         req.session.user
       );
 
       const subjects = (result.subjectNames || []).join(', ');
+      const schedule = [result.preferredDays, result.timeSlot].filter(Boolean).join(', ');
       let message;
       if (result.tutorId) {
-        message = `${result.tutorName} is now the tutor for ${subjects}${result.timeSlot ? `, at ${result.timeSlot}` : ''}.`;
+        message = `${result.tutorName} is now the tutor for ${subjects}${schedule ? ` (${schedule})` : ''}.`;
         if ((result.skippedSubjects || []).length) {
           message += ` ${result.tutorName} does not teach ${result.skippedSubjects.join(', ')} — `
             + `choose another tutor for ${result.skippedSubjects.length === 1 ? 'it' : 'them'} below.`;
@@ -899,18 +935,46 @@ function createAdminRouter(role) {
   // Purpose: Processes this endpoint and returns the correct view or action result.
 
 
+  /*
+   * Branch Assistant Admin Account — step 1: register the person (name,
+   * address, birthdate, contact number). No login yet; step 2 gives them one.
+   */
+  router.post('/assistant-admins/register', async (req, res) => {
+    if (req.session.user.role !== 'admin') {
+      setFlash(req, 'error', 'Only the main admin can register assistant admins.');
+      return res.redirect(`${basePath}/users`);
+    }
+    try {
+      await registerAssistantProfile(req.body, req.session.user);
+      setFlash(req, 'success', 'Assistant admin registered. Create their account next — they can be picked by name.');
+      return res.redirect(`${basePath}/users#assistant-admins`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not register the assistant admin.');
+      return res.redirect(`${basePath}/users?open=register-assistant`);
+    }
+  });
+
+  /*
+   * Step 2: create the account — branch, email, password — for a person picked
+   * from the registered Assistant Admins.
+   */
   router.post('/assistant-accounts', async (req, res, next) => {
     try {
       if (req.session.user.role !== 'admin') {
         setFlash(req, 'error', 'Only the main admin can manage assistant accounts.');
         return res.redirect(`${basePath}/users`);
       }
-      await createAssistantAccount(req.body.branch_id, req.body.email, req.body.password, req.session.user, req.body.assistant_name || '');
-      setFlash(req, 'success', 'Branch admin assistant account created.');
-      res.redirect(`${basePath}/users`);
+      const profileId = Number(req.body.assistant_profile_id) || null;
+      if (!profileId) {
+        setFlash(req, 'error', 'Choose a registered assistant admin. Register them first if they are not on the list.');
+        return res.redirect(`${basePath}/users?open=create-assistant-account`);
+      }
+      await createAssistantAccount(req.body.branch_id, req.body.email, req.body.password, req.session.user, '', { profileId });
+      setFlash(req, 'success', 'Assistant admin account created. They can log in now.');
+      res.redirect(`${basePath}/users#assistant-admins`);
     } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not create assistant account.');
-      res.redirect(`${basePath}/users`);
+      setFlash(req, 'error', error.message || 'Could not create the assistant admin account.');
+      res.redirect(`${basePath}/users?open=create-assistant-account`);
     }
   });
 
@@ -985,24 +1049,8 @@ function createAdminRouter(role) {
     }
   });
 
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-  router.post('/assistant-accounts', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can create branch assistant accounts.');
-        return res.redirect(`${basePath}/users`);
-      }
-      await createAssistantAccount(req.body.branch_id, req.body.email, req.body.password, req.session.user, req.body.assistant_name || '');
-      setFlash(req, 'success', 'Admin assistant account created successfully.');
-      res.redirect(`${basePath}/users`);
-    } catch (error) {
-      setFlash(req, 'error', error.message || 'Could not create admin assistant account.');
-      res.redirect(`${basePath}/users`);
-    }
-  });
+  // (A second POST /assistant-accounts handler used to sit here. Express only
+  // ever ran the first one registered, so it was dead code — removed.)
 
   // Route handler: GET request
 
@@ -1045,6 +1093,22 @@ function createAdminRouter(role) {
       setFlash(req, 'error', error.message || 'Could not add branch.');
       res.redirect(`${basePath}/branches`);
     }
+  });
+
+  // Edit a branch's name (Branch Management).
+  router.post('/branches/:id/rename', async (req, res) => {
+    if (req.session.user.role !== 'admin') {
+      setFlash(req, 'error', 'Only the main admin can rename branches.');
+      return res.redirect(basePath);
+    }
+    const back = req.body.return_to === 'detail' ? `${basePath}/branches/${Number(req.params.id)}` : `${basePath}/branches`;
+    try {
+      const name = await renameBranch(req.params.id, req.body.name);
+      setFlash(req, 'success', `Branch renamed to ${name}.`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not rename the branch.');
+    }
+    return res.redirect(back);
   });
 
   // Route handler: POST request
@@ -1122,12 +1186,16 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Branch not found.');
         return res.redirect(`${basePath}/branches`);
       }
-      const members = await getBranchMembers(req.params.id);
+      const [members, assistants] = await Promise.all([
+        getBranchMembers(req.params.id),
+        getBranchAssistants(req.params.id)
+      ]);
       const shell = await buildShellData(req, {
         pageTitle: `${branch.name}`,
         section: 'branches',
         contentView: '../content/admin-branch-detail',
         branch,
+        assistants,
         students: members.filter((item) => item.role === 'student'),
         tutors: members.filter((item) => item.role === 'tutor')
       });
@@ -1829,16 +1897,37 @@ function createAdminRouter(role) {
 
   router.post('/alerts/:id/read', async (req, res, next) => {
     try {
-      await markAppNotificationRead(Number(req.params.id), req.session.user);
+      // Only one this person may see (the same scope as the list it came from).
+      await markVisibleAppNotificationRead(Number(req.params.id), req.session.user);
+      // The bell's × sends this in the background and wants no page back.
+      if (req.get('X-Requested-With') === 'fetch') return res.status(204).end();
+      res.redirect(req.get('Referer') || `${basePath}/notifications`);
+    } catch (error) { next(error); }
+  });
+
+  // "Mark all read" in the bell. Registrations and subject requests are not
+  // notices to put away — they stay until someone accepts or declines them.
+  router.post('/notifications/mark-all-read', async (req, res, next) => {
+    try {
+      await markAllAppNotificationsRead(req.session.user);
+      setFlash(req, 'success', 'All notifications marked as read. Registrations and subject requests stay until they are accepted or declined.');
       res.redirect(req.get('Referer') || `${basePath}/notifications`);
     } catch (error) { next(error); }
   });
 
   router.post('/alerts/:id/archive', async (req, res, next) => {
     try {
-      await archiveAppNotification(Number(req.params.id));
+      await archiveAppNotification(Number(req.params.id), req.session.user);
       setFlash(req, 'success', 'Notification archived.');
       res.redirect(`${basePath}/notifications`);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/alerts/:id/recover', async (req, res, next) => {
+    try {
+      await recoverAppNotification(Number(req.params.id), req.session.user);
+      setFlash(req, 'success', 'Notification recovered.');
+      res.redirect(`${basePath}/notifications/archive`);
     } catch (error) { next(error); }
   });
 

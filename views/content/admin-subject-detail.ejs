@@ -1,5 +1,5 @@
 <%# File: views/content/admin-subject-detail.ejs
-    Purpose: One subject, for Admin and Admin Assistant — in TABS.
+    Purpose: One subject, for Admin and Assistant Admin — in TABS.
 
     Modules, Pre-Assessment Results, Subject Assessments, Pre vs Post, Enrolled
     Students, Tutors and Archived are each a tab: a tab's contents show when it
@@ -63,7 +63,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Module</th><th data-search-col>Title</th><th>Visible to</th><th>Handouts</th><th>Assessments</th><th>Action</th></tr>
+          <tr><th>Module</th><th data-search-col>Title</th><th>Visible to</th><th>Handouts</th><th>Assessments</th><th>Manage</th></tr>
         </thead>
         <tbody>
           <% if (!modules.length) { %>
@@ -188,7 +188,7 @@
         <thead>
           <tr>
             <th data-search-col>Student</th><th>Year Level</th><th>Score</th><th>Percentage</th>
-            <th>Classification</th><th>Submitted</th><th>Action</th>
+            <th>Classification</th><th>Submitted</th><th>Results</th>
           </tr>
         </thead>
         <tbody>
@@ -318,7 +318,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th data-search-col>Student</th><th>Year / Grade</th><th>Branch</th><th>Tutor</th><th>Time Schedule</th><th>Action</th></tr>
+          <tr><th data-search-col>Student</th><th>Year / Grade</th><th>Branch</th><th>Tutor</th><th>Time Schedule</th><th>Manage</th></tr>
         </thead>
         <tbody>
           <% if (!uniqueStudents.length) { %>
@@ -351,7 +351,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th data-search-col>Tutor</th><th>Branch</th><th>Year Level</th><th>Students in this subject</th><th>Time Schedule</th><th>Action</th></tr>
+          <tr><th data-search-col>Tutor</th><th>Branch</th><th>Year Level</th><th>Students in this subject</th><th>Time Schedule</th><th>Manage</th></tr>
         </thead>
         <tbody>
           <% if (!tutors.length) { %>

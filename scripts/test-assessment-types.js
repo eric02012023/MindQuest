@@ -100,18 +100,18 @@ async function main() {
   ok('kept questions cite the handout they came from', pre.questions.every((q) => q.source_handout_id === 7));
 
   // ---------------------------------------------------------- module path
-  console.log('\n== Module assessment: MC, Fill in the Blank, True or False ==');
+  console.log('\n== Module assessment: Multiple Choice and True or False only ==');
+  ok('the module types are exactly MC and True or False',
+    ai.MODULE_QUESTION_TYPES.join(',') === 'multiple_choice,true_false', ai.MODULE_QUESTION_TYPES.join(','));
   sent.length = 0;
   reply = {
     questions: [
       mc(10),
-      { question_text: 'The number above the line is the ____.', question_type: 'fill_blank', correct_answer: 'numerator', source_handout_id: 7 },
       { question_text: 'A denominator sits below the line.', question_type: 'true_false', correct_answer: 'true', source_handout_id: 7 },
+      // Must be rejected: fill in the blank is gone from every assessment.
+      { question_text: 'The number above the line is the ____.', question_type: 'fill_blank', correct_answer: 'numerator', source_handout_id: 7 },
       // Must be rejected: essay is not allowed for a module assessment.
-      { question_text: 'Discuss fractions at length.', question_type: 'essay', answer_rubric: 'numerator and denominator explained', source_handout_id: 7 },
-      // Must be rejected: a "blank" whose answer is a sentence cannot be marked.
-      { question_text: 'Describe the process ____.', question_type: 'fill_blank',
-        correct_answer: 'you divide the whole into equal parts and count them', source_handout_id: 7 }
+      { question_text: 'Discuss fractions at length.', question_type: 'essay', answer_rubric: 'numerator and denominator explained', source_handout_id: 7 }
     ]
   };
 
@@ -121,17 +121,17 @@ async function main() {
   });
 
   const modSystem = sent[0].system;
-  ok('the prompt offers all three module types',
-    /"multiple_choice", "fill_blank", "true_false"/.test(modSystem),
+  ok('the prompt offers the two module types',
+    /one of "multiple_choice", "true_false"\. Use NO other value/.test(modSystem),
     (modSystem.match(/"question_type": one of .*/) || [])[0]);
+  ok('the prompt never offers fill_blank', !/fill_blank/.test(modSystem));
+  ok('the prompt forbids fill-in-the-blank', /Never write a fill-in-the-blank question/.test(modSystem));
   ok('the prompt still forbids essay', /Never write an essay or open-ended question/.test(modSystem));
-  ok('the prompt demands a real blank in the sentence', /MUST contain the blank written as at least two underscores/.test(modSystem));
-  ok('the prompt caps the blank answer length', /one to four words/.test(modSystem));
 
   const types = mod.questions.map((q) => q.question_type);
   ok('the essay item was dropped', !types.includes('essay'));
-  ok('the ungradeable blank was dropped', !mod.questions.some((q) => String(q.correct_answer).split(/\s+/).length > 4));
-  ok('the good fill-in-the-blank survived', mod.questions.some((q) => q.question_type === 'fill_blank' && q.correct_answer === 'numerator'));
+  ok('the fill-in-the-blank item was dropped', !types.includes('fill_blank'));
+  ok('the true/false item survived', types.includes('true_false'));
   ok('every kept type is allowed', types.every((t) => ai.MODULE_QUESTION_TYPES.includes(t)), types.join(', '));
 
   // ------------------------------------------------------- focus material

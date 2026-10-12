@@ -345,7 +345,7 @@
       ================================================================== %>
   <div class="mq-report-group">
     <div>
-      <h2>Enrolment &amp; progress</h2>
+      <h2>Enrollment &amp; progress</h2>
       <% if (!isStudent) { %><p>What learners are enrolled in, and how much of the material they have worked through.</p><% } %>
     </div>
     <span class="mq-report-group-index">2 of <%= groups %></span>
@@ -355,7 +355,7 @@
     <section class="mq-panel">
       <div class="mq-panel-head">
         <div>
-          <h3>Enrolment by subject</h3>
+          <h3>Enrollment by subject</h3>
           <p>Active learners per subject.</p>
         </div>
         <span class="mq-count"><%= countOf(a.enrolment, 'subject') %></span>
@@ -365,7 +365,7 @@
       <div class="mq-table" style="--mq-cols: minmax(180px, 3fr) 90px;">
         <div class="mq-head"><span data-search-col>Subject</span><span class="mq-num">Learners</span></div>
         <% if (!(a.enrolment || []).length) { %>
-          <div class="mq-empty">No active enrolments.</div>
+          <div class="mq-empty">No active enrollments.</div>
         <% } %>
         <% (a.enrolment || []).forEach((row) => { %>
           <div class="mq-row">
@@ -393,7 +393,7 @@
         <span class="mq-num">Opened</span><span>Completion</span>
       </div>
       <% if (!(a.completion || []).length) { %>
-        <div class="mq-empty">No enrolments in scope yet.</div>
+        <div class="mq-empty">No enrollments in scope yet.</div>
       <% } %>
       <% (a.completion || []).forEach((row) => { %>
         <div class="mq-row">

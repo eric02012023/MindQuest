@@ -359,5 +359,30 @@ should. Add `--quiet` to build without notifying each tutor.
   generated Pre-Assessment is *not* rewritten — it keeps whatever it was built
   with until its handouts change and it regenerates.
 - **Essay is no longer a question type a tutor can choose.** Module assessments
-  are Multiple Choice, Fill in the Blank or True or False. Assessments already
-  holding essay questions still render, still submit and still grade.
+  are Multiple Choice or True or False. Assessments already holding essay
+  questions still render, still submit and still grade.
+- **Fill in the Blank is gone from every assessment.** No assessment can be
+  created with it, by hand or by AI, and the builder has no "Question type" to
+  pick — an assessment's type is read from its questions. Fill-in-the-blank
+  questions written before this (8 of them, in two assessments, at the time it
+  shipped) still render as "Short Answer" and still grade, so nobody's open
+  assessment breaks.
+
+### This release: tutors, days, notifications
+
+Applied automatically by `sql/schema.sql` on the next boot; nothing to run by hand.
+
+- **Preferred days.** `user_subject_assignments.preferred_days` and
+  `tutor_schedule_applications.preferred_days` (`Weekdays` / `Weekend`). Existing
+  rows stay NULL ("not chosen") and are treated as holding their slot on both,
+  so nobody is double-booked. A student picks the days and time first, then sees
+  only the tutors free then.
+- **Attendance has four statuses**: present, late, absent, excused. The old
+  unnamed CHECK is replaced by `ck_attendance_status`.
+- **`assistant_admin_profiles`**: Assistant Admins are registered (name,
+  address, birthdate, contact number) before an account is created for them.
+- **Branch names can be edited.** The default branches are now seeded only into
+  an empty `branches` table, so a renamed branch is not re-created on boot.
+- **Every role has a notification bell** (left of the ☰ menu) with "See all"
+  and "Mark all read"; the ☰ menu has View Archived Notifications, Notification
+  History and Log Out for all four roles.

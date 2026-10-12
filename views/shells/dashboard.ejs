@@ -10,26 +10,26 @@
   // check every section against the files actually on disk.
   const pageStyles = resolvePageStyles(basePath, section);
   const shellPageClass = pageStyles.pageClass;
-  const shellStyles = pageStyles.styles;
+  // mq-shell.css: the parts of the shell every role shares — the bell's
+  // dropdown, and badge colours for pages whose own sheet has none.
+  const shellStyles = [...pageStyles.styles, '/css/mq-shell.css'];
 %>
 <%- include('../partials/head', { pageTitle, pageCss: shellStyles }) %>
 <body class="dashboard-body <%= shellPageClass %>">
   <div class="dashboard-shell">
-    <%# pendingPaymentCount / focusHandoutCount are passed explicitly: an include
+    <%# notificationCount / focusHandoutCount are passed explicitly: an include
         gets only the locals handed to it, so a badge that reads an undefined
         local would throw rather than simply not render. %>
     <%- include('../partials/sidebar', {
       basePath, section, roleName, currentUser,
-      pendingPaymentCount: typeof pendingPaymentCount === 'undefined' ? 0 : pendingPaymentCount,
+      notificationCount: typeof notificationCount === 'undefined' ? 0 : notificationCount,
       focusHandoutCount: typeof focusHandoutCount === 'undefined' ? 0 : focusHandoutCount
     }) %>
     <div class="sidebar-overlay" data-sidebar-overlay></div>
     <div class="dashboard-main">
       <%- include('../partials/dashboard-topbar', {
         basePath, pageTitle, currentUser,
-        notificationCount: typeof notificationCount === 'undefined' ? 0 : notificationCount,
-        inboxNotifications: typeof inboxNotifications === 'undefined' ? [] : inboxNotifications,
-        alerts: typeof alerts === 'undefined' ? [] : alerts
+        bellItems: typeof bellItems === 'undefined' ? [] : bellItems
       }) %>
       <main class="dashboard-content">
         <div class="page-wrapper <%= shellPageClass %>-wrapper">

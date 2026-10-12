@@ -13,10 +13,9 @@
     already carry — filterable by date and branch, and to the peso rather than
     to the nearest pixel.
 
-    WHAT ARRIVED (Phase 7.2)
-    The notification section at the foot. Admin and Assistant Admin no longer
-    have a topbar bell; their alerts are about money, so they sit beside the
-    transactions they refer to.
+    WHAT WENT (this release, too)
+    The notification section at the foot. Notifications have one home: the
+    bell in the topbar and the Notifications page it opens.
 
     Every row is one payment_entries record, so the report and a student's ledger
     can never disagree: they are the same rows.
@@ -27,7 +26,7 @@
     that shows ten rows and scrolls; the search icon in its heading finds a
     transaction by anything in its row (public/js/mq-tables.js).
 
-    Locals: rows (every transaction in scope), summary, alerts, inboxNotifications %>
+    Locals: rows (every transaction in scope), summary %>
 <section class="mq-page">
 
   <div class="mq-summary">
@@ -99,78 +98,6 @@
       top and in the rows above, filterable by date and branch — the charts were
       a second, less precise rendering of the same numbers, and "income" was the
       wrong word for money collected from students in the first place. %>
-
-  <%# ================================================== notifications (7.2)
-      The topbar bell is gone for Admin and Assistant Admin (7.1). Their alerts
-      are about money — a slip waiting at the counter, a payment just taken — so
-      they belong here, next to the transactions they refer to, rather than in a
-      dropdown that had to be opened to be read.
-      ================================================================== %>
-  <section class="mq-panel">
-    <div class="mq-panel-head">
-      <div>
-        <h2>Notifications</h2>
-        <p>Payment alerts and anything else waiting on you. Registrations and enrolment
-           requests are worked through on the Notifications page.</p>
-      </div>
-      <span class="mq-count"><%= (alerts || []).length + (inboxNotifications || []).length %></span>
-    </div>
-
-    <% if (!(alerts || []).length && !(inboxNotifications || []).length) { %>
-      <div class="mq-empty">
-        <strong>Nothing waiting</strong>
-        New payment slips and recorded POS payments appear here as they happen.
-      </div>
-    <% } %>
-
-    <% if ((alerts || []).length) { %>
-      <div class="mq-table" style="--mq-cols: 150px minmax(180px, 1.4fr) minmax(220px, 2fr) 150px 110px;">
-        <div class="mq-head">
-          <span>Type</span><span>What happened</span><span>Detail</span><span>When</span>
-          <span style="text-align:right;">Action</span>
-        </div>
-        <% (alerts || []).forEach((alert) => {
-             // Phase 7.4: the old "Cash payment request" alert is gone with the
-             // flow it belonged to. Two POS-shaped alerts replace it — a slip
-             // waiting to be paid, and a payment actually recorded.
-             // The column is notification_type; reading `alert.type` (which does
-             // not exist) labelled every row a generic "Alert".
-             const alertType = alert.notification_type || alert.type;
-             const label = alertType === 'payment_slip' ? 'Pending payment slip'
-               : alertType === 'pos_payment' ? 'POS payment recorded'
-               : alertType === 'payment_request' ? 'Pending payment slip'
-               : String(alertType || 'Alert').replace(/_/g, ' ');
-             const tone = alertType === 'pos_payment' ? 'mq-status-paid'
-               : alert.severity === 'warning' ? 'mq-status-partial' : 'mq-status-unpaid'; %>
-          <div class="mq-row">
-            <span class="mq-cell" data-label="Type"><span class="mq-status <%= tone %>"><%= label %></span></span>
-            <span class="mq-cell mq-cell-primary" data-label="What happened">
-              <span class="mq-name"><%= alert.title %></span>
-            </span>
-            <span class="mq-cell mq-sub" data-label="Detail"><%= alert.message || '—' %></span>
-            <span class="mq-cell mq-sub" data-label="When"><%= formatDateTime(alert.created_at) %></span>
-            <span class="mq-cell mq-cell-actions">
-              <% if (alert.link_url) { %>
-                <a class="mq-btn mq-btn-sm mq-btn-primary" href="<%= alert.link_url %>">Open</a>
-              <% } %>
-              <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/read">
-                <button class="mq-btn mq-btn-sm" type="submit">Mark read</button>
-              </form>
-            </span>
-          </div>
-        <% }) %>
-      </div>
-    <% } %>
-
-    <% if ((inboxNotifications || []).length) { %>
-      <div class="mq-form-foot" style="padding:12px 16px;">
-        <a class="mq-btn" href="<%= basePath %>/notifications#inbox">
-          <%- icon('view') %>
-          <%= inboxNotifications.length %> registration/enrolment request<%= inboxNotifications.length === 1 ? '' : 's' %> waiting
-        </a>
-      </div>
-    <% } %>
-  </section>
 
 </section>
 

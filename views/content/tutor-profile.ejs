@@ -11,7 +11,6 @@
 <%
   const fullNameText = [profileUser.first_name, profileUser.middle_name, profileUser.last_name].filter(Boolean).join(' ');
   const userSubjects = Array.isArray(profileUser.subjects) ? profileUser.subjects : safeJsonArray(profileUser.subjects_json || []);
-  const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
   const studentList = students || [];
 %>
 <section class="mq-profile">
@@ -167,18 +166,6 @@
           <% } %>
         </div>
       </section>
-
-      <% if (userSupports.length) { %>
-        <section class="mq-card">
-          <div class="mq-card-head">
-            <span class="mq-card-icon"><%- icon('target', 18) %></span>
-            <div><h3>Extra support</h3><p>Additional academic support you offer.</p></div>
-          </div>
-          <div class="mq-card-body mq-chip-list">
-            <% userSupports.forEach((support) => { %><span class="mq-subject-chip"><%= support %></span><% }) %>
-          </div>
-        </section>
-      <% } %>
     </aside>
   </div>
 </section>

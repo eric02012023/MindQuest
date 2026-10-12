@@ -1,0 +1,73 @@
+<%# File: views/content/user-notification-history.ejs
+    Purpose: Notification History (the ☰ menu) for a student or a tutor — every
+    tutor request that has been answered, and every update already read.
+
+    Locals: viewerRole, requestHistory, readAlerts %>
+<%
+  const isTutor = viewerRole === 'tutor';
+  const history = requestHistory || [];
+  const read = readAlerts || [];
+  const decision = (status) => {
+    const key = String(status || '').toLowerCase();
+    return key === 'accepted' ? ['Accepted', 'badge-success']
+      : key === 'finished' ? ['Finished', 'badge-info']
+      : ['Declined', 'badge-danger'];
+  };
+%>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2><%= isTutor ? 'Student Requests You Answered' : 'Your Tutor Requests' %></h2>
+      <span class="badge badge-info"><%= history.length %></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-search-col><%= isTutor ? 'Student' : 'Tutor' %></th>
+            <th>Subject</th>
+            <th>Preferred Days</th>
+            <th>Time Slot</th>
+            <th>Decision</th>
+            <th>Decided</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!history.length) { %><tr><td colspan="6">Nothing here yet.</td></tr><% } %>
+          <% history.forEach((row) => { const [label, tone] = decision(row.status); %>
+            <tr>
+              <td><%= isTutor ? row.student_name : row.tutor_name %></td>
+              <td><%= row.subject_name || '-' %></td>
+              <td><%= row.preferred_days || '-' %></td>
+              <td><%= row.time_slot || '-' %></td>
+              <td><span class="badge <%= tone %>"><%= label %></span></td>
+              <td><%= formatDateTime(row.decided_at || row.updated_at) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Read Updates</h2>
+      <span class="badge badge-info"><%= read.length %></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>When</th><th data-search-col>Update</th><th>Read</th></tr></thead>
+        <tbody>
+          <% if (!read.length) { %><tr><td colspan="3">No read updates yet.</td></tr><% } %>
+          <% read.forEach((alert) => { %>
+            <tr>
+              <td><%= formatDateTime(alert.created_at) %></td>
+              <td><strong><%= alert.title %></strong><br /><small><%= alert.message || '' %></small></td>
+              <td><%= formatDateTime(alert.read_at) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

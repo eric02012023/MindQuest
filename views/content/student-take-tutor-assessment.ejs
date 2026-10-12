@@ -47,7 +47,7 @@
               <span class="q-badge">Q<%= i + 1 %></span>
               <span class="q-type-badge"><%= q.question_type === 'multiple_choice' ? 'Multiple Choice'
                 : q.question_type === 'true_false' ? 'True or False'
-                : q.question_type === 'fill_blank' ? 'Fill in the Blank' : 'Essay' %></span>
+                : q.question_type === 'fill_blank' ? 'Short Answer' : 'Essay' %></span>
               <span class="q-points-badge"><%= q.points %> pt<%= q.points > 1 ? 's' : '' %></span>
             </div>
             <p class="question-text"><%= q.question_text %></p>
@@ -83,10 +83,11 @@
                 <textarea name="answer_<%= q.id %>" rows="5" placeholder="Write your answer in a few sentences..." required></textarea>
               </div>
             <% } else { %>
-              <%# fill_blank. Marked by comparing text, ignoring capitalisation
-                  only — so the placeholder tells the student spelling matters. %>
+              <%# A typed answer — only on assessments written before Fill in the
+                  Blank was removed. Marked by comparing text, ignoring
+                  capitalisation only, so the hint says spelling matters. %>
               <div class="fill-blank-input">
-                <input type="text" name="answer_<%= q.id %>" placeholder="Type the missing word or phrase" autocomplete="off" required />
+                <input type="text" name="answer_<%= q.id %>" placeholder="Type your answer" autocomplete="off" required />
                 <p class="fill-blank-hint">Capital letters do not matter, but spelling does.</p>
               </div>
             <% } %>

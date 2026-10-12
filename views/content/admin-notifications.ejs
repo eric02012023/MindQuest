@@ -1,5 +1,6 @@
 <%# File: views/content/admin-notifications.ejs
-    Purpose: Notifications — student payment requests, and system alerts.
+    Purpose: Notifications — registrations and subject requests waiting for a
+    decision, students' payment slips, and payment updates.
 
     The brief: a student's cash payment request notifies BOTH Admin and Assistant
     Admin, the card shows student / amount / branch / date-and-time / status, and
@@ -40,7 +41,7 @@
       <span>Completed</span><strong><%= summary.completed %></strong>
     </div>
     <div class="mq-summary-item is-accent">
-      <span>Unread notifications</span><strong><%= summary.unreadAlerts %></strong>
+      <span>Unread updates</span><strong><%= summary.unreadAlerts %></strong>
     </div>
   </div>
 
@@ -62,8 +63,8 @@
       <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
     </div>
     <div class="mq-toolbar-actions">
-      <a class="mq-btn" href="<%= basePath %>/billing"><%- icon('money') %> Student billing</a>
-      <a class="mq-btn" href="<%= basePath %>/notifications/history">Registration history</a>
+      <a class="mq-btn" href="<%= basePath %>/billing"><%- icon('money') %> Student Bill</a>
+      <a class="mq-btn" href="<%= basePath %>/notifications/history">Notification History</a>
     </div>
   </form>
 
@@ -81,7 +82,7 @@
         <span>Request</span>
         <span>Branch</span>
         <span>Submitted</span>
-        <span style="text-align:right;">Actions</span>
+        <span style="text-align:right;">Decision</span>
       </div>
 
       <% if (!inbox.length) { %>
@@ -113,7 +114,7 @@
             <button type="button" class="mq-icon" data-modal-target="#<%= inboxModalId(item) %>" title="Open" aria-label="Open"><%- icon('view') %></button>
             <form method="post"
                   action="<%= basePath %>/<%= isSubjectRequest(item) ? `subject-requests/${item.id}/accept` : `notifications/${item.id}/accept` %>"
-                  data-confirm-message="<%= isSubjectRequest(item) ? `Enrol ${nameOf(item)} in ${item.subject_name}?` : `Accept ${nameOf(item)}'s registration?` %>">
+                  data-confirm-message="<%= isSubjectRequest(item) ? `Enroll ${nameOf(item)} in ${item.subject_name}?` : `Accept ${nameOf(item)}'s registration?` %>">
               <button class="mq-btn mq-btn-sm mq-btn-primary" type="submit"><%- icon('check') %> Accept</button>
             </form>
             <form method="post"
@@ -141,13 +142,13 @@
         <span class="mq-num">Amount</span>
         <span>Preferred date</span>
         <span>Status</span>
-        <span style="text-align:right;">Actions</span>
+        <span style="text-align:right;">Process</span>
       </div>
 
       <% if (!requests.length) { %>
         <div class="mq-empty">
-          <strong>No payment requests</strong>
-          When a student reserves a cash payment, it appears here straight away.
+          <strong>No payment slips</strong>
+          When a student makes a payment slip, it appears here straight away.
         </div>
       <% } %>
 
@@ -165,7 +166,7 @@
           <span class="mq-cell mq-sub" data-label="Preferred date"><%= request.preferred_at ? formatDateTime(request.preferred_at) : 'Any time' %></span>
 
           <span class="mq-cell" data-label="Status">
-            <span class="mq-status mq-status-<%= request.status %>"><%= request.status %></span>
+            <span class="mq-status mq-status-<%= request.status %>"><%= String(request.status || '').charAt(0).toUpperCase() + String(request.status || '').slice(1) %></span>
           </span>
 
           <span class="mq-cell mq-cell-actions">
@@ -183,29 +184,29 @@
 
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <h2>System alerts</h2>
+      <h2>Payment Updates</h2>
       <span class="mq-count"><%= alerts.length %></span>
     </div>
 
     <div class="mq-table" style="--mq-cols: 150px minmax(220px, 3fr) 1fr 110px 96px;">
       <div class="mq-head">
-        <span>When</span><span data-search-col>Alert</span><span>Branch</span><span>Read</span><span style="text-align:right;">Actions</span>
+        <span>When</span><span data-search-col>Update</span><span>Branch</span><span>Status</span><span style="text-align:right;">Manage</span>
       </div>
 
       <% if (!alerts.length) { %>
-        <div class="mq-empty">Nothing to show. System alerts appear here as they happen.</div>
+        <div class="mq-empty">Nothing to show. New payment slips and recorded payments appear here as they happen.</div>
       <% } %>
 
       <% alerts.forEach((alert) => { %>
         <div class="mq-row">
           <span class="mq-cell mq-sub" data-label="When"><%= formatDateTime(alert.created_at) %></span>
-          <span class="mq-cell mq-cell-primary" data-label="Alert">
+          <span class="mq-cell mq-cell-primary" data-label="Update">
             <span class="mq-name"><%= alert.title %></span>
             <span class="mq-sub"><%= alert.message || '' %></span>
           </span>
           <span class="mq-cell" data-label="Branch"><%= alert.branch_name || 'All' %></span>
-          <span class="mq-cell" data-label="Read">
-            <span class="mq-status mq-status-<%= alert.is_read ? 'completed' : 'pending' %>"><%= alert.is_read ? 'read' : 'new' %></span>
+          <span class="mq-cell" data-label="Status">
+            <span class="mq-status mq-status-<%= alert.is_read ? 'completed' : 'pending' %>"><%= alert.is_read ? 'Read' : 'New' %></span>
           </span>
           <span class="mq-cell mq-cell-actions">
             <% if (alert.link_url) { %>
@@ -256,8 +257,7 @@
             <% } %>
             <div class="mq-detail-item is-wide"><span>Address</span><strong><%= item.address || '—' %></strong></div>
             <div class="mq-detail-item is-wide"><span>Subjects</span><strong><%= (item.subjects || []).join(', ') || '—' %></strong></div>
-            <div class="mq-detail-item is-wide"><span>Additional academic support</span><strong><%= (item.supports || []).join(', ') || '—' %></strong></div>
-          <% } %>
+                      <% } %>
         </div>
 
         <div class="mq-form-foot" style="padding: 0 16px 16px;">
@@ -265,8 +265,8 @@
             <form method="post" action="<%= basePath %>/subject-requests/<%= item.id %>/cancel" data-confirm-message="Decline this subject request?">
               <button class="mq-btn mq-btn-danger" type="submit"><%- icon('close') %> Decline</button>
             </form>
-            <form method="post" action="<%= basePath %>/subject-requests/<%= item.id %>/accept" data-confirm-message="Enrol <%= nameOf(item) %> in <%= item.subject_name %>? Their bill goes up by one subject.">
-              <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Accept &amp; enrol</button>
+            <form method="post" action="<%= basePath %>/subject-requests/<%= item.id %>/accept" data-confirm-message="Enroll <%= nameOf(item) %> in <%= item.subject_name %>? Their bill goes up by one subject.">
+              <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Accept &amp; Enroll</button>
             </form>
           <% } else { %>
             <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/archive" data-confirm-message="Archive this registration? You can recover it from the archive.">
@@ -303,7 +303,7 @@
           <div class="mq-detail-item"><span>Submitted</span><strong><%= formatDateTime(request.created_at) %></strong></div>
           <div class="mq-detail-item"><span>Preferred date &amp; time</span><strong><%= request.preferred_at ? formatDateTime(request.preferred_at) : 'Any time' %></strong></div>
           <div class="mq-detail-item"><span>Contact</span><strong><%= request.contact_number || '—' %></strong></div>
-          <div class="mq-detail-item"><span>Status</span><strong><span class="mq-status mq-status-<%= request.status %>"><%= request.status %></span></strong></div>
+          <div class="mq-detail-item"><span>Status</span><strong><span class="mq-status mq-status-<%= request.status %>"><%= String(request.status || '').charAt(0).toUpperCase() + String(request.status || '').slice(1) %></span></strong></div>
           <% if (request.reference_note) { %>
             <div class="mq-detail-item is-wide"><span>Student note</span><strong><%= request.reference_note %></strong></div>
           <% } %>

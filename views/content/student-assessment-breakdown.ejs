@@ -22,7 +22,7 @@
   const isStudent = viewerRole === 'student';
   const typeLabel = (t) => t === 'multiple_choice' ? 'Multiple Choice'
     : t === 'true_false' ? 'True or False'
-    : t === 'fill_blank' ? 'Fill in the Blank' : 'Essay';
+    : t === 'fill_blank' ? 'Short Answer' : 'Essay';
   const levelStatus = level === 'Advance' ? 'paid' : level === 'Intermediate' ? 'partial' : 'unpaid';
   const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
   // Worst first: the point of this page is deciding what to teach next.

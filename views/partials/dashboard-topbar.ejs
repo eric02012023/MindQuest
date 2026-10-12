@@ -1,4 +1,17 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/partials/dashboard-topbar.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/partials/dashboard-topbar.ejs
+    Purpose: The topbar of every dashboard — the same for all four roles.
+
+    From the right: the signed-in person, the ☰ menu (View Archived
+    Notifications, Notification History, Log Out), and to its left the
+    notification bell. The bell drops a list — who, what, when, and an × to put
+    a notice away — with "See all" (the Notifications page) and "Mark all read"
+    underneath. The list is built per role in lib/bell.js.
+
+    Decisions (accepting a registration, a student's request for a tutor) are
+    made on the Notifications page, not in this dropdown.
+
+    Locals: basePath, pageTitle, currentUser, bellItems %>
+<% const items = typeof bellItems === 'undefined' ? [] : (bellItems || []); %>
 <header class="dashboard-topbar">
   <div class="dashboard-topbar-title-row">
     <button type="button" class="sidebar-mobile-toggle" data-sidebar-open aria-label="Open navigation">☰</button>
@@ -9,151 +22,54 @@
         it, so on an already-installed app or an unsupported browser the topbar
         looks exactly as it did before. %>
     <%- include('install-app-button', { variant: '' }) %>
-    <%# Phase 7.1: no bell for Admin or Assistant Admin.
-        Their alerts are mostly money — a slip waiting at the counter, a payment
-        just recorded — and a dropdown is the wrong place to act on money. Those
-        now live as a section on the Payment Collection report (7.2), beside the
-        transactions they refer to, where they can be read in context.
 
-        Student and Tutor keep the bell: theirs is a genuine inbox (a schedule
-        decision, a focus handout to open) with no report page to live on. %>
-    <% const canShowBell = ['/student','/tutor'].includes(basePath); %>
-    <% if (canShowBell) { %>
-      <button type="button" class="notification-pill bell-button" data-modal-target="#topbar-notifications-modal">
-        <span class="bell">&#128276;</span>
-        <span class="count"><%= (inboxNotifications || []).length + (alerts || []).length %></span>
+    <div class="menu-wrap mq-bell-wrap" data-bell>
+      <button type="button" class="notification-pill bell-button" data-dropdown-toggle
+              aria-label="Notifications<%= items.length ? ` (${items.length} new)` : '' %>" aria-haspopup="true">
+        <span class="bell"><%- icon('bell', 20) %></span>
+        <span class="count" data-notification-count <%= items.length ? '' : 'hidden' %>><%= items.length > 99 ? '99+' : items.length %></span>
       </button>
-    <% } %>
+      <div class="menu-panel mq-bell-panel" data-dropdown-panel role="dialog" aria-label="Notifications">
+        <div class="mq-bell-head">
+          <strong>Notifications</strong>
+          <span data-bell-new><%= items.length ? `${items.length} new` : '' %></span>
+        </div>
+        <div class="mq-bell-list" data-bell-list>
+          <p class="mq-bell-empty" data-bell-empty <%= items.length ? 'hidden' : '' %>>You're all caught up. No new notifications.</p>
+          <% items.forEach((item) => { %>
+            <div class="mq-bell-item" data-bell-item>
+              <a class="mq-bell-link" href="<%= item.href %>">
+                <%- include('avatar', { avatarSrc: item.avatarSrc, avatarName: item.avatarName, avatarSize: 'sm' }) %>
+                <span class="mq-bell-text">
+                  <strong><%= item.title %></strong>
+                  <span class="mq-bell-message"><%= item.text %></span>
+                  <small><%= formatDateTime(item.createdAt) %></small>
+                </span>
+              </a>
+              <% if (item.dismissUrl) { %>
+                <button type="button" class="mq-bell-dismiss" data-bell-dismiss="<%= item.dismissUrl %>"
+                        title="Mark as read" aria-label="Mark as read"><%- icon('close', 16) %></button>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+        <div class="mq-bell-foot">
+          <a class="mq-bell-action" href="<%= basePath %>/notifications"><%- icon('view', 16) %> See all</a>
+          <form method="post" action="<%= basePath %>/notifications/mark-all-read">
+            <button type="submit" class="mq-bell-action" <%= items.some((item) => item.dismissUrl) ? '' : 'disabled' %>><%- icon('check', 16) %> Mark all read</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <div class="menu-wrap">
-      <button type="button" class="menu-toggle" data-dropdown-toggle>☰</button>
+      <button type="button" class="menu-toggle" data-dropdown-toggle aria-label="Menu" aria-haspopup="true">☰</button>
       <div class="menu-panel" data-dropdown-panel>
-        <% if (basePath === '/admin' || basePath === '/assistant') { %>
-          <a href="<%= basePath %>/notifications/archive">View Archive Notification</a>
-          <a href="<%= basePath %>/notifications/history">Notification History</a>
-        <% } %>
-        <form action="/logout" method="post"><button type="submit" class="dropdown-danger">Logout</button></form>
+        <a href="<%= basePath %>/notifications/archive">View Archived Notifications</a>
+        <a href="<%= basePath %>/notifications/history">Notification History</a>
+        <form action="/logout" method="post"><button type="submit" class="dropdown-danger">Log Out</button></form>
       </div>
     </div>
     <div class="topbar-user"><%- include('avatar', { avatarSrc: currentUser.image_path, avatarName: [currentUser.first_name, currentUser.last_name].filter(Boolean).join(' '), avatarSize: 'md' }) %><span><%= currentUser.first_name %></span></div>
   </div>
 </header>
-
-<% if (canShowBell) { %>
-<div class="global-modal" id="topbar-notifications-modal">
-  <div class="global-modal-card wide">
-    <button type="button" class="modal-close" data-close-modal>&times;</button>
-    <h3>Notifications</h3>
-    <div class="list-stack modal-scroll-box">
-      <% if (!(inboxNotifications || []).length && !(alerts || []).length) { %><p class="empty-state">No new notifications right now.</p><% } %>
-
-      <%# System alerts first: a pending payment request is time-sensitive in a way
-          a registration sitting in the queue is not. %>
-      <% (alerts || []).forEach((alert) => { %>
-        <article class="list-card compact align-start">
-          <div>
-            <strong><%= alert.title %></strong>
-            <p><%= alert.message || '' %></p>
-            <p><%= formatDateTime(alert.created_at) %></p>
-          </div>
-          <div class="row-actions stack-mobile">
-            <% if (alert.link_url) { %>
-              <a class="btn btn-primary btn-sm" href="<%= alert.link_url %>">Open</a>
-            <% } %>
-            <%# A student's alerts are theirs alone (payment reminders), so they
-                can put one away. Staff alerts are settled by acting on them. %>
-            <% if (basePath === '/student') { %>
-              <form method="post" action="/student/alerts/<%= alert.id %>/read"><button class="btn btn-secondary btn-sm" type="submit">Mark as read</button></form>
-            <% } %>
-          </div>
-        </article>
-      <% }) %>
-
-      <% (inboxNotifications || []).forEach((item) => { %>
-        <article class="list-card compact align-start">
-          <div>
-            <strong><%= item.notification_type === 'subject_enrollment_request' ? 'Subject Enrollment Request' : item.notification_type === 'schedule_request' ? 'Student Schedule Application' : item.notification_type === 'student_schedule_status' ? 'Schedule Update' : item.notification_type === 'assessment_request' ? '📋 Assessment Request' : (item.submission_type === 'tutor' ? 'Tutor Registration' : 'Learner Registration') %></strong>
-            <p><%= formatDateTime(item.created_at || item.updated_at) %></p>
-          </div>
-          <div class="row-actions stack-mobile"><button class="btn btn-primary btn-sm" type="button" data-modal-target="#notification-view-<%= item.id %>">View</button></div>
-        </article>
-      <% }) %>
-    </div>
-  </div>
-</div>
-
-<% (inboxNotifications || []).forEach((item) => { %>
-<div class="global-modal" id="notification-view-<%= item.id %>">
-  <div class="global-modal-card wide">
-    <button type="button" class="modal-close" data-close-modal>&times;</button>
-    <% if (item.notification_type === 'subject_enrollment_request') { %>
-      <h3>Subject Enrollment Request</h3>
-      <div class="read-only-profile-grid">
-        <div><strong>Student:</strong> <%= item.first_name %> <%= item.middle_name || '' %> <%= item.last_name %></div>
-        <div><strong>Student ID:</strong> <%= item.user_id || '-' %></div>
-        <div><strong>Subject:</strong> <%= item.subject_name || '-' %></div>
-        <div><strong>Branch:</strong> <%= item.branch_name || '-' %></div>
-        <div><strong>Year Level:</strong> <%= item.year_level || '-' %></div>
-        <div><strong>Grade Level:</strong> <%= item.grade_level || '-' %></div>
-        <div><strong>Email:</strong> <%= item.email || '-' %></div>
-        <div><strong>Contact Number:</strong> <%= item.contact_number || '-' %></div>
-      </div>
-      <div class="form-actions right">
-        <form method="post" action="<%= basePath %>/subject-requests/<%= item.id %>/accept" data-confirm-message="Accept this subject enrollment request?"><button class="btn btn-primary" type="submit">Accept</button></form>
-        <form method="post" action="<%= basePath %>/subject-requests/<%= item.id %>/cancel" data-confirm-message="Cancel this subject enrollment request?"><button class="btn btn-secondary" type="submit">Cancel</button></form>
-      </div>
-    <% } else if (item.notification_type === 'schedule_request') { %>
-      <h3>Student Schedule Application</h3>
-      <div class="read-only-profile-grid">
-        <div><strong>Student:</strong> <%= item.full_name %></div>
-        <div><strong>Subject:</strong> <%= item.subject_name %></div>
-        <div><strong>Time Slot:</strong> <%= item.time_slot %></div>
-        <div><strong>Requested At:</strong> <%= formatDateTime(item.created_at) %></div>
-      </div>
-      <div class="form-actions right">
-        <form method="post" action="/tutor/notifications/<%= item.id %>/accept" data-confirm-message="Accept this student schedule application?"><button class="btn btn-primary" type="submit">Accept</button></form>
-        <form method="post" action="/tutor/notifications/<%= item.id %>/cancel" data-confirm-message="Cancel this student schedule application?"><button class="btn btn-secondary" type="submit">Cancel</button></form>
-      </div>
-    <% } else if (item.notification_type === 'student_schedule_status') { %>
-      <h3>Schedule Update</h3>
-      <div class="read-only-profile-grid">
-        <div><strong>Tutor:</strong> <%= item.tutor_name %></div>
-        <div><strong>Subject:</strong> <%= item.subject_name %></div>
-        <div><strong>Time Slot:</strong> <%= item.time_slot %></div>
-        <div><strong>Status:</strong> <%= item.status === 'accepted' ? 'Your schedule has been approved' : 'Your schedule request was cancelled' %></div>
-      </div>
-      <div class="form-actions right">
-        <form method="post" action="/student/notifications/<%= item.id %>/read"><button class="btn btn-primary" type="submit">Mark as Read</button></form>
-      </div>
-    <%# Phase 9: the assessment_request notification card was removed with the
-        request/approve loop it belonged to. Nothing produces that notification_type
-        any more, so the branch could only ever render a form posting to a route
-        that no longer exists. %>
-    <% } else { %>
-      <h3><%= item.submission_type === 'tutor' ? 'Tutor Registration' : 'Learner Registration' %></h3>
-      <div class="read-only-profile-grid">
-        <div><strong>Name:</strong> <%= item.first_name %> <%= item.middle_name || '' %> <%= item.last_name %></div>
-        <div><strong>Email:</strong> <%= item.extra?.email || item.email || '-' %></div>
-        <div><strong>Password:</strong> ******</div>
-        <div><strong>Branch:</strong> <%= item.branch_name || '-' %></div>
-        <div><strong>Birth Date:</strong> <%= formatDate(item.birth_date) %></div>
-        <div><strong>Age:</strong> <%= item.age || '-' %></div>
-        <div><strong>Gender:</strong> <%= item.gender || '-' %></div>
-        <div><strong>Contact Number:</strong> <%= item.contact_number || item.parent_contact_number || '-' %></div>
-        <div><strong>Email:</strong> <%= item.email || item.parent_email || '-' %></div>
-        <div><strong>Facebook:</strong> <%= item.facebook_account || item.parent_facebook || '-' %></div>
-        <div><strong>Year Level:</strong> <%= item.year_level || '-' %></div>
-        <div><strong>Grade Level:</strong> <%= item.grade_level || '-' %></div>
-        <div class="full-width"><strong>Address:</strong> <%= item.address || '-' %></div>
-        <div class="full-width"><strong>Subjects:</strong> <%= (item.subjects || []).join(', ') || '-' %></div>
-        <div class="full-width"><strong>Additional Academic Support:</strong> <%= (item.supports || []).join(', ') || '-' %></div>
-      </div>
-      <div class="form-actions right">
-        <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/accept" data-confirm-message="Accept this registration?"><button class="btn btn-primary" type="submit">Accept</button></form>
-        <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/read" data-confirm-message="Cancel and mark this notification as read?"><button class="btn btn-secondary" type="submit">Cancel</button></form>
-        <form method="post" action="<%= basePath %>/notifications/<%= item.id %>/archive" data-confirm-message="Archive this notification?"><button class="btn btn-secondary" type="submit">Archive</button></form>
-      </div>
-    <% } %>
-  </div>
-</div>
-<% }) %>
-<% } %>

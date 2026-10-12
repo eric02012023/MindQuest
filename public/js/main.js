@@ -54,14 +54,72 @@ document.addEventListener('click', (event) => {
     if (target) target.scrollIntoView({ behavior: 'smooth' });
   }
 
+  // Dropdowns (the bell, the ☰ menu): one open at a time, and a click inside an
+  // open one — reading a notification, pressing its × — leaves it open.
   const dropdownButton = event.target.closest('[data-dropdown-toggle]');
   if (dropdownButton) {
     const panel = dropdownButton.parentElement.querySelector('[data-dropdown-panel]');
+    document.querySelectorAll('[data-dropdown-panel].is-open').forEach((open) => {
+      if (open !== panel) open.classList.remove('is-open');
+    });
     if (panel) panel.classList.toggle('is-open');
-  } else {
+  } else if (!event.target.closest('[data-dropdown-panel]')) {
     document.querySelectorAll('[data-dropdown-panel].is-open').forEach((panel) => panel.classList.remove('is-open'));
   }
 });
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  document.querySelectorAll('[data-dropdown-panel].is-open').forEach((panel) => panel.classList.remove('is-open'));
+});
+
+// ============================================================================
+// The bell's × — mark one notification read without leaving the page
+//
+// Sent in the background; the item leaves the list and the count drops. If the
+// request cannot be made, the same address is posted as an ordinary form, so it
+// still happens — just with a page load.
+// ============================================================================
+(function () {
+  function setCount(next) {
+    document.querySelectorAll('[data-notification-count]').forEach((badge) => {
+      badge.textContent = next > 99 ? '99+' : String(next);
+      badge.hidden = next <= 0;
+    });
+    document.querySelectorAll('[data-bell-new]').forEach((label) => {
+      label.textContent = next > 0 ? `${next} new` : '';
+    });
+  }
+
+  document.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-bell-dismiss]');
+    if (!button) return;
+    event.preventDefault();
+    const url = button.getAttribute('data-bell-dismiss');
+    const item = button.closest('[data-bell-item]');
+    button.disabled = true;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'fetch' }
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const list = item ? item.parentElement : null;
+      if (item) item.remove();
+      const left = list ? list.querySelectorAll('[data-bell-item]').length : 0;
+      setCount(left);
+      const empty = list ? list.querySelector('[data-bell-empty]') : null;
+      if (empty) empty.hidden = left > 0;
+    } catch (_error) {
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = url;
+      document.body.appendChild(form);
+      form.submit();
+    }
+  });
+})();
 
 document.querySelectorAll('.global-modal[data-force-open="true"]').forEach(openModal);
 
@@ -488,6 +546,7 @@ function showSimpleModal(title, message) {
     if (bellCount) {
       const current = parseInt(bellCount.textContent, 10) || 0;
       bellCount.textContent = current + 1;
+      bellCount.hidden = false;
     }
 
     // Auto-dismiss after 8 seconds

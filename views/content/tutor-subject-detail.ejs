@@ -8,7 +8,7 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th data-search-col>Student</th><th>Year / Grade</th><th>Time Schedule</th><th>Action</th></tr></thead>
+        <thead><tr><th data-search-col>Student</th><th>Year / Grade</th><th>Time Schedule</th><th>Analytics</th></tr></thead>
         <tbody>
           <% if (!myStudents.length) { %><tr><td colspan="4">No students under this subject yet.</td></tr><% } %>
           <% myStudents.forEach((student) => { %>
@@ -99,7 +99,7 @@
               <th>Percentage</th>
               <th>Classification</th>
               <th>Submitted</th>
-              <th>Action</th>
+              <th>Results</th>
             </tr>
           </thead>
           <tbody>

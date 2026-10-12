@@ -18,6 +18,11 @@
   const waitingCount = typeof needsTutorCount === 'undefined' ? 0 : needsTutorCount;
   const inNeedsTutor = activeFolder === 'needs-tutor';
   const folderHref = (value) => `${basePath}/users${value !== 'all' ? `?folder=${value}` : ''}`;
+  // Registered Assistant Admins; the account form offers those with no login yet.
+  const registered = typeof assistantProfiles === 'undefined' ? [] : (assistantProfiles || []);
+  const awaitingAccount = registered.filter((profile) => !profile.has_account);
+  // A form that failed validation opens again, so the admin can fix it.
+  const reopen = typeof openModal === 'undefined' ? '' : openModal;
 %>
 <section class="mq-page">
 
@@ -40,8 +45,8 @@
     <div class="mq-toolbar-actions">
       <button type="button" class="mq-btn" data-modal-target="#archived-users-modal"><%- icon('archive') %> Archive</button>
       <% if (currentUser.role === 'admin') { %>
-        <button type="button" class="mq-btn" data-modal-target="#archived-assistant-modal">Archived assistants</button>
-        <button type="button" class="mq-btn mq-btn-primary" data-modal-target="#assistant-modal"><%- icon('add') %> Branch account</button>
+        <button type="button" class="mq-btn" data-modal-target="#archived-assistant-modal">Archived assistant admins</button>
+        <button type="button" class="mq-btn mq-btn-primary" data-modal-target="#assistant-choice-modal"><%- icon('add') %> Branch Assistant Admin Account</button>
       <% } %>
     </div>
   </div>
@@ -69,7 +74,7 @@
         <span><%= inNeedsTutor ? 'Tutor' : 'Role' %></span>
         <span>Status</span>
         <span>Joined</span>
-        <span style="text-align:right;">Actions</span>
+        <span style="text-align:right;">Manage</span>
       </div>
 
       <% if (!users.length) { %>
@@ -103,12 +108,12 @@
             <% if (inNeedsTutor) { %>
               <span class="mq-status mq-status-pending"><%= (user.enrolled_subjects || []).length > 1 ? `${user.enrolled_subjects.length} subjects need one` : 'No tutor yet' %></span>
             <% } else { %>
-              <span class="mq-chip mq-chip-role"><%= user.role %></span>
+              <span class="mq-chip mq-chip-role"><%= user.role === 'tutor' ? 'Tutor' : 'Student' %></span>
             <% } %>
           </span>
 
           <span class="mq-cell" data-label="Status">
-            <span class="mq-status mq-status-<%= user.status === 'approved' ? 'approved' : user.status === 'pending' ? 'pending' : 'rejected' %>"><%= user.status %></span>
+            <span class="mq-status mq-status-<%= user.status === 'approved' ? 'approved' : user.status === 'pending' ? 'pending' : 'rejected' %>"><%= user.status === 'approved' ? 'Approved' : user.status === 'pending' ? 'Pending' : 'Rejected' %></span>
           </span>
 
           <span class="mq-cell mq-sub" data-label="Joined"><%= formatDate(user.created_at) %></span>
@@ -129,31 +134,31 @@
   </section>
 
   <% if (currentUser.role === 'admin') { %>
-    <section class="mq-panel">
+    <section class="mq-panel" id="assistant-admins">
       <div class="mq-panel-head">
-        <h2>Branch assistant accounts</h2>
+        <h2>Branch Assistant Admin Accounts</h2>
         <span class="mq-count"><%= assistantAccounts.length %> account<%= assistantAccounts.length === 1 ? '' : 's' %></span>
       </div>
 
       <div class="mq-table" style="--mq-min-width: 860px; --mq-cols: minmax(160px, 2fr) minmax(170px, 2fr) 1fr minmax(150px, 1fr) 110px 96px;">
         <div class="mq-head">
-          <span>Assistant</span>
+          <span>Assistant Admin</span>
           <span>Email</span>
           <span>Branch</span>
           <span>Handles now</span>
           <span>Created</span>
-          <span style="text-align:right;">Actions</span>
+          <span style="text-align:right;">Manage</span>
         </div>
 
         <% if (!assistantAccounts.length) { %>
-          <div class="mq-empty"><strong>No assistant accounts yet</strong>Create one with the button above.</div>
+          <div class="mq-empty"><strong>No assistant admin accounts yet</strong>Use "Branch Assistant Admin Account" above: register the assistant admin, then create their account.</div>
         <% } %>
 
         <% assistantAccounts.forEach((assistant) => { const counts = rosterOf(assistant); %>
           <div class="mq-row">
-            <span class="mq-cell mq-cell-primary" data-label="Assistant">
+            <span class="mq-cell mq-cell-primary" data-label="Assistant Admin">
               <a class="mq-name" href="<%= basePath %>/profile/<%= assistant.id %>"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></a>
-              <span class="mq-sub">Admin Assistant</span>
+              <span class="mq-sub">Assistant Admin</span>
             </span>
             <span class="mq-cell mq-sub" data-label="Email"><%= assistant.email %></span>
             <span class="mq-cell" data-label="Branch"><%= assistant.branch_name || '—' %></span>
@@ -161,9 +166,52 @@
             <span class="mq-cell mq-sub" data-label="Created"><%= formatDate(assistant.created_at) %></span>
             <span class="mq-cell mq-cell-actions">
               <a class="mq-icon" href="<%= basePath %>/profile/<%= assistant.id %>" title="View account and roster" aria-label="View account and roster"><%- icon('view') %></a>
-              <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/archive" data-confirm-message="Archive this assistant account?">
+              <form method="post" action="<%= basePath %>/assistant-accounts/<%= assistant.id %>/archive" data-confirm-message="Archive this assistant admin account?">
                 <button class="mq-icon mq-icon-danger" type="submit" title="Archive account" aria-label="Archive account"><%- icon('archive') %></button>
               </form>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+
+    <%# The people registered as Assistant Admins, with or without a login yet. %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h2>Registered Assistant Admins</h2>
+          <p>Registered with "Register Assistant Admin". Those without an account can be picked in "Create Account for Assistant Admin".</p>
+        </div>
+        <span class="mq-count"><%= registered.length %> registered</span>
+      </div>
+
+      <div class="mq-table" style="--mq-min-width: 900px; --mq-cols: minmax(170px, 2fr) 130px 120px 70px minmax(180px, 2fr) minmax(150px, 1.2fr);">
+        <div class="mq-head">
+          <span data-search-col>Name</span>
+          <span>Contact Number</span>
+          <span>Birthdate</span>
+          <span>Age</span>
+          <span>Address</span>
+          <span>Account</span>
+        </div>
+
+        <% if (!registered.length) { %>
+          <div class="mq-empty"><strong>No one registered yet</strong>Register an assistant admin first, then create their account.</div>
+        <% } %>
+
+        <% registered.forEach((profile) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-cell-primary" data-label="Name"><span class="mq-name"><%= profile.full_name %></span></span>
+            <span class="mq-cell mq-sub" data-label="Contact Number"><%= profile.contact_number || '—' %></span>
+            <span class="mq-cell mq-sub" data-label="Birthdate"><%= formatDate(profile.birth_date) %></span>
+            <span class="mq-cell mq-sub" data-label="Age"><%= profile.age || '—' %></span>
+            <span class="mq-cell mq-sub" data-label="Address"><%= profile.address || '—' %></span>
+            <span class="mq-cell" data-label="Account">
+              <% if (profile.has_account) { %>
+                <a class="mq-status mq-status-approved" href="<%= basePath %>/profile/<%= profile.user_id %>"><%= profile.branch_name ? `Has account · ${profile.branch_name}` : 'Has account' %></a>
+              <% } else { %>
+                <span class="mq-status mq-status-pending">No account yet</span>
+              <% } %>
             </span>
           </div>
         <% }) %>
@@ -204,18 +252,18 @@
     <div class="global-modal" id="archived-assistant-modal">
       <div class="global-modal-card wide">
         <button type="button" class="modal-close" data-close-modal>&times;</button>
-        <h3>Archived assistant accounts</h3>
+        <h3>Archived Assistant Admin Accounts</h3>
         <p class="mq-form-note">Open one to see every tutor and student who was under them.</p>
         <div class="mq-table" style="--mq-cols: minmax(150px,2fr) minmax(150px,2fr) 1fr minmax(110px, 1fr) 96px;">
           <div class="mq-head">
-            <span>Assistant</span><span>Email</span><span>Branch</span><span>Handled</span><span style="text-align:right;">Actions</span>
+            <span>Assistant Admin</span><span>Email</span><span>Branch</span><span>Handled</span><span style="text-align:right;">Manage</span>
           </div>
           <% if (!(archivedAssistantAccounts || []).length) { %>
-            <div class="mq-empty">No archived assistant accounts.</div>
+            <div class="mq-empty">No archived assistant admin accounts.</div>
           <% } %>
           <% (archivedAssistantAccounts || []).forEach((assistant) => { const counts = rosterOf(assistant); %>
             <div class="mq-row">
-              <span class="mq-cell mq-cell-primary" data-label="Assistant">
+              <span class="mq-cell mq-cell-primary" data-label="Assistant Admin">
                 <a class="mq-name" href="<%= basePath %>/profile/<%= assistant.id %>"><%= titleCaseName(assistant.extra?.assistant_name || assistant.first_name || assistant.email) %></a>
               </span>
               <span class="mq-cell mq-sub" data-label="Email"><%= assistant.email %></span>
@@ -233,27 +281,96 @@
       </div>
     </div>
 
-    <div class="global-modal" id="assistant-modal">
+    <%# "Branch Assistant Admin Account": first, which of the two steps. %>
+    <div class="global-modal" id="assistant-choice-modal">
       <div class="global-modal-card small">
         <button type="button" class="modal-close" data-close-modal>&times;</button>
-        <h3>Create branch assistant account</h3>
-        <form method="post" action="<%= basePath %>/assistant-accounts" class="mq-form">
-          <label>Branch
-            <select name="branch_id" required>
-              <% ((typeof availableAssistantBranches !== 'undefined' && availableAssistantBranches.length ? availableAssistantBranches : branches) || []).forEach((branch) => { %>
-                <option value="<%= branch.id %>"><%= branch.name %></option>
-              <% }) %>
-            </select>
-          </label>
-          <label>Assistant name<input type="text" name="assistant_name" required /></label>
-          <label>Email<input type="email" name="email" required /></label>
-          <label>Password<input type="password" name="password" required /></label>
+        <h3>Branch Assistant Admin Account</h3>
+        <p class="mq-form-note">Register the assistant admin first, then create their account.</p>
+        <div class="aa-choice">
+          <button type="button" class="aa-choice-btn" data-modal-target="#register-assistant-modal" data-close-modal>
+            <%- icon('user', 22) %>
+            <span><strong>Register Assistant Admin</strong><small>Name, address, birthdate and contact number</small></span>
+          </button>
+          <button type="button" class="aa-choice-btn" data-modal-target="#assistant-modal" data-close-modal>
+            <%- icon('lock', 22) %>
+            <span><strong>Create Account for Assistant Admin</strong><small>Branch, email and password for a registered assistant admin</small></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <%# Step 1 — register the person. Age is worked out from the birthdate. %>
+    <div class="global-modal <%= reopen === 'register-assistant' ? 'is-open' : '' %>" id="register-assistant-modal" <%= reopen === 'register-assistant' ? 'data-force-open="true"' : '' %>>
+      <div class="global-modal-card small">
+        <button type="button" class="modal-close" data-close-modal>&times;</button>
+        <h3>Register Assistant Admin</h3>
+        <form method="post" action="<%= basePath %>/assistant-admins/register" class="mq-form"
+              data-confirm-message="Register this assistant admin?">
+          <label>First name<input type="text" name="first_name" maxlength="100" autocomplete="given-name" required /></label>
+          <label>Middle name <small>(optional)</small><input type="text" name="middle_name" maxlength="100" autocomplete="additional-name" /></label>
+          <label>Last name<input type="text" name="last_name" maxlength="100" autocomplete="family-name" required /></label>
+          <label class="is-wide">Address<input type="text" name="address" maxlength="500" autocomplete="street-address" required /></label>
+          <label>Birthdate<input type="date" name="birth_date" data-auto-age-birth max="<%= toInputDate(new Date()) %>" required /></label>
+          <label>Age<input type="number" name="age" data-auto-age-target readonly tabindex="-1" placeholder="From the birthdate" /></label>
+          <label>Contact number<input type="tel" name="contact_number" placeholder="09XXXXXXXXX" pattern="(\+?63|0)9[0-9]{9}" title="A mobile number like 09XXXXXXXXX" maxlength="13" required /></label>
           <div class="mq-form-foot">
-            <button class="mq-btn mq-btn-primary" type="submit">Save account</button>
+            <button class="mq-btn mq-btn-primary" type="submit">Register</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <%# Step 2 — the account. The same form as before, except the name is
+        picked from the registered assistant admins who have no account yet. %>
+    <div class="global-modal <%= reopen === 'create-assistant-account' ? 'is-open' : '' %>" id="assistant-modal" <%= reopen === 'create-assistant-account' ? 'data-force-open="true"' : '' %>>
+      <div class="global-modal-card small">
+        <button type="button" class="modal-close" data-close-modal>&times;</button>
+        <h3>Create Account for Assistant Admin</h3>
+        <% if (!awaitingAccount.length) { %>
+          <p class="mq-form-note">Every registered assistant admin already has an account. Register the new assistant admin first.</p>
+          <div class="mq-form-foot">
+            <button type="button" class="mq-btn mq-btn-primary" data-modal-target="#register-assistant-modal" data-close-modal><%- icon('user') %> Register Assistant Admin</button>
+          </div>
+        <% } else { %>
+          <form method="post" action="<%= basePath %>/assistant-accounts" class="mq-form"
+                data-confirm-message="Create this assistant admin account?">
+            <label>Assistant name
+              <select name="assistant_profile_id" required>
+                <option value="">Select a registered assistant admin</option>
+                <% awaitingAccount.forEach((profile) => { %>
+                  <option value="<%= profile.id %>"><%= profile.full_name %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label>Branch
+              <select name="branch_id" required>
+                <% ((typeof availableAssistantBranches !== 'undefined' && availableAssistantBranches.length ? availableAssistantBranches : branches) || []).forEach((branch) => { %>
+                  <option value="<%= branch.id %>"><%= branch.name %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label>Email<input type="email" name="email" autocomplete="off" required /></label>
+            <label>Password<input type="password" name="password" minlength="8" autocomplete="new-password" required /></label>
+            <div class="mq-form-foot">
+              <button class="mq-btn mq-btn-primary" type="submit">Save account</button>
+            </div>
+          </form>
+        <% } %>
       </div>
     </div>
   <% } %>
 
 </section>
+
+<style>
+  .aa-choice { display: grid; gap: 10px; margin-top: 12px; }
+  .aa-choice-btn {
+    display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; text-align: left;
+    border: 1px solid var(--border, #d7e2ea); border-radius: 14px; background: #fff; cursor: pointer;
+    font: inherit; color: inherit; transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .aa-choice-btn:hover { border-color: var(--primary, #0e7490); box-shadow: 0 6px 18px rgba(16, 32, 51, .08); }
+  .aa-choice-btn span { display: grid; gap: 2px; }
+  .aa-choice-btn small { color: var(--text-soft, #5f7084); font-size: 12.5px; }
+</style>

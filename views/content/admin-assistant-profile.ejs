@@ -60,10 +60,17 @@
       </div>
     </div>
 
+    <% const details = typeof registeredDetails === 'undefined' ? null : registeredDetails; %>
     <div class="mq-detail">
       <div class="mq-detail-item"><span>Email</span><strong><%= profileUser.email || '—' %></strong></div>
       <div class="mq-detail-item"><span>Branch</span><strong><%= branchName %></strong></div>
-      <div class="mq-detail-item"><span>Account created</span><strong><%= formatDate(profileUser.created_at) %></strong></div>
+      <div class="mq-detail-item"><span>Assistant admin since</span><strong><%= formatDate(profileUser.created_at) %></strong></div>
+      <% if (details) { %>
+        <div class="mq-detail-item"><span>Contact number</span><strong><%= details.contact_number || '—' %></strong></div>
+        <div class="mq-detail-item"><span>Birthdate</span><strong><%= formatDate(details.birth_date) %></strong></div>
+        <div class="mq-detail-item"><span>Age</span><strong><%= details.age || '—' %></strong></div>
+        <div class="mq-detail-item is-wide"><span>Address</span><strong><%= details.address || '—' %></strong></div>
+      <% } %>
       <div class="mq-detail-item">
         <span>Handling tutors &amp; students</span>
         <strong>

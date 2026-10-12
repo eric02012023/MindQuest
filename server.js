@@ -22,7 +22,7 @@ const adminRoutes = require('./routes/admin');
 const assistantRoutes = require('./routes/assistant');
 const studentRoutes = require('./routes/student');
 const tutorRoutes = require('./routes/tutor');
-const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName } = require('./lib/utils');
+const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName, attendanceLabel, attendanceBadge } = require('./lib/utils');
 const { icon } = require('./lib/icons');
 const { resolvePageStyles } = require('./lib/pageStyles');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
@@ -45,6 +45,9 @@ app.locals.toInputDate = toInputDate;
 app.locals.safeJsonArray = safeJsonArray;
 app.locals.branchAddress = branchAddress;
 app.locals.titleCaseName = titleCaseName;
+// Attendance: Present / Late / Absent / Excused, each with its badge colour.
+app.locals.attendanceLabel = attendanceLabel;
+app.locals.attendanceBadge = attendanceBadge;
 // One icon set for every row action in the app. Print it with <%- %>.
 app.locals.icon = icon;
 // Which stylesheets a dashboard page loads. A module rather than a few lines in

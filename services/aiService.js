@@ -349,17 +349,17 @@ Make questions perfectly appropriate for the student's education level.`;
  *       to measure improvement, so every item has to be gradeable the same way
  *       twice with no judgement involved.
  *
- *   Module assessment (written by a tutor)  Multiple Choice, Fill in the Blank,
- *       True or False. Essay is deliberately NOT here: it needs an AI grader,
- *       which makes a tutor's own quiz depend on a network call and a model's
- *       opinion.
+ *   Module assessment (written by a tutor)  Multiple Choice and True or False.
+ *       Essay is deliberately NOT here: it needs an AI grader, which makes a
+ *       tutor's own quiz depend on a network call and a model's opinion.
  *
- * Fill in the blank is back, and it is graded case-insensitively — see
- * gradeObjectiveAnswer in lib/data.js. Spelling still has to match; only letter
- * casing is ignored, which is what the brief asks for.
+ * Fill in the blank is gone from every assessment: no assessment may be created
+ * with it, by hand or by AI. Questions of that type written before it was
+ * removed still grade (gradeObjectiveAnswer in lib/data.js), so an old
+ * assessment a student has open does not break.
  */
 const PRE_POST_QUESTION_TYPES = ['multiple_choice'];
-const MODULE_QUESTION_TYPES = ['multiple_choice', 'fill_blank', 'true_false'];
+const MODULE_QUESTION_TYPES = ['multiple_choice', 'true_false'];
 
 /**
  * Kept as the module-assessment set under its old name: every existing caller
@@ -494,26 +494,6 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
     if (!['true', 'false'].includes(answer)) return null;
     base.correct_answer = answer;
     base.choices = [{ label: 'A', text: 'True' }, { label: 'B', text: 'False' }];
-    return base;
-  }
-
-  if (type === 'fill_blank') {
-    // The answer must be SHORT to be gradeable by comparison. A model asked for
-    // a fill-in-the-blank will sometimes return an open question with a sentence
-    // for an answer; that item is unmarkable, so it is dropped here rather than
-    // shown to a student who then loses a mark for phrasing.
-    const answer = String(raw.correct_answer || '').trim();
-    if (!answer || answer.length > 60) return null;
-    const words = answer.split(/\s+/).filter(Boolean);
-    if (words.length > 4) return null;
-
-    // Prefer an actual blank in the sentence. An identification-style question
-    // with a one-to-four word answer grades identically, so it is accepted too.
-    const hasBlank = /_{2,}/.test(questionText);
-    const looksLikeIdentification = /\?$/.test(questionText) || /:$/.test(questionText);
-    if (!hasBlank && !looksLikeIdentification) return null;
-
-    base.correct_answer = answer;
     return base;
   }
 
@@ -756,19 +736,13 @@ function buildHandoutPrompts({
   const answerRules = {
     multiple_choice: '    * multiple_choice -> the letter of the correct choice ("A", "B", "C" or "D")',
     true_false: '    * true_false      -> exactly "true" or "false"',
-    fill_blank: '    * fill_blank      -> the missing word or short phrase, at most 4 words',
     essay: '    * essay           -> a concise model answer'
   };
   const typeList = allowedTypes.map((type) => `"${type}"`).join(', ');
   const answerLines = allowedTypes.map((type) => answerRules[type]).filter(Boolean).join('\n');
 
-  const extraRules = [];
-  if (allowedTypes.includes('fill_blank')) {
-    extraRules.push('- A fill_blank question_text MUST contain the blank written as at least two underscores (e.g. "The powerhouse of the cell is the ____.").');
-    extraRules.push('- A fill_blank answer must be one to four words, and must be spelled exactly as it appears in the handout.');
-  } else {
-    extraRules.push('- Never write a fill-in-the-blank question. Ask it as multiple_choice instead.');
-  }
+  // No assessment has fill-in-the-blank items any more.
+  const extraRules = ['- Never write a fill-in-the-blank question. Ask it as multiple_choice instead.'];
   if (allowedTypes.includes('essay')) {
     extraRules.push('- "answer_rubric": for essay ONLY, the key points a correct answer must mention, so it can be graded automatically.');
   } else {

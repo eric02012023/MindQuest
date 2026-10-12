@@ -6,21 +6,19 @@
   const greeting = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
   const todayLabel = manilaNow.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   const heroBranch = (branches || []).find((branch) => Number(branch.id) === Number(effectiveBranchId));
-  const waitingCount = (typeof inboxNotifications === 'undefined' ? [] : inboxNotifications).length;
 %>
 <%# The admin and assistant dashboards now open like the tutor and student ones
-    do: a welcome banner with the centre's motto, and the three places an admin
-    goes next. It sits above the page-stack because that row is laid out as
-    two columns of its own. %>
+    do: a welcome banner with the centre's motto, and the places an admin goes
+    next. Notifications are reached from the bell in the topbar. It sits above
+    the page-stack because that row is laid out as two columns of its own. %>
 <article class="mq-hero">
   <div class="mq-hero-text">
     <span class="mq-hero-kicker"><%= greeting %> · <%= todayLabel %></span>
     <h2>Welcome back, <%= titleCaseName(currentUser.first_name) %>!</h2>
     <p>Unlocking minds, one quest at a time. Here is <%= heroBranch ? titleCaseName(heroBranch.name) : 'every branch' %> at a glance.</p>
     <div class="mq-hero-actions">
-      <a class="mq-btn mq-btn-light" href="<%= basePath %>/notifications#inbox"><%- icon('bell') %> <%= waitingCount %> waiting on you</a>
-      <a class="mq-btn mq-btn-light" href="<%= basePath %>/users"><%- icon('user') %> User management</a>
-      <a class="mq-btn mq-btn-light" href="<%= basePath %>/billing"><%- icon('money') %> Student bill</a>
+      <a class="mq-btn mq-btn-light" href="<%= basePath %>/users"><%- icon('user') %> User Management</a>
+      <a class="mq-btn mq-btn-light" href="<%= basePath %>/billing"><%- icon('money') %> Student Bill</a>
     </div>
   </div>
   <div class="mq-hero-art"><%- include('../partials/hero-art') %></div>
@@ -54,7 +52,7 @@
 
   <section class="panel-card scroll-panel medium-scroll">
     <div class="panel-card-head">
-      <h2>Recent Submissions</h2>
+      <h2>Recent Registrations</h2>
       <p>Only the last 3 days stay in this list.</p>
     </div>
     <div class="table-wrap">
@@ -70,14 +68,14 @@
         </thead>
         <tbody>
           <% if (!recentSubmissions.length) { %>
-            <tr><td colspan="5">No recent submissions.</td></tr>
+            <tr><td colspan="5">No recent registrations.</td></tr>
           <% } %>
           <% recentSubmissions.forEach((row) => { %>
             <tr>
               <td><%= row.first_name %> <%= row.last_name %></td>
-              <td><%= row.submission_type %></td>
+              <td><%= row.submission_type === 'tutor' ? 'Tutor' : 'Learner' %></td>
               <td><%= row.branch_name || '-' %></td>
-              <td><%= row.status %></td>
+              <td><%= row.status === 'cancelled' ? 'Declined' : String(row.status || '').charAt(0).toUpperCase() + String(row.status || '').slice(1) %></td>
               <td><%= formatDateTime(row.created_at) %></td>
             </tr>
           <% }) %>

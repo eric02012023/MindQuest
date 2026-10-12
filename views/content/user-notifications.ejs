@@ -1,0 +1,133 @@
+<%# File: views/content/user-notifications.ejs
+    Purpose: A student's or a tutor's Notifications page — where the bell's
+    "See all" goes.
+
+      tutor    students asking them to be their tutor (Accept / Decline), then
+               their updates (a focus area ready, a student who added a subject)
+      student  tutors' answers to their requests, then their updates (payment
+               reminders)
+
+    Locals: viewerRole, scheduleRequests (tutor), scheduleUpdates (student),
+            allAlerts %>
+<%
+  const isTutor = viewerRole === 'tutor';
+  const requests = scheduleRequests || [];
+  const answers = scheduleUpdates || [];
+  const updates = allAlerts || [];
+  const when = (row) => [row.preferred_days, row.time_slot].filter(Boolean).join(', ') || '—';
+  const studentName = (row) => [row.student_first_name, row.student_middle_name, row.student_last_name].filter(Boolean).join(' ');
+%>
+<section class="page-stack">
+  <% if (isTutor) { %>
+    <section class="panel-card" id="requests">
+      <div class="panel-card-head">
+        <h2>Student Requests</h2>
+        <span class="badge badge-warning"><%= requests.length %> waiting</span>
+      </div>
+      <p class="table-note">A student is asking you to be their tutor at the days and time they chose. Accepting makes you their tutor for every subject of theirs you teach.</p>
+      <div class="un-list">
+        <% if (!requests.length) { %><p class="empty-state">No student is waiting for your answer.</p><% } %>
+        <% requests.forEach((item) => { %>
+          <article class="un-card">
+            <%- include('../partials/avatar', { avatarSrc: item.student_image_path, avatarName: studentName(item), avatarSize: 'md' }) %>
+            <div class="un-info">
+              <strong><%= studentName(item) %></strong>
+              <span><%= item.student_code || '' %><%= item.student_grade_level ? ` · ${item.student_grade_level}` : '' %></span>
+              <span>Subject: <strong><%= item.subject_name %></strong></span>
+              <span>Preferred days and time: <strong><%= when(item) %></strong></span>
+              <small>Requested <%= formatDateTime(item.created_at) %></small>
+            </div>
+            <div class="un-actions">
+              <form method="post" action="/tutor/notifications/<%= item.id %>/cancel" data-confirm-message="Decline <%= studentName(item) %>'s request?">
+                <button class="btn btn-secondary btn-sm" type="submit">Decline</button>
+              </form>
+              <form method="post" action="/tutor/notifications/<%= item.id %>/accept" data-confirm-message="Accept <%= studentName(item) %> for <%= item.subject_name %> on <%= when(item) %>?">
+                <button class="btn btn-primary btn-sm" type="submit">Accept</button>
+              </form>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+  <% } else { %>
+    <section class="panel-card" id="answers">
+      <div class="panel-card-head">
+        <h2>Tutor Answers</h2>
+        <span class="badge badge-info"><%= answers.length %> new</span>
+      </div>
+      <div class="un-list">
+        <% if (!answers.length) { %><p class="empty-state">No new answers from tutors. Your requests are listed on My Subject.</p><% } %>
+        <% answers.forEach((item) => { const accepted = String(item.status).toLowerCase() === 'accepted'; %>
+          <article class="un-card">
+            <%- include('../partials/avatar', { avatarSrc: item.tutor_image_path, avatarName: item.tutor_name, avatarSize: 'md' }) %>
+            <div class="un-info">
+              <strong><%= item.tutor_name %></strong>
+              <span><span class="badge <%= accepted ? 'badge-success' : 'badge-danger' %>"><%= accepted ? 'Accepted' : 'Declined' %></span> your request for <strong><%= item.subject_name %></strong></span>
+              <span>Preferred days and time: <strong><%= when(item) %></strong></span>
+              <small><%= formatDateTime(item.updated_at || item.created_at) %></small>
+              <% if (!accepted) { %><span>You can choose another tutor on My Subject.</span><% } %>
+            </div>
+            <div class="un-actions">
+              <a class="btn btn-secondary btn-sm" href="/student/subjects">My Subject</a>
+              <form method="post" action="/student/notifications/<%= item.id %>/read">
+                <button class="btn btn-primary btn-sm" type="submit">Mark as read</button>
+              </form>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Updates</h2>
+      <span class="badge badge-info"><%= updates.filter((a) => !a.is_read).length %> unread</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>When</th><th data-search-col>Update</th><th>Status</th><th>Manage</th></tr></thead>
+        <tbody>
+          <% if (!updates.length) { %>
+            <tr><td colspan="4"><%= isTutor ? 'No updates yet. You are told here when a focus area is ready for one of your students.' : 'No updates yet. Payment reminders appear here.' %></td></tr>
+          <% } %>
+          <% updates.forEach((alert) => { %>
+            <tr>
+              <td><%= formatDateTime(alert.created_at) %></td>
+              <td><strong><%= alert.title %></strong><br /><small><%= alert.message || '' %></small></td>
+              <td><span class="badge <%= alert.is_read ? 'badge-success' : 'badge-warning' %>"><%= alert.is_read ? 'Read' : 'New' %></span></td>
+              <td>
+                <div class="un-row-actions">
+                  <% if (alert.link_url) { %><a class="btn btn-secondary btn-sm" href="<%= alert.link_url %>">Open</a><% } %>
+                  <% if (!alert.is_read) { %>
+                    <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/read"><button class="btn btn-secondary btn-sm" type="submit">Mark as read</button></form>
+                  <% } %>
+                  <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/archive" data-confirm-message="Archive this notification? You can recover it from View Archived Notifications.">
+                    <button class="btn btn-secondary btn-sm" type="submit">Archive</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>
+
+<style>
+  .un-list { display: grid; gap: 10px; }
+  .un-card {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
+    padding: 14px 16px; border: 1px solid var(--border, #d7e2ea); border-radius: 16px; background: #fff;
+  }
+  .un-info { display: grid; gap: 3px; min-width: 0; }
+  .un-info span, .un-info small { color: var(--text-soft, #5f7084); font-size: 13px; overflow-wrap: anywhere; }
+  .un-info strong { color: var(--text, #102033); }
+  .un-actions, .un-row-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
+  .un-actions form, .un-row-actions form { margin: 0; }
+  @media (max-width: 640px) {
+    .un-card { grid-template-columns: auto 1fr; }
+    .un-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  }
+</style>

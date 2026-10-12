@@ -137,15 +137,31 @@ document.querySelectorAll('[data-registration-form]').forEach((form) => {
       }
     }
 
+    // The password rules are shown in red under the box (see below); the form
+    // simply is not sent until they are met, with the box brought into view.
     if (!isStrongPassword(passwordInput?.value || '')) {
       event.preventDefault();
-      showValidationMessage('Password must be at least 8 characters and include uppercase, lowercase, number, and special character.');
+      passwordInput?.dispatchEvent(new Event('input'));
+      if (!passwordInput?.value) {
+        const hint = form.querySelector('.password-rule-hint');
+        if (hint) {
+          hint.textContent = `Still needed: ${listInWords(missingPasswordRules(''))}.`;
+          hint.hidden = false;
+        }
+      }
+      passwordInput?.focus();
       return;
     }
 
     if ((passwordInput?.value || '') !== (confirmPasswordInput?.value || '')) {
       event.preventDefault();
-      showValidationMessage('Password and confirm password must match.');
+      confirmPasswordInput?.dispatchEvent(new Event('input'));
+      const hint = form.querySelector('.password-match-hint');
+      if (hint) {
+        hint.textContent = 'The passwords do not match.';
+        hint.hidden = false;
+      }
+      confirmPasswordInput?.focus();
     }
   });
 });
@@ -248,6 +264,78 @@ document.querySelectorAll('[data-registration-form]').forEach((form) => {
     showValidationMessage(problem);
     emailInput.focus();
   });
+});
+
+// ============================================================================
+// Password rules, said under the box while it is typed
+//
+// A short red line under the Password box names only what is still missing —
+// "Still needed: an uppercase letter (A-Z) and a number (0-9)." — and goes away
+// once every rule is met. The Confirm box says so when the two differ. The
+// rules are the server's (lib/utils.js validateStrongPassword); this only says
+// them sooner, and stops the form from being sent until they are met.
+// ============================================================================
+const PASSWORD_RULES = [
+  { test: (value) => value.length >= 8, label: 'at least 8 characters' },
+  { test: (value) => /[A-Z]/.test(value), label: 'an uppercase letter (A‑Z)' },
+  { test: (value) => /[a-z]/.test(value), label: 'a lowercase letter (a‑z)' },
+  { test: (value) => /\d/.test(value), label: 'a number (0‑9)' },
+  { test: (value) => /[^A-Za-z0-9]/.test(value), label: 'a special character (like ! @ # $)' }
+];
+
+function missingPasswordRules(value) {
+  return PASSWORD_RULES.filter((rule) => !rule.test(String(value || ''))).map((rule) => rule.label);
+}
+
+/** "a, b and c" */
+function listInWords(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+function attachFieldHint(input, className) {
+  const hint = document.createElement('p');
+  hint.className = `field-error-hint ${className}`;
+  hint.setAttribute('role', 'alert');
+  hint.setAttribute('aria-live', 'polite');
+  hint.hidden = true;
+  // The same red line as the other field warnings (the payment amount's).
+  hint.style.margin = '6px 0 0';
+  hint.style.fontSize = '13px';
+  hint.style.fontWeight = '600';
+  hint.style.lineHeight = '1.45';
+  hint.style.color = '#d54c4c';
+  (input.closest('.password-input-wrap') || input).insertAdjacentElement('afterend', hint);
+  return hint;
+}
+
+function setFieldHint(input, hint, message) {
+  hint.textContent = message;
+  hint.hidden = !message;
+  input.setAttribute('aria-invalid', message ? 'true' : 'false');
+  input.style.borderColor = message ? '#d54c4c' : '';
+}
+
+document.querySelectorAll('[data-registration-form]').forEach((form) => {
+  const password = form.querySelector('input[name="password"]');
+  const confirm = form.querySelector('input[name="confirm_password"]');
+  if (!password) return;
+  const passwordHint = attachFieldHint(password, 'password-rule-hint');
+  const confirmHint = confirm ? attachFieldHint(confirm, 'password-match-hint') : null;
+
+  const checkPassword = () => {
+    // Nothing is said about an empty box — only once typing has started.
+    const missing = password.value ? missingPasswordRules(password.value) : [];
+    setFieldHint(password, passwordHint, missing.length ? `Still needed: ${listInWords(missing)}.` : '');
+  };
+  const checkConfirm = () => {
+    if (!confirm || !confirmHint) return;
+    const mismatch = confirm.value && confirm.value !== password.value;
+    setFieldHint(confirm, confirmHint, mismatch ? 'The passwords do not match.' : '');
+  };
+
+  password.addEventListener('input', () => { checkPassword(); checkConfirm(); });
+  confirm?.addEventListener('input', checkConfirm);
 });
 
 document.querySelectorAll('[data-password-toggle]').forEach((btn) => {

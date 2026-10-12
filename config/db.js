@@ -228,10 +228,18 @@ async function withTransaction(work) {
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
   await transaction.begin();
+  // A transaction owns ONE connection, and mssql refuses a second request on it
+  // while the first is still running ("Can't acquire connection for the request.
+  // There is another request in progress."). Callers do issue reads side by side
+  // (Promise.all), so every statement waits for the one before it to finish.
+  let tail = Promise.resolve();
   const connection = {
-    query: async (sqlText, params = []) => {
-      const rows = await runQuery(transaction, sqlText, params);
-      return [rows];
+    query: (sqlText, params = []) => {
+      const run = tail.then(() => runQuery(transaction, sqlText, params));
+      // The chain must survive a failed statement, or every later one would
+      // inherit its rejection instead of running.
+      tail = run.catch(() => {});
+      return run.then((rows) => [rows]);
     }
   };
 

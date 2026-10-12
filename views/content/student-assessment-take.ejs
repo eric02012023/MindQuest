@@ -39,8 +39,6 @@
                     correctDisplay = correctUpper + '. ' + (question['choice_' + correctUpper.toLowerCase()] || '');
                   } else if (qType === 'True or False') {
                     isCorrect = selected.toLowerCase() === correct.toLowerCase();
-                  } else if (qType === 'Fill in the Blank') {
-                    isCorrect = !!(selected && correct && selected.toLowerCase() === correct.toLowerCase());
                   } else if (qType === 'Essay') {
                     // Essay is AI graded - show as scored based on result
                     isCorrect = false; // can't easily determine from review table
@@ -111,7 +109,7 @@
                   <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
                   <label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="true" style="margin-right:12px;" /> True</label>
                   <label style="padding:12px 16px;background:#f9fbfc;border:1px solid #e1e8ed;border-radius:8px;cursor:pointer;transition:all 0.2s;"><input type="radio" name="answer_<%= question.id %>" value="false" style="margin-right:12px;" /> False</label>
-                <% } else if (question.question_type === 'Identification' || question.question_type === 'Fill in the Blank') { %>
+                <% } else if (question.question_type === 'Identification') { %>
                   <input type="hidden" name="question_ids[]" value="<%= question.id %>" />
                   <label style="font-weight:600;color:var(--text-soft);">Your Answer</label>
                   <input type="text" name="answer_<%= question.id %>" placeholder="Type your answer here" style="padding:12px;border:1px solid #ccc;border-radius:8px;width:100%;font-size:1rem;" />

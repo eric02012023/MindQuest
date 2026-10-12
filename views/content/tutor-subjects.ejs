@@ -1,10 +1,11 @@
 <%# File: views/content/tutor-subjects.ejs
-    Purpose: The subjects a tutor teaches, and their day — every one of the
-    centre's time slots with the student who holds it.
+    Purpose: The subjects a tutor teaches, and their week — every one of the
+    centre's time slots with the student who holds it, and the days that
+    student chose (Weekdays or Weekend).
 
     The schedule is read from the enrolments (see getTutorScheduleOverview), so
-    a slot an admin assigned shows as taken. It used to read only the students'
-    own accepted requests, and most taken slots showed "Available". %>
+    a slot an admin assigned shows as taken. A slot can appear twice: once for
+    a weekday student and once for a weekend one. %>
 <section class="panel-card">
   <div class="panel-card-head"><h2>My Subjects</h2></div>
   <div class="subject-list-cards">
@@ -19,12 +20,12 @@
 <section class="panel-card">
   <div class="panel-card-head">
     <h3>My Time Schedule</h3>
-    <% const takenCount = (scheduleOverview || []).filter((item) => item.raw_status !== 'available' && item.raw_status !== 'pending').length; %>
-    <span class="badge badge-info"><%= takenCount %> of <%= (scheduleOverview || []).length %> slots taken</span>
+    <% const takenCount = (scheduleOverview || []).filter((item) => item.raw_status === 'taken').length; %>
+    <span class="badge badge-info"><%= takenCount %> session<%= takenCount === 1 ? '' : 's' %> scheduled</span>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Time Slot</th><th>Status</th><th>Student</th><th>Subject</th><th>Action</th></tr></thead>
+      <thead><tr><th>Time Slot</th><th>Status</th><th>Student</th><th>Subject</th><th>Preferred Days</th></tr></thead>
       <tbody>
         <% if (!(scheduleOverview || []).length) { %><tr><td colspan="5">No time schedule available yet.</td></tr><% } %>
         <% (scheduleOverview || []).forEach((item) => { %>
@@ -40,20 +41,20 @@
               <% } %>
             </td>
             <td>
-              <% if (item.student_id && item.raw_status !== 'pending') { %>
-                <a href="/tutor/students/<%= item.student_id %>"><%= item.student_name %></a>
+              <% if ((item.students || []).length && item.raw_status !== 'pending') { %>
+                <% item.students.forEach((student, index) => { %><%= index ? ', ' : '' %><a href="/tutor/students/<%= student.id %>"><%= student.name %></a><% }) %>
               <% } else { %>
                 <%= item.student_name || '-' %>
               <% } %>
             </td>
             <td><%= item.subject_name || '-' %></td>
             <td>
-              <% if (['accepted', 'ongoing'].includes(item.raw_status) && item.application_id) { %>
-                <form method="POST" action="/tutor/schedule/<%= item.application_id %>/finish" data-confirm-message="Mark this session as finished? The time slot will become available again.">
-                  <button type="submit" class="btn-finish">Finish</button>
-                </form>
-              <% } else { %>
+              <% if (item.raw_status === 'available') { %>
                 -
+              <% } else if (item.preferred_days) { %>
+                <span class="badge <%= item.preferred_days === 'Weekend' ? 'badge-warning' : 'badge-info' %>"><%= item.preferred_days %></span>
+              <% } else { %>
+                <span class="table-note">Not chosen</span>
               <% } %>
             </td>
           </tr>

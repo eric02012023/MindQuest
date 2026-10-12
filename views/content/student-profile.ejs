@@ -12,7 +12,6 @@
     Locals: profileUser, assignments (with tutor_* and time_slot), allSubjects %>
 <%
   const fullNameText = [profileUser.first_name, profileUser.middle_name, profileUser.last_name].filter(Boolean).join(' ');
-  const userSupports = Array.isArray(profileUser.supports) ? profileUser.supports : safeJsonArray(profileUser.support_json || []);
   // One entry per tutor, with the subjects they teach this student and when.
   const tutors = [];
   (assignments || []).forEach((item) => {
@@ -191,18 +190,6 @@
           <% } %>
         </div>
       </section>
-
-      <% if (userSupports.length) { %>
-        <section class="mq-card">
-          <div class="mq-card-head">
-            <span class="mq-card-icon"><%- icon('target', 18) %></span>
-            <div><h3>Extra support</h3></div>
-          </div>
-          <div class="mq-card-body mq-chip-list">
-            <% userSupports.forEach((support) => { %><span class="mq-subject-chip"><%= support %></span><% }) %>
-          </div>
-        </section>
-      <% } %>
     </aside>
   </div>
 </section>
