@@ -23,9 +23,9 @@ const ok = (l, c, e = '') => {
 const sent = [];
 let reply = { questions: [] };
 // What the answer-key check (verifyAnswerKeys) is told, when a test sets it.
-// Left null, the check is handed `reply` too, has no verdicts to read, and keeps
-// the batch as it was — which is what every test above the key-check section
-// relies on.
+// Left null, the check gets no verdicts to read and keeps the batch as it was —
+// which is what every test above the key-check section relies on. `reply` may
+// also be a function, for a test whose writing calls answer differently in turn.
 let verifyReply = null;
 let realCallsAttempted = 0;
 
@@ -35,7 +35,9 @@ global.fetch = (url, options) => {
   const system = body.messages[0].content;
   const isKeyCheck = /You check the answer key/.test(system);
   sent.push({ url, system, user: body.messages[1].content, maxTokens: body.max_tokens, temperature: body.temperature, isKeyCheck });
-  const payload = isKeyCheck && verifyReply ? verifyReply : reply;
+  const payload = isKeyCheck
+    ? (verifyReply || { no: 'verdicts' })
+    : (typeof reply === 'function' ? reply() : reply);
   return Promise.resolve({
     ok: true,
     status: 200,
@@ -170,7 +172,15 @@ async function main() {
   ok('a separate answer-key check ran', checks.length >= 1, `${checks.length} check call(s)`);
   ok('the check runs at temperature 0', checks.every((s) => s.temperature === 0));
   ok('the check is never shown the key', checks.every((s) => !/correct_answer|"key"|Answer:/i.test(s.user)));
-  ok('writing questions runs cooler than before', sent.filter((s) => !s.isKeyCheck).every((s) => s.temperature === 0.4));
+  const isTopUp = (s) => /These questions already exist/.test(s.system);
+  const firstPass = sent.filter((s) => !s.isKeyCheck && !isTopUp(s));
+  const topUps = sent.filter((s) => !s.isKeyCheck && isTopUp(s));
+  ok('the first pass writes cooler than before', firstPass.length === 1 && firstPass.every((s) => s.temperature === 0.4));
+  ok('the top-up writes warmer, for questions not written yet', topUps.length >= 1 && topUps.every((s) => s.temperature === 0.9),
+    `${topUps.length} top-up call(s) at ${topUps.map((s) => s.temperature).join(', ')}`);
+  ok('a top-up that adds nothing new is not repeated', topUps.length === 1, `${topUps.length} top-up call(s)`);
+  ok('the top-up is told not to rewrite the questions the check dropped',
+    topUps.every((s) => /question 2:/.test(s.system) && /question 3:/.test(s.system)));
   ok('the item the checker agreed with is kept', checked.questions.some((q) => /question 1:/.test(q.question_text)));
   ok('an item with two right answers is dropped', !checked.questions.some((q) => /question 2:/.test(q.question_text)));
   ok('an item whose key the checker disputes is dropped', !checked.questions.some((q) => /question 3:/.test(q.question_text)));
@@ -186,6 +196,26 @@ async function main() {
   });
   ok('a check with no verdicts keeps the batch', unchecked.questions.length === 2, `${unchecked.questions.length} kept`);
   verifyReply = null;
+
+  console.log('\n== a short handout is topped up with NEW questions, twice at most ==');
+  // A narrow handout: the model keeps writing the same two questions and finds
+  // only one new one per call.
+  sent.length = 0;
+  let writeNo = 0;
+  reply = () => {
+    writeNo++;
+    return { questions: writeNo === 1 ? [mc(101), mc(102)] : [mc(101), mc(102), mc(101 + writeNo)] };
+  };
+  const narrow = await ai.generateAssessmentFromHandouts({
+    handouts, subject: 'MATHEMATICS', itemCount: 6,
+    questionType: 'multiple_choice', allowedTypes: ai.PRE_POST_QUESTION_TYPES
+  });
+  const narrowWrites = sent.filter((s) => !s.isKeyCheck);
+  ok('a top-up that adds something earns one more, then it stops', narrowWrites.length === 3, `${narrowWrites.length} writing call(s)`);
+  ok('the repeats are dropped and the new questions kept', narrow.questions.length === 4, `${narrow.questions.length} kept`);
+  ok('the second top-up is told about the first one\'s question too', /case 103/.test(narrowWrites[2].system));
+  ok('no question appears twice', new Set(narrow.questions.map((q) => q.question_text)).size === narrow.questions.length);
+  reply = { questions: [] };
 
   console.log('\n== a slipped letter and a bare sum are corrected, not trusted ==');
   const allowed = new Map([[7, handouts[0]]]);

@@ -715,6 +715,9 @@ async function generateAssessmentFromHandouts(options = {}) {
   const takeChecked = async (rawQuestions, slot) => {
     const fresh = [];
     absorb(rawQuestions, fresh);
+    // Everything written for this handout so far, kept or not, so a top-up is
+    // told not to write it again.
+    slot.written.push(...fresh.map((q) => q.question_text));
     const check = await verifyAnswerKeys(fresh, slot.handout);
     tokensUsed += check.tokensUsed;
     rejectedByCheck += check.rejected.length;
@@ -737,7 +740,7 @@ async function generateAssessmentFromHandouts(options = {}) {
     }
   };
 
-  const perHandout = usable.map((handout, i) => ({ handout, wanted: quotas[i], questions: [] }));
+  const perHandout = usable.map((handout, i) => ({ handout, wanted: quotas[i], questions: [], written: [] }));
 
   // Ask each handout for a little more than its quota. Validation rejects the
   // occasional malformed item (identical choices, an answer letter matching no
@@ -760,21 +763,23 @@ async function generateAssessmentFromHandouts(options = {}) {
     }
   });
 
-  // Any handout still short gets one top-up, again in parallel. One pass, not a
-  // loop: a model that cannot fill the gap twice will not fill it on the tenth
-  // try either, and the student is waiting.
-  const short = perHandout.filter((slot) => slot.questions.length < slot.wanted);
-  let topUpUsed = short.length > 0;
-  if (short.length) {
+  // Any handout still short gets a top-up, again in parallel — at most
+  // TOP_UP_ROUNDS of them, and another only for a handout the last one actually
+  // added to: a model that writes nothing new will not on the tenth try either,
+  // and the student may be waiting.
+  let short = perHandout.filter((slot) => slot.questions.length < slot.wanted);
+  const topUpUsed = short.length > 0;
+  for (let round = 1; round <= TOP_UP_ROUNDS && short.length; round++) {
+    const before = new Map(short.map((slot) => [slot, slot.questions.length]));
     await runWithConcurrency(short, 4, async (slot) => {
       const batch = Math.max(4, (slot.wanted - slot.questions.length) + 3);
       const prompts = buildHandoutPrompts({
         handout: slot.handout, wanted: batch, questionType, subject, yearLevel, allowedTypes,
-        avoidTexts: slot.questions.map((q) => q.question_text)
+        avoidTexts: slot.written
       });
       try {
         const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, {
-          maxTokens: tokenBudget(batch), temperature: GENERATION_TEMPERATURE
+          maxTokens: tokenBudget(batch), temperature: TOP_UP_TEMPERATURE
         });
         tokensUsed += call.tokensUsed;
         await takeChecked(call.result.questions, slot);
@@ -782,6 +787,7 @@ async function generateAssessmentFromHandouts(options = {}) {
         console.error(`[aiService] top-up failed for handout ${slot.handout.handout_id}:`, error.message);
       }
     });
+    short = short.filter((slot) => slot.questions.length < slot.wanted && slot.questions.length > before.get(slot));
   }
 
   // Interleave by handout so the exam alternates sources instead of running three
@@ -813,6 +819,16 @@ async function generateAssessmentFromHandouts(options = {}) {
  * question is only useful when its key is right, and a cooler model slips less.
  */
 const GENERATION_TEMPERATURE = 0.4;
+
+/**
+ * The top-up asks for questions the first pass did NOT write, so it runs warmer.
+ * At 0.4 it wrote the first pass's questions again word for word — 9 of 11 on
+ * the Grade 5 Reading & Writing handout — and every one was thrown away as a
+ * duplicate, leaving that Pre-Assessment at 20 items. Variety is this pass's
+ * whole job; its keys are still checked at temperature 0 (verifyAnswerKeys).
+ */
+const TOP_UP_TEMPERATURE = 0.9;
+const TOP_UP_ROUNDS = 2;
 
 /** Split `total` into `parts` whole numbers that differ by at most one. */
 function spreadEvenly(total, parts) {
@@ -956,7 +972,8 @@ ${extraRules.join('\n')}
 - Output strict JSON only. No commentary, no markdown.${avoidTexts.length ? `
 
 These questions already exist in this assessment. Do NOT repeat them or ask the
-same thing in different words:
+same thing in different words. Ask about OTHER details, examples, words and
+sentences of the handout instead:
 ${avoidTexts.map((t) => `- ${t}`).join('\n')}` : ''}`;
 
   const label = `Module ${handout.order_number} — ${handout.module_title}`

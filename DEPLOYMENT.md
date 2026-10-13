@@ -418,6 +418,13 @@ Applied automatically by `sql/schema.sql` (section 43) on the next boot.
   with 5, a "negative integer" question with two right answers.
   `scripts/repair-answer-keys.js` corrects the 18 stored keys that audit found
   and re-marks the answers given to them (dry run by default; `--commit`).
+- **A narrow handout still yields a full Pre-Assessment.** A grade with one
+  short handout came out at 20 or 24 items: the top-up, asked for more, wrote
+  the first pass's questions again and every one was dropped as a repeat. The
+  top-up now runs warmer (0.9 — its keys are still checked at 0), is told every
+  question already written, and gets a second round when the first added
+  something. Measured on live handouts: Reading & Writing Grade 5 20 → 30,
+  Araling Panlipunan Grade 12 24 → 30.
 - **Side tabs** on Billing Data (student) and Analytics & Reports (all four
   roles): one section at a time, the open one kept in the address.
 - **No browser dialogs.** Every "are you sure?" and notice is the app's own modal;
