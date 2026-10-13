@@ -1,12 +1,15 @@
 <%# File: views/content/student-billing.ejs
-    Purpose: Billing Data — one section, not three.
+    Purpose: Billing Data — what you owe at the top, then four side tabs.
 
-    "Posted SOA / Billing" and "Payment History" used to be separate panels, and
-    the current balance was a fourth set of numbers above them. A student had to
-    read all three and add up. This page is one story, top to bottom:
+    The balance stays above everything, because it is the one thing a student
+    always needs. Below it the page is split into tabs down the left — the same
+    side-tab component Analytics & Reports uses (css/mq-data.css 12c):
 
-      what you owe  ->  how to pay it  ->  every payment you have made
-                                        ->  the statements the office posted
+      Make payment | Payment history | My payment requests | Statements posted by the office
+
+    Only the tab clicked shows its data; the page used to stack all four, which
+    made a long, cluttered page. The open tab is kept in the address
+    (#payment-history), so coming back from the slip or PayMongo lands on it.
 
     The Pay action is a method PICKER rather than a single button, so adding an
     online option later is a new entry in STUDENT_PAYMENT_METHODS (lib/billing.js)
@@ -62,9 +65,31 @@
       </div>
     </div>
   <% } else { %>
+  <%
+    const billingTabs = [
+      { key: 'make-payment', label: 'Make payment', icon: 'wallet', count: null },
+      { key: 'payment-history', label: 'Payment history', icon: 'receipt', count: data.entries.length },
+      { key: 'payment-requests', label: 'My payment requests', icon: 'clipboard', count: (data.requests || []).length },
+      { key: 'statements', label: 'Statements posted by the office', icon: 'file', count: data.statements.length }
+    ];
+  %>
+  <div class="mq-vtabs" data-vtabs data-vtab-default="make-payment">
+    <nav class="mq-vtab-list" role="tablist" aria-orientation="vertical" aria-label="Billing Data">
+      <% billingTabs.forEach((tab, index) => { %>
+        <button type="button" class="mq-vtab<%= index === 0 ? ' is-active' : '' %>" role="tab"
+                id="vtab-<%= tab.key %>" data-vtab="<%= tab.key %>" aria-controls="vpanel-<%= tab.key %>"
+                aria-selected="<%= index === 0 ? 'true' : 'false' %>" tabindex="<%= index === 0 ? 0 : -1 %>">
+          <%- icon(tab.icon, 20) %>
+          <span><%= tab.label %></span>
+          <% if (tab.count !== null) { %><span class="mq-vtab-count"><%= tab.count %></span><% } %>
+        </button>
+      <% }) %>
+    </nav>
+
+    <div class="mq-vtab-panels">
 
     <%# --------------------------------------------------------- Pay action %>
-    <section class="mq-panel">
+    <section class="mq-panel mq-vtab-panel" role="tabpanel" id="vpanel-make-payment" data-vtab-panel="make-payment" aria-labelledby="vtab-make-payment">
       <div class="mq-panel-head">
         <h2>Make a payment</h2>
         <% if (totals.remaining > 0) { %>
@@ -181,7 +206,7 @@
     </section>
 
     <%# ------------------------------------------------------ Payment history %>
-    <section class="mq-panel">
+    <section class="mq-panel mq-vtab-panel" role="tabpanel" id="vpanel-payment-history" data-vtab-panel="payment-history" aria-labelledby="vtab-payment-history" hidden>
       <div class="mq-panel-head">
         <h2>Payment history</h2>
         <span class="mq-count"><%= totals.paymentCount %> payment<%= totals.paymentCount === 1 ? '' : 's' %></span>
@@ -224,17 +249,22 @@
     </section>
 
     <%# ---------------------------------------------------- Payment requests %>
-    <% if ((data.requests || []).length) { %>
-      <section class="mq-panel">
+      <section class="mq-panel mq-vtab-panel" role="tabpanel" id="vpanel-payment-requests" data-vtab-panel="payment-requests" aria-labelledby="vtab-payment-requests" hidden>
         <div class="mq-panel-head">
-          <h2>Your payment requests</h2>
-          <span class="mq-count"><%= data.requests.length %></span>
+          <h2>My payment requests</h2>
+          <span class="mq-count"><%= (data.requests || []).length %></span>
         </div>
         <div class="mq-table" style="--mq-cols: 160px 110px 1fr 130px 110px;">
           <div class="mq-head">
             <span>Submitted</span><span class="mq-num">Amount</span><span>Branch</span><span>Preferred</span><span>Status</span>
           </div>
-          <% data.requests.forEach((request) => { %>
+          <% if (!(data.requests || []).length) { %>
+            <div class="mq-empty">
+              <strong>No payment requests yet</strong>
+              A payment slip you generate under "Make payment" appears here until the office records it.
+            </div>
+          <% } %>
+          <% (data.requests || []).forEach((request) => { %>
             <div class="mq-row">
               <span class="mq-cell mq-sub" data-label="Submitted"><%= formatDateTime(request.created_at) %></span>
               <span class="mq-cell mq-money" data-label="Amount"><%= money(request.amount) %></span>
@@ -247,10 +277,9 @@
           <% }) %>
         </div>
       </section>
-    <% } %>
 
     <%# ---------------------------------------------------- Posted statements %>
-    <section class="mq-panel">
+    <section class="mq-panel mq-vtab-panel" role="tabpanel" id="vpanel-statements" data-vtab-panel="statements" aria-labelledby="vtab-statements" hidden>
       <div class="mq-panel-head">
         <h2>Statements posted by the office</h2>
         <span class="mq-count"><%= data.statements.length %></span>
@@ -276,6 +305,9 @@
         <% }) %>
       </div>
     </section>
+
+    </div>
+  </div>
   <% } %>
 
 </section>

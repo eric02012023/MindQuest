@@ -22,17 +22,25 @@ const ok = (l, c, e = '') => {
 
 const sent = [];
 let reply = { questions: [] };
+// What the answer-key check (verifyAnswerKeys) is told, when a test sets it.
+// Left null, the check is handed `reply` too, has no verdicts to read, and keeps
+// the batch as it was — which is what every test above the key-check section
+// relies on.
+let verifyReply = null;
 let realCallsAttempted = 0;
 
 global.fetch = (url, options) => {
   if (!String(url).startsWith('https://api.openai.com/')) realCallsAttempted++;
   const body = JSON.parse(options.body);
-  sent.push({ url, system: body.messages[0].content, user: body.messages[1].content, maxTokens: body.max_tokens });
+  const system = body.messages[0].content;
+  const isKeyCheck = /You check the answer key/.test(system);
+  sent.push({ url, system, user: body.messages[1].content, maxTokens: body.max_tokens, temperature: body.temperature, isKeyCheck });
+  const payload = isKeyCheck && verifyReply ? verifyReply : reply;
   return Promise.resolve({
     ok: true,
     status: 200,
     json: () => Promise.resolve({
-      choices: [{ message: { content: JSON.stringify(reply) } }],
+      choices: [{ message: { content: JSON.stringify(payload) } }],
       usage: { total_tokens: 123 }
     })
   });
@@ -133,6 +141,85 @@ async function main() {
   ok('the fill-in-the-blank item was dropped', !types.includes('fill_blank'));
   ok('the true/false item survived', types.includes('true_false'));
   ok('every kept type is allowed', types.every((t) => ai.MODULE_QUESTION_TYPES.includes(t)), types.join(', '));
+
+  // ---------------------------------------------------- the answer key
+  console.log('\n== every answer key is checked before anyone is graded on it ==');
+  const choice = (text, n) => ({
+    question_text: `Key check question ${n}: which one is right?`,
+    question_type: 'multiple_choice',
+    correct_answer: text,
+    choices: ['One half', 'A whole', 'A line', 'A circle'],
+    source_handout_id: 7
+  });
+  sent.length = 0;
+  reply = { questions: [choice('A', 1), choice('B', 2), choice('D', 3)] };
+  verifyReply = {
+    results: [
+      { n: 1, correct: ['A'], reason: 'one half is a fraction' },
+      // Two right answers — the live "-2 and -3 are both negative" case.
+      { n: 2, correct: ['B', 'C'], reason: 'both fit' },
+      // The checker found a different answer than the key.
+      { n: 3, correct: ['C'], reason: 'the handout says C' }
+    ]
+  };
+  const checked = await ai.generateAssessmentFromHandouts({
+    handouts, subject: 'MATHEMATICS', itemCount: 3,
+    questionType: 'multiple_choice', allowedTypes: ai.PRE_POST_QUESTION_TYPES
+  });
+  const checks = sent.filter((s) => s.isKeyCheck);
+  ok('a separate answer-key check ran', checks.length >= 1, `${checks.length} check call(s)`);
+  ok('the check runs at temperature 0', checks.every((s) => s.temperature === 0));
+  ok('the check is never shown the key', checks.every((s) => !/correct_answer|"key"|Answer:/i.test(s.user)));
+  ok('writing questions runs cooler than before', sent.filter((s) => !s.isKeyCheck).every((s) => s.temperature === 0.4));
+  ok('the item the checker agreed with is kept', checked.questions.some((q) => /question 1:/.test(q.question_text)));
+  ok('an item with two right answers is dropped', !checked.questions.some((q) => /question 2:/.test(q.question_text)));
+  ok('an item whose key the checker disputes is dropped', !checked.questions.some((q) => /question 3:/.test(q.question_text)));
+  ok('the drops are counted', checked.rejectedByCheck === 2, `rejectedByCheck=${checked.rejectedByCheck}`);
+
+  // The check failing must not empty an assessment.
+  verifyReply = { nothing: 'useful' };
+  sent.length = 0;
+  reply = { questions: [choice('A', 11), choice('B', 12)] };
+  const unchecked = await ai.generateAssessmentFromHandouts({
+    handouts, subject: 'MATHEMATICS', itemCount: 2,
+    questionType: 'multiple_choice', allowedTypes: ai.PRE_POST_QUESTION_TYPES
+  });
+  ok('a check with no verdicts keeps the batch', unchecked.questions.length === 2, `${unchecked.questions.length} kept`);
+  verifyReply = null;
+
+  console.log('\n== a slipped letter and a bare sum are corrected, not trusted ==');
+  const allowed = new Map([[7, handouts[0]]]);
+  const slipped = ai.validateGeneratedQuestion({
+    question_text: 'Which of these is a fraction?',
+    question_type: 'multiple_choice',
+    correct_answer: 'B',
+    correct_choice_text: 'One half',
+    choices: ['One half', 'A whole', 'A line', 'A circle'],
+    source_handout_id: 7
+  }, allowed, ai.PRE_POST_QUESTION_TYPES);
+  ok('the answer written out in words wins over a slipped letter', slipped && slipped.correct_answer === 'A', slipped && slipped.correct_answer);
+
+  const sum = ai.validateGeneratedQuestion({
+    question_text: 'What is 6 x 6?',
+    question_type: 'multiple_choice',
+    correct_answer: 'B',
+    choices: ['36', '42', '30', '48'],
+    source_handout_id: 7
+  }, allowed, ai.PRE_POST_QUESTION_TYPES);
+  ok('6 x 6 is worked out: the key becomes the choice holding 36', sum && sum.correct_answer === 'A', sum && sum.correct_answer);
+
+  const impossible = ai.validateGeneratedQuestion({
+    question_text: 'What is 7 + 5?',
+    question_type: 'multiple_choice',
+    correct_answer: 'A',
+    choices: ['11', '13', '10', '14'],
+    source_handout_id: 7
+  }, allowed, ai.PRE_POST_QUESTION_TYPES);
+  ok('a sum whose answer is not among the choices is dropped', impossible === null);
+
+  ok('a word problem is left to the answer-key check', ai.arithmeticKey('If each box has 8 apples and there are 5 boxes, how many apples are there?', [{ label: 'A', text: '40' }]) === null);
+  ok('division with the divide sign works', ai.arithmeticKey('12 ÷ 3 = ?', [{ label: 'A', text: '3' }, { label: 'B', text: '4' }]) === 'B');
+  ok('a negative result is matched', ai.arithmeticKey('What is 3 - 5?', [{ label: 'A', text: '2' }, { label: 'B', text: '-2' }]) === 'B');
 
   // ------------------------------------------------------- focus material
   console.log('\n== focus material generation ==');

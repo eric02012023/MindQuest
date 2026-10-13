@@ -67,11 +67,9 @@ const {
   getModuleHandouts,
   getModuleHandoutTexts,
   moduleTargetsStudent,
-  // Post-Assessment (Phase 8)
-  getPostAssessment,
+  // Post-Assessment (Phase 8): opens on each student's last enrollment day
   getSubjectPrePostComparison,
   getSubjectPostReadiness,
-  createPostAssessmentFromPre,
   // --- Management upgrade -------------------------------------------------
   // Auto weak-topic focus material, flagged for this tutor
   getFocusHandoutsForTutor,
@@ -437,8 +435,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       // student did on the generated Pre-Assessment.
       modules: await getSubjectModules(req.params.subjectId),
       preResults: onlyMine(await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' })),
-      // Post-Assessment (Phase 8): who is ready for it, and pre-vs-post once taken.
-      postAssessment: await getPostAssessment(req.params.subjectId),
+      // Post-Assessment (Phase 8): when each student's opens (the last day of
+      // their enrollment), and pre-vs-post once taken.
       comparisons: onlyMine(await getSubjectPrePostComparison(req.params.subjectId)),
       readiness: await getSubjectPostReadiness(req.params.subjectId, { studentIds: [...myStudentIds] })
     });
@@ -553,41 +551,16 @@ router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', async
 });
 
 // --------------------------------------------------------------------------
-// Create the Post-Assessment (overhaul Phase 8, acceptance item 12)
+// The old "Create Post Assessment" button.
 //
-// It is a verbatim copy of the subject's Pre-Assessment — same questions, same
-// choices, same answers, same source attribution — so the pre-vs-post comparison
-// measures the student, not a different exam.
+// There is nothing for the tutor to create any more: each student's
+// Post-Assessment opens by itself at 12:01 AM on the last day of their
+// enrollment, as a copy of the exact Pre-Assessment they took. The address
+// stays so a stale page's button explains that instead of 404ing.
 // --------------------------------------------------------------------------
-router.post('/subjects/:subjectId/create-post-assessment', async (req, res, next) => {
-  const subjectId = Number(req.params.subjectId);
-  try {
-    const assigned = await getTutorAssignedSubjects(req.session.user.id);
-    if (!assigned.some((a) => Number(a.subject_id) === subjectId)) {
-      setFlash(req, 'error', 'That subject is not assigned to you.');
-      return res.redirect('/tutor/subjects');
-    }
-
-    // At least one student must have finished the cycle. Opening it for a class
-    // where nobody is done would let a student sit the same questions again
-    // before doing any of the material in between.
-    // Ready means one of THIS tutor's students has finished the cycle.
-    const mine = await getTutorStudentsBySubject(req.session.user.id, subjectId);
-    const readiness = await getSubjectPostReadiness(subjectId, { studentIds: mine.map((s) => Number(s.student_id)) });
-    if (!readiness.readyCount) {
-      setFlash(req, 'error', 'No student has finished all the modules and activities yet.');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    const result = await createPostAssessmentFromPre(subjectId, req.session.user.id);
-    setFlash(req, result.created ? 'success' : 'info', result.created
-      ? `Post-Assessment created with the same ${result.question_count} items as the Pre-Assessment. ${readiness.readyCount} student(s) can take it now.`
-      : 'This subject already has a Post-Assessment.');
-    res.redirect(`/tutor/subjects/${subjectId}`);
-  } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not create the Post-Assessment.');
-    res.redirect(`/tutor/subjects/${subjectId}`);
-  }
+router.post('/subjects/:subjectId/create-post-assessment', (req, res) => {
+  setFlash(req, 'info', 'The Post-Assessment opens automatically for each student at 12:01 AM on the last day of their enrollment. There is nothing to create.');
+  res.redirect(`/tutor/subjects/${Number(req.params.subjectId) || ''}`);
 });
 
 // Phase 9: POST /subjects/:id/post-consolidated-assessment was removed.

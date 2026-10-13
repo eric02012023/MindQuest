@@ -30,6 +30,7 @@ const {
   getTutorChoicesForStudent,
   keepCurrentTutorForSubject,
   normalizePreferredDays,
+  slotKey,
   createTutorScheduleApplication,
   createTutorScheduleApplicationForAllSubjects,
   getStudentScheduleNotifications,
@@ -64,12 +65,15 @@ const {
   getWeakAreasForSubmission,
   getModuleHandouts,
   getSubjectHandoutTexts,
-  // Post-Assessment (Phase 8)
+  // Post-Assessment (Phase 8): opens on the last day of the enrolment
   recordModuleOpen,
   getStudentSubjectCompletion,
-  getPostAssessment,
+  getStudentPostState,
+  getOrCreatePostAssessmentFor,
   getSubjectPrePostComparison,
   moduleTargetsStudent,
+  studentGradeOf,
+  getModuleById,
   // --- Management upgrade -------------------------------------------------
   // Merged "Billing Data" (SOA + payment history in one) and the cash Pay flow
   getStudentBillingData,
@@ -105,7 +109,7 @@ const {
 } = require('../lib/data');
 const { buildBellItems } = require('../lib/bell');
 const { determineLevel } = require('../config/levelThresholds');
-const { normalizeArray } = require('../lib/utils');
+const { normalizeArray, formatDateTime } = require('../lib/utils');
 // Phase 3: cash is a POS transaction now. The student's side ends at a slip.
 const { buildSlipModel, renderSlipPdf, slipFilename, slipCode, formatSlipDate } = require('../lib/paymentSlip');
 
@@ -220,6 +224,17 @@ router.post('/subjects/:subjectId/enroll', async (req, res, next) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
+/**
+ * A tutor's full profile, in the same tab.
+ *
+ * "View profile" in the Select Tutor dialog opens this page directly — it used to
+ * show a short card inside the dialog with an "Open full profile" button that
+ * opened yet another tab. When the student came from the dialog, the address
+ * carries what they had chosen (subject, days, time), so this page can offer
+ * "Select this tutor" right here and "Back to tutors" returns them to the same
+ * list. Both are checked against the student's real choices: a hand-edited
+ * address only gets the plain profile.
+ */
 router.get('/tutors/:id', async (req, res, next) => {
   try {
     const tutor = await getUserById(req.params.id);
@@ -227,11 +242,53 @@ router.get('/tutors/:id', async (req, res, next) => {
       setFlash(req, 'error', 'Tutor not found.');
       return res.redirect('/student/subjects');
     }
+
+    let pick = null;
+    const subjectId = Number(req.query.subject) || 0;
+    if (subjectId) {
+      const days = normalizePreferredDays(req.query.days);
+      const slot = String(req.query.slot || '').trim();
+      const choices = await getTutorChoicesForStudent(req.session.user.id);
+      const subject = choices.subjects.find((s) => Number(s.subject_id) === subjectId) || null;
+      if (subject) {
+        const listed = subject.tutors.find((t) => Number(t.id) === Number(tutor.id)) || null;
+        const kept = subject.currentTutors.find((t) => Number(t.tutor_id) === Number(tutor.id)) || null;
+        // A request already waiting for this subject (the same rule as the
+        // Subjects page): nothing more to choose until the tutor answers.
+        const pendingRows = await query(
+          `SELECT tutor_id, subject_id FROM tutor_schedule_applications WHERE student_id = ? AND status = 'pending'`,
+          [req.session.user.id]
+        );
+        const waiting = pendingRows.some((row) => Number(row.subject_id) === subjectId
+          || subject.tutors.some((t) => Number(t.id) === Number(row.tutor_id)));
+        const free = !waiting && listed && days && choices.timeSlots.includes(slot)
+          && !(listed.blocked || []).includes(slotKey(days, slot));
+        const back = new URLSearchParams({ pick: String(subjectId) });
+        if (days) back.set('days', days);
+        if (slot) back.set('slot', slot);
+        pick = {
+          subjectId,
+          subjectName: subject.subject_name,
+          days,
+          slot,
+          // Picked from the list at these days and time, and still free then.
+          canSelect: !!free,
+          // One of the student's own tutors, offered as "keep this tutor".
+          canKeep: !waiting && req.query.from === 'keep' && !!kept,
+          waiting,
+          keptSchedule: kept ? [kept.preferred_days, kept.time_slot].filter(Boolean).join(', ') : '',
+          alsoTeaches: listed ? (listed.also_teaches || []) : [],
+          backUrl: `/student/subjects?${back.toString()}`
+        };
+      }
+    }
+
     const shell = await buildShell(req, {
       pageTitle: 'Tutor Profile',
       section: 'subjects',
       contentView: '../content/student-tutor-profile',
-      tutor
+      tutor,
+      pick
     });
     return res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -264,18 +321,23 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     // ---- Module system (overhaul Phase 6) --------------------------------
     // The Pre-Assessment gates everything below it. newModules is already
     // filtered to this student's year level.
-    const preAssessmentDone = await hasCompletedPreAssessment(req.session.user.id, Number(req.params.subjectId));
+    // Everything below is THIS student's grade: the modules, the handouts the
+    // Pre-Assessment is written from, and so whether it can open at all.
+    const studentRecord = await getUserById(req.session.user.id);
+    const gradeLevel = studentGradeOf(studentRecord);
+    const preAssessmentDone = await hasCompletedPreAssessment(req.session.user.id, Number(req.params.subjectId), gradeLevel);
     const newModules = await getStudentSubjectModules(req.session.user.id, Number(req.params.subjectId));
-    const handoutsReady = (await getSubjectHandoutTexts(Number(req.params.subjectId))).length;
+    const handoutsReady = gradeLevel
+      ? (await getSubjectHandoutTexts(Number(req.params.subjectId), gradeLevel)).length
+      : 0;
     // Phase 2.1: the Pre-Assessment needs the ₱500 down payment. The route
     // enforces it; this is only so the page can say so before they click.
     const downPayment = await getDownPaymentStatus(req.session.user.id);
 
     // ---- Post-Assessment (Phase 8) ---------------------------------------
-    // The student sees how close they are to the end of the cycle, and the
-    // pre-vs-post comparison once both attempts exist.
+    // It opens at 12:01 AM on the last day of this student's enrolment in the
+    // subject. The page says when, and shows pre-vs-post once both exist.
     const completion = await getStudentSubjectCompletion(req.session.user.id, Number(req.params.subjectId));
-    const postAssessmentOpen = await getPostAssessment(Number(req.params.subjectId));
     const comparison = (await getSubjectPrePostComparison(Number(req.params.subjectId)))
       .find((row) => Number(row.student_id) === Number(req.session.user.id)) || null;
 
@@ -289,9 +351,9 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       newModules,
       preAssessmentDone,
       handoutsReady,
+      gradeLevel,
       downPayment,
       completion,
-      postAssessmentOpen,
       comparison,
       tutor,
       attendanceLogs
@@ -1134,21 +1196,36 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       return res.redirect(`/student/subjects/${subjectId}`);
     }
 
+    // The Pre-Assessment is the student's own grade's: written from that grade's
+    // modules, and not open at all while the grade has none — another grade's
+    // modules in the same subject do not count.
+    const gradeLevel = studentGradeOf(await getUserById(req.session.user.id));
+
     // Already done: send them to their result rather than letting them retake it.
-    const done = await hasCompletedPreAssessment(req.session.user.id, subjectId);
+    const done = await hasCompletedPreAssessment(req.session.user.id, subjectId, gradeLevel);
     if (done) {
       setFlash(req, 'info', 'You have already completed the Pre-Assessment for this subject.');
       return res.redirect(`/student/results/${done.id}`);
     }
 
+    if (!gradeLevel) {
+      setFlash(req, 'error', 'Your grade level is not on your profile yet, so there are no modules or Pre-Assessment for you. Please ask the office to set it.');
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+    const gradeModules = await getStudentSubjectModules(req.session.user.id, subjectId);
+    if (!gradeModules.length) {
+      setFlash(req, 'error', `There are no ${gradeLevel} modules in ${assignment.subject_name} yet, so the Pre-Assessment is not open. It opens once your modules are ready.`);
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+
     let assessment;
     try {
       // Size comes from config/assessmentDefaults.js (30), never a literal here.
-      const result = await getOrCreatePreAssessment(subjectId);
+      const result = await getOrCreatePreAssessment(subjectId, gradeLevel);
       assessment = result.assessment;
     } catch (error) {
-      // No handouts yet, or generation failed. Say so plainly instead of showing
-      // an empty exam.
+      // No readable handout for this grade yet, or generation failed. Say so
+      // plainly instead of showing an empty exam.
       setFlash(req, 'error', error.message || 'The Pre-Assessment is not ready yet.');
       return res.redirect(`/student/subjects/${subjectId}`);
     }
@@ -1195,9 +1272,21 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
     }
 
     const assessmentId = Number(req.body.assessment_id);
-    const assessment = await getAssessmentWithQuestions(assessmentId);
+    // Archived ones too: a Pre-Assessment rebuilt from new handouts while this
+    // student was answering it is graded on the questions they were shown.
+    const assessment = await getAssessmentWithQuestions(assessmentId, { includeArchived: true });
     if (!assessment || Number(assessment.subject_id) !== subjectId || assessment.assessment_kind !== 'pre_assessment') {
       setFlash(req, 'error', 'That Pre-Assessment does not belong to this subject.');
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+    // ...and it must be this student's grade's.
+    const gradeLevel = studentGradeOf(await getUserById(req.session.user.id));
+    if (!gradeLevel || assessment.grade_level !== gradeLevel) {
+      setFlash(req, 'error', 'That Pre-Assessment is for another grade level.');
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+    if (await hasCompletedPreAssessment(req.session.user.id, subjectId, gradeLevel)) {
+      setFlash(req, 'info', 'You have already completed the Pre-Assessment for this subject.');
       return res.redirect(`/student/subjects/${subjectId}`);
     }
 
@@ -1212,7 +1301,8 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       assessment_id: assessmentId,
       student_id: req.session.user.id,
       answers,
-      started_at: req.body.started_at || null
+      started_at: req.body.started_at || null,
+      allowArchived: true
     });
 
     await finaliseSitting(req, { assessmentId, submissionId: result.submissionId });
@@ -1252,9 +1342,11 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // Post-Assessment (overhaul Phase 8, spec Section 4b)
 //
-// Gated per student, server-side, on the same completion rule the tutor's button
-// uses: the Pre-Assessment done, every visible module opened, and every published
-// tutor assessment on those modules submitted.
+// It opens on its own at 12:01 AM on the LAST DAY of the student's enrolment in
+// the subject (enrolled 1 January -> open from 12:01 AM on 1 February), and not
+// a minute before. It is the same questions as the Pre-Assessment this student
+// sat, so that must have been taken. Enforced here, server-side: the button on
+// the subject page is only a reflection of it.
 // ---------------------------------------------------------------------------
 
 /** Shared guard: returns { assignment, assessment } or null after flashing. */
@@ -1265,22 +1357,24 @@ async function requirePostAssessment(req, subjectId) {
     return null;
   }
 
-  const assessment = await getPostAssessment(subjectId);
-  if (!assessment) {
-    setFlash(req, 'error', 'Your tutor has not opened the Post-Assessment for this subject yet.');
-    return null;
-  }
-
-  const completion = await getStudentSubjectCompletion(req.session.user.id, subjectId);
-  if (!completion.isComplete) {
-    setFlash(req, 'error', 'Finish every module and its assessments first — then the Post-Assessment opens.');
-    return null;
-  }
-  if (completion.postTaken) {
+  const state = await getStudentPostState(req.session.user.id, subjectId);
+  if (state.status === 'taken') {
     setFlash(req, 'info', 'You have already completed the Post-Assessment for this subject.');
-    return { redirectTo: `/student/results/${completion.postSubmission.id}` };
+    return { redirectTo: `/student/results/${state.postSubmission.id}` };
+  }
+  if (state.status === 'needs_pre') {
+    setFlash(req, 'error', 'The Post-Assessment repeats your Pre-Assessment, so take the Pre-Assessment first.');
+    return null;
+  }
+  if (state.status !== 'open') {
+    setFlash(req, 'error', state.opensAt
+      ? `The Post-Assessment opens on ${formatDateTime(state.opensAt)} — the last day of your enrollment in ${assignment.subject_name}.`
+      : 'The Post-Assessment opens on the last day of your enrollment.');
+    return null;
   }
 
+  // The same questions as the Pre-Assessment this student sat.
+  const assessment = await getOrCreatePostAssessmentFor(state.preSubmission.assessment_id);
   return { assignment, assessment };
 }
 
@@ -1322,6 +1416,12 @@ router.post('/subjects/:subjectId/post-assessment', async (req, res, next) => {
     for (const key of Object.keys(req.body)) {
       if (!key.startsWith('answer_')) continue;
       answers.push({ question_id: Number(key.slice(7)), student_answer: req.body[key] });
+    }
+
+    // The questions on the page came from this exact assessment.
+    if (req.body.assessment_id && Number(req.body.assessment_id) !== Number(gate.assessment.id)) {
+      setFlash(req, 'error', 'That Post-Assessment does not match yours. Please open it again.');
+      return res.redirect(`/student/subjects/${subjectId}`);
     }
 
     const result = await gradeAndSubmitAssessment({
@@ -1428,8 +1528,10 @@ router.get('/modules/:moduleId', async (req, res, next) => {
     const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
     const handouts = await getModuleHandouts(mod.id);
 
-    // Get assessments and submissions for this module
-    const assessments = await getTutorAssessmentsByModule(mod.id);
+    // Get assessments and submissions for this module — the published ones; a
+    // tutor's draft is not the student's to see.
+    const assessments = (await getTutorAssessmentsByModule(mod.id))
+      .filter((a) => Number(a.is_published) === 1);
     const submissions = await getStudentSubmissions(studentId, mod.subject_id);
 
     // Calculate progress
@@ -1471,22 +1573,51 @@ router.get('/modules/:moduleId', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/**
+ * A module assessment this student may sit: a published one on a module of
+ * THEIR grade, in a subject they take, once their Pre-Assessment is done.
+ *
+ * The GET used to check enrolment only, and the POST checked nothing at all —
+ * so a Grade 6 learner could answer a Grade 3 module's assessment, and a
+ * Pre- or Post-Assessment could be submitted through this route, past the down
+ * payment and the last-day rule.
+ *
+ * Returns { assessment, assignment, mod }, or { redirectTo } after flashing.
+ */
+async function requireModuleAssessment(req, assessmentId) {
+  const assessment = await getTutorAssessmentById(Number(assessmentId));
+  if (!assessment || Number(assessment.is_archived) || !Number(assessment.is_published)
+      || (assessment.assessment_kind || 'tutor_assessment') !== 'tutor_assessment') {
+    setFlash(req, 'error', 'Assessment not found.');
+    return { redirectTo: '/student/subjects' };
+  }
+
+  const assignment = await requireEnrolment(req, assessment.subject_id);
+  if (!assignment) {
+    setFlash(req, 'error', 'You are not enrolled in this subject.');
+    return { redirectTo: '/student/subjects' };
+  }
+
+  const student = await getUserById(req.session.user.id);
+  const mod = assessment.module_id ? await getModuleById(assessment.module_id) : null;
+  if (!mod || !moduleTargetsStudent(mod, student)) {
+    setFlash(req, 'error', 'This assessment belongs to a module for another grade level.');
+    return { redirectTo: `/student/subjects/${assessment.subject_id}` };
+  }
+
+  if (!(await hasCompletedPreAssessment(req.session.user.id, assessment.subject_id, studentGradeOf(student)))) {
+    setFlash(req, 'error', 'Please complete the Pre-Assessment for this subject before its module assessments.');
+    return { redirectTo: `/student/subjects/${assessment.subject_id}` };
+  }
+  return { assessment, assignment, mod };
+}
+
 // Student: Take a tutor assessment (activity or post)
 router.get('/tutor-assessments/:id', async (req, res, next) => {
   try {
-    const assessment = await getTutorAssessmentById(Number(req.params.id));
-    if (!assessment) {
-      setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/student/subjects');
-    }
-
-    // Check enrollment
-    const assignments = await getStudentAssignments(req.session.user.id);
-    const assignment = assignments.find(a => Number(a.subject_id) === Number(assessment.subject_id));
-    if (!assignment) {
-      setFlash(req, 'error', 'You are not enrolled in this subject.');
-      return res.redirect('/student/subjects');
-    }
+    const gate = await requireModuleAssessment(req, req.params.id);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
+    const { assessment, assignment } = gate;
 
     // Check if already submitted
     const submissions = await getStudentSubmissions(req.session.user.id, assessment.subject_id);
@@ -1522,11 +1653,9 @@ router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
     const assessmentId = Number(req.params.id);
     const studentId = req.session.user.id;
 
-    const assessment = await getTutorAssessmentById(assessmentId);
-    if (!assessment) {
-      setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/student/subjects');
-    }
+    // The same gate as the page: a typed or replayed POST is held to it too.
+    const gate = await requireModuleAssessment(req, assessmentId);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
 
     // Build answers from form
     const answers = [];

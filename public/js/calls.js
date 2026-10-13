@@ -5,6 +5,12 @@
  * Notes: Comments were added to help explain the system during code defense without changing the original logic.
  */
 
+/** The app's own message box (public/js/main.js), never the browser's alert(). */
+function notify(message, title) {
+  if (typeof window.mqAlert === 'function') window.mqAlert(message, title);
+  else console.warn(title || 'Notice', message);
+}
+
 let socket = null;
 let peerConnection = null;
 let localStream = null;
@@ -200,11 +206,11 @@ async function toggleRecording() {
       const blob = new Blob(recordedChunks, { type: 'video/webm' });
       if (blob.size) {
         await uploadRecording(blob);
-        alert('Call recording saved in the chat.');
+        notify('Call recording saved in the chat.', 'Recording saved');
       }
     } catch (error) {
       console.error(error);
-      alert('Recording was created but could not be saved.');
+      notify('Recording was created but could not be saved.', 'Recording not saved');
     } finally {
       if (button) {
         button.textContent = 'Start recording';
@@ -260,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await startCall(button.getAttribute('data-target-user'), button.getAttribute('data-start-call'));
       } catch (error) {
         console.error(error);
-        alert('Voice/video call could not start. Please allow microphone and camera permission, then try again.');
+        notify('Voice/video call could not start. Please allow microphone and camera permission, then try again.', 'Call could not start');
       }
     });
   });

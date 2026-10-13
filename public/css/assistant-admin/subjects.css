@@ -778,12 +778,127 @@ body {
 /* END LOCALIZED BASE STYLES */
 
 /* ANNOTATED COPY FOR DEFENSE REVIEW | File: public/css/assistant-admin/subjects.css | Purpose: Stylesheet used by the MindQuest UI. */
-/* Assistant admin subjects */
-.assistant-admin-subjects-page .subject-list-card,
-.assistant-admin-subjects-page .list-card {
-  border: 1px solid rgba(9,22,45,.06);
+/* Assistant admin subjects — the same cards as Admin's All Subjects. These
+   rules were missing here, so the assistant's subject list rendered as bare
+   text with no card, border or spacing. */
+.assistant-admin-subjects-page .subject-list-cards,
+.assistant-admin-subjects-page .list-stack {
+  gap: 16px;
 }
 
+.assistant-admin-subjects-page .subject-list-card,
+.assistant-admin-subjects-page .list-card {
+  border: 1px solid rgba(9, 22, 45, .06);
+}
+
+.assistant-admin-subjects-page .subject-list-card:hover,
+.assistant-admin-subjects-page .list-card:hover {
+  border-color: rgba(8, 166, 197, .18);
+}
+
+.assistant-admin-subjects-page .subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.assistant-admin-subjects-page .subject-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 180px;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(9, 22, 45, .08);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 16px 30px rgba(16, 32, 51, .06);
+}
+
+.assistant-admin-subjects-page .subject-card:hover {
+  border-color: rgba(16, 183, 205, .22);
+  box-shadow: 0 18px 32px rgba(16, 32, 51, .09);
+}
+
+.assistant-admin-subjects-page .subject-card h3 {
+  margin: 0 0 10px;
+}
+
+.assistant-admin-subjects-page .subject-card-meta {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+
+.assistant-admin-subjects-page .subject-member-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.assistant-admin-subjects-page .subject-member-card {
+  border: 1px solid rgba(9, 22, 45, .08);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 14px 28px rgba(16, 32, 51, .06);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.assistant-admin-subjects-page .subject-member-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.assistant-admin-subjects-page .subject-role-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(16, 183, 205, .12);
+  color: var(--primary-900);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assistant-admin-subjects-page .subject-member-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.assistant-admin-subjects-page .subject-member-meta div {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(16, 183, 205, .05);
+}
+
+.assistant-admin-subjects-page .subject-member-meta span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-bottom: 4px;
+}
+
+.assistant-admin-subjects-page .subject-member-meta strong {
+  color: var(--primary-900);
+  font-size: 14px;
+}
+
+.assistant-admin-subjects-page .subject-member-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 680px) {
+  .assistant-admin-subjects-page .subject-member-meta {
+    grid-template-columns: 1fr;
+  }
+}
 /* === MQ grid-view pass ===
    Admin Assistant subject detail: same as Admin.
    The shared base rule sets display:grid but no columns, which is why these

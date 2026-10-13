@@ -14,12 +14,15 @@
       </p>
     <% } %>
     <% if (tutor) { %>
-      <a class="limited-profile-card" href="/student/tutors/<%= tutor.id %>">
-        <img src="<%= tutor.image_path || '/assets/logo.png' %>" alt="Tutor avatar" class="profile-avatar" />
+      <%# The tutor's photo as an avatar — it used to be a bare <img> with no size,
+          so a tutor without a photo showed the centre's logo at full width. %>
+      <a class="limited-profile-card st-tutor-chip" href="/student/tutors/<%= tutor.id %>">
+        <%- include('../partials/avatar', { avatarSrc: tutor.image_path, avatarName: `${tutor.first_name} ${tutor.last_name}`, avatarSize: 'lg' }) %>
         <div>
           <strong><%= tutor.first_name %> <%= tutor.last_name %></strong>
           <p>Email: <%= tutor.email || '-' %></p>
           <p>Contact: <%= tutor.contact_number || '-' %></p>
+          <span class="st-tutor-chip-link">View profile &rarr;</span>
         </div>
       </a>
     <% } %>
@@ -44,7 +47,14 @@
           the whole point — "locked" on its own tells them nothing to act on.
           Both are enforced in routes/student.js; this only reports them. %>
       <% const downPaymentDue = typeof downPayment !== 'undefined' && downPayment && !downPayment.satisfied; %>
-      <% if (downPaymentDue) { %>
+      <% const myGrade = typeof gradeLevel === 'undefined' ? '' : gradeLevel; %>
+      <%# Modules — and so the Pre-Assessment — are per grade: another grade's
+          modules in this subject do not open anything for this student. %>
+      <% if (!myGrade) { %>
+        <p class="lock-note">Your grade level is not on your profile yet, so no modules are assigned to you. Please ask the office to set it.</p>
+      <% } else if (!newModules.length) { %>
+        <p class="lock-note">There are no <strong><%= myGrade %></strong> modules in <%= assignment.subject_name %> yet. The Pre-Assessment opens once your modules are ready.</p>
+      <% } else if (downPaymentDue) { %>
         <p class="lock-note">
           A down payment of at least <strong><%= money(downPayment.required) %></strong> is required
           before you can take the Pre-Assessment.
@@ -61,7 +71,7 @@
       <% } else if (handoutsReady) { %>
         <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/pre-assessment">Start Pre-Assessment</a>
       <% } else { %>
-        <p class="lock-note">The Pre-Assessment is not ready yet.</p>
+        <p class="lock-note">Your <%= myGrade %> modules have no handout yet, so the Pre-Assessment is not ready. It opens once the office uploads them.</p>
       <% } %>
     </section>
   <% } else { %>
@@ -77,7 +87,7 @@
       </p>
 
       <% if (!newModules.length) { %>
-        <p class="empty-state">No modules are assigned to your year level in this subject yet.</p>
+        <p class="empty-state">No <%= typeof gradeLevel !== 'undefined' && gradeLevel ? gradeLevel : 'grade-level' %> modules in this subject yet.</p>
       <% } %>
 
       <div class="module-grid">
@@ -106,21 +116,20 @@
     </section>
 
     <%# --------------------------------------------------------------------
-        Post-Assessment (overhaul Phase 8). Per student: it opens for whoever
-        has finished, rather than making them wait on their classmates. The
-        same rule is enforced server-side on the route.
+        Post-Assessment (overhaul Phase 8). It opens on its own at 12:01 AM on
+        the LAST DAY of this student's enrolment in the subject, and not before.
+        The same rule is enforced server-side on the route; this only says when.
         -------------------------------------------------------------------- %>
     <section class="panel-card">
       <div class="panel-card-head">
         <h3>Post-Assessment</h3>
         <% if (completion.postTaken) { %>
           <span class="badge badge-success">Done</span>
-        <% } else if (completion.isComplete && postAssessmentOpen) { %>
-          <span class="badge badge-success">Ready</span>
+        <% } else if (completion.postStatus === 'open') { %>
+          <span class="badge badge-success">Open now</span>
         <% } else { %>
           <span class="badge badge-info">
-            <%= completion.modulesOpened %>/<%= completion.modulesTotal %> modules
-            &middot; <%= completion.assessmentsDone %>/<%= completion.assessmentsTotal %> activities
+            <%= completion.postOpensAt ? `Opens ${formatDate(completion.postOpensAt)}` : 'Not open yet' %>
           </span>
         <% } %>
       </div>
@@ -154,22 +163,33 @@
           </div>
         <% } %>
 
-      <% } else if (!postAssessmentOpen) { %>
-        <p class="empty-state">Not open yet.</p>
-
-      <% } else if (completion.isComplete) { %>
+      <% } else if (completion.postStatus === 'open') { %>
+        <p class="table-note">
+          Your enrollment in <%= assignment.subject_name %> has reached its last day<%= completion.postOpensAt ? ` (${formatDate(completion.postOpensAt)})` : '' %>,
+          so the Post-Assessment is open. It repeats your Pre-Assessment, so you and your tutor can see how much you have improved.
+        </p>
         <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/post-assessment">Start Post-Assessment</a>
 
       <% } else { %>
-        <p class="table-note">To do first:</p>
-        <ul class="module-handout-list">
-          <% if (completion.modulesOpened < completion.modulesTotal) { %>
-            <li>Open all your modules (<%= completion.modulesOpened %> of <%= completion.modulesTotal %> so far)</li>
+        <p class="table-note">
+          <% if (completion.postOpensAt) { %>
+            Opens automatically on <strong><%= formatDateTime(completion.postOpensAt) %></strong> — the last day of
+            your enrollment in this subject. Until then you cannot take it.
+          <% } else { %>
+            Opens automatically on the last day of your enrollment in this subject.
           <% } %>
-          <% completion.pendingAssessments.forEach((a) => { %>
-            <li><a href="/student/tutor-assessments/<%= a.id %>"><%= a.title %></a></li>
-          <% }) %>
-        </ul>
+        </p>
+        <% if (completion.modulesOpened < completion.modulesTotal || completion.pendingAssessments.length) { %>
+          <p class="table-note">Before then, finish your modules:</p>
+          <ul class="module-handout-list">
+            <% if (completion.modulesOpened < completion.modulesTotal) { %>
+              <li>Open all your modules (<%= completion.modulesOpened %> of <%= completion.modulesTotal %> so far)</li>
+            <% } %>
+            <% completion.pendingAssessments.forEach((a) => { %>
+              <li><a href="/student/tutor-assessments/<%= a.id %>"><%= a.title %></a></li>
+            <% }) %>
+          </ul>
+        <% } %>
       <% } %>
     </section>
   <% } %>
@@ -242,3 +262,17 @@
     </div>
   </section>
 </section>
+
+<style>
+  /* The tutor, as a small card: photo or initials, name, how to reach them. */
+  .st-tutor-chip {
+    display: inline-flex; align-items: center; gap: 14px; margin-top: 12px; padding: 12px 16px;
+    border: 1px solid var(--border, #d7e2ea); border-radius: 16px; background: #fff;
+    color: inherit; text-decoration: none; max-width: 100%;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .st-tutor-chip:hover { border-color: var(--primary-500, #1c9a22); box-shadow: 0 6px 18px rgba(16, 32, 51, .08); }
+  .st-tutor-chip > div { display: grid; gap: 2px; min-width: 0; }
+  .st-tutor-chip p { margin: 0; font-size: 13px; color: var(--text-soft, #5f7084); overflow-wrap: anywhere; }
+  .st-tutor-chip-link { font-size: 13px; font-weight: 700; color: var(--primary-700, #1c7a22); }
+</style>

@@ -386,3 +386,49 @@ Applied automatically by `sql/schema.sql` on the next boot; nothing to run by ha
 - **Every role has a notification bell** (left of the ☰ menu) with "See all"
   and "Mark all read"; the ☰ menu has View Archived Notifications, Notification
   History and Log Out for all four roles.
+
+### This release: one grade per module, the last-day Post-Assessment, checked answer keys
+
+Applied automatically by `sql/schema.sql` (section 43) on the next boot.
+
+- **A module is for ONE grade level.** `modules.grade_level`, filled from the
+  old "visible to" list (its specific grade — the year-level group saved beside
+  it is what made a Grade 3 module show to Grades 1–6, so it is not expanded).
+  A student sees only their own grade's modules; a module with no grade is shown
+  to nobody. Module numbers count **within a grade**: English Grade 1 and English
+  Grade 6 each have a Module 1; a second Module 1 in English Grade 1 is refused
+  (`uq_modules_subject_grade_number`).
+- **The Pre-Assessment is per subject AND grade**, written only from that grade's
+  handouts (`tutor_assessments.grade_level`, `source_fingerprint`). It does not
+  open while the student's grade has no module with a readable handout. The
+  subject-wide Pre-Assessments from before are archived, not deleted — a student
+  who sat one keeps their result and their unlocked modules.
+  `uq_ta_pre_per_version` (one per subject) is replaced by `uq_ta_pre_per_grade`.
+- **Module assessments** are open only to students of that module's grade, after
+  their Pre-Assessment — on the POST as well as the page.
+- **The Post-Assessment opens by itself at 12:01 AM (Manila) on the last day of
+  the student's enrollment** in the subject (enrolled 1 January → open from
+  12:01 AM on 1 February), and repeats the exact Pre-Assessment that student took
+  (`uq_ta_post_per_pre`). The tutor's "Create Post Assessment" button is gone.
+- **Every AI-written question's answer key is checked** before it is stored: a
+  second pass at temperature 0 answers it without seeing the key, and an item is
+  kept only when exactly one choice is right and it is the key. The answer is also
+  written out in words (a slipped letter is corrected) and a bare sum is worked
+  out. The audit that found the problem: "9 x 9" stored with the key 100, "18 ÷ 6"
+  with 5, a "negative integer" question with two right answers.
+  `scripts/repair-answer-keys.js` corrects the 18 stored keys that audit found
+  and re-marks the answers given to them (dry run by default; `--commit`).
+- **Side tabs** on Billing Data (student) and Analytics & Reports (all four
+  roles): one section at a time, the open one kept in the address.
+- **No browser dialogs.** Every "are you sure?" and notice is the app's own modal;
+  submitting an assessment says how many questions are still blank.
+- **A tutor's profile opens in the same tab** from Select Tutor, with "Select this
+  tutor" and "Back to tutors".
+
+To verify after the deploy:
+
+```bash
+node scripts/apply-schema.js --check                      # parses cleanly
+node scripts/repair-answer-keys.js                        # prints what it would correct
+node scripts/repair-answer-keys.js --commit               # applies it (idempotent)
+```

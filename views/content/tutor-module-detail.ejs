@@ -7,11 +7,7 @@
       <h2>Module <%= mod.order_number %> — <%= mod.title %></h2>
       <p class="res-subtitle">
         <%= mod.subject_name %>
-        <% if (mod.target_year_levels && mod.target_year_levels.length) { %>
-          &middot; <%= mod.target_year_levels.join(', ') %>
-        <% } else { %>
-          &middot; all year levels
-        <% } %>
+        &middot; <%= mod.grade_level || 'no grade level set' %>
       </p>
     </div>
     <a class="btn btn-primary" href="/tutor/modules/<%= mod.id %>/create-assessment">Create Assessment</a>
@@ -70,8 +66,8 @@
     </div>
 
     <p class="table-note">
-      An assessment you create here shows up inside this module for every student it
-      is assigned to. Once they answer it, "Check Answers" opens their work.
+      An assessment you create here shows up inside this module for your
+      <%= mod.grade_level || '' %> students in <%= mod.subject_name %>. Once they answer it, "Check Answers" opens their work.
     </p>
 
     <% if (!assessments.length) { %>

@@ -1692,3 +1692,114 @@ BEGIN
     CONSTRAINT fk_assistant_profiles_creator FOREIGN KEY (created_by) REFERENCES dbo.users(id) ON DELETE NO ACTION
   );
 END;
+
+
+-- ---------------------------------------------------------------------------
+-- 43. A module belongs to ONE grade level, and so does a Pre-Assessment.
+--
+-- Modules used to carry a list of year levels to show to, and the admin form
+-- saved the group together with the grade: ["Primary Level", "Grade 3"]. The
+-- group stood for every grade inside it, so a Grade 3 module reached Grades 1
+-- to 6 — and a subject had ONE Pre-Assessment, written from every grade's
+-- handouts, which a student could sit even when their own grade had no module.
+-- Module numbers were also unique across the whole subject, so once Grade 1
+-- English had a Module 1, Grade 6 English could not.
+--
+--   modules.grade_level                   the one grade a module is for,
+--                                         backfilled from the old list (its
+--                                         specific grade; the group is what
+--                                         leaked, so it is not expanded)
+--   uq_modules_subject_grade_number       a number once per subject AND grade
+--   tutor_assessments.grade_level         the grade a Pre/Post-Assessment is for
+--   tutor_assessments.source_fingerprint  which handouts it was written from
+--   uq_ta_pre_per_grade                   one live Pre-Assessment per subject
+--                                         and grade (replaces
+--                                         uq_ta_pre_per_version: one per subject)
+--   uq_ta_post_per_pre                    one Post-Assessment per Pre-Assessment
+--                                         it repeats
+--
+-- The subject-wide Pre-Assessments from before are retired (archived), never
+-- deleted: each submission still points at its own assessment, so a student who
+-- sat one keeps their result, their level and their unlocked modules.
+--
+-- Statements that name the new columns run through sp_executesql: the batch is
+-- compiled before the ALTERs above them have run.
+-- ---------------------------------------------------------------------------
+IF COL_LENGTH('dbo.modules', 'grade_level') IS NULL
+  ALTER TABLE dbo.modules ADD grade_level NVARCHAR(30) NULL;
+
+IF COL_LENGTH('dbo.tutor_assessments', 'grade_level') IS NULL
+  ALTER TABLE dbo.tutor_assessments ADD grade_level NVARCHAR(30) NULL;
+
+IF COL_LENGTH('dbo.tutor_assessments', 'source_fingerprint') IS NULL
+  ALTER TABLE dbo.tutor_assessments ADD source_fingerprint NVARCHAR(64) NULL;
+
+-- The grade from the old list: the first specific grade in it, youngest first.
+-- '"Grade 1"' with its closing quote cannot match "Grade 10".
+IF COL_LENGTH('dbo.modules', 'grade_level') IS NOT NULL
+  EXEC sp_executesql N'
+    UPDATE m SET m.grade_level = g.grade
+      FROM dbo.modules m
+      CROSS APPLY (
+        SELECT TOP 1 v.grade
+          FROM (VALUES
+            (1, N''Kinder 1''), (2, N''Kinder 2''),
+            (3, N''Grade 1''), (4, N''Grade 2''), (5, N''Grade 3''),
+            (6, N''Grade 4''), (7, N''Grade 5''), (8, N''Grade 6''),
+            (9, N''Grade 7''), (10, N''Grade 8''), (11, N''Grade 9''), (12, N''Grade 10''),
+            (13, N''Grade 11''), (14, N''Grade 12'')
+          ) v(ord, grade)
+         WHERE m.target_year_levels_json LIKE N''%"'' + v.grade + N''"%''
+         ORDER BY v.ord
+      ) g
+     WHERE m.grade_level IS NULL AND m.target_year_levels_json IS NOT NULL;';
+
+IF COL_LENGTH('dbo.modules', 'grade_level') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'uq_modules_subject_grade_number' AND object_id = OBJECT_ID('dbo.modules'))
+BEGIN
+  BEGIN TRY
+    EXEC sp_executesql N'CREATE UNIQUE INDEX uq_modules_subject_grade_number
+      ON dbo.modules(subject_id, grade_level, order_number)
+      WHERE is_archived = 0 AND grade_level IS NOT NULL;';
+  END TRY
+  BEGIN CATCH
+    PRINT 'Warning: could not create uq_modules_subject_grade_number (two live modules share a number in one grade): ' + ERROR_MESSAGE();
+  END CATCH
+END;
+
+-- Retire the subject-wide Pre-Assessments. New ones are per grade.
+IF COL_LENGTH('dbo.tutor_assessments', 'grade_level') IS NOT NULL
+  EXEC sp_executesql N'
+    UPDATE dbo.tutor_assessments
+       SET is_archived = 1, updated_at = DATEADD(hour, 8, GETUTCDATE())
+     WHERE assessment_kind = ''pre_assessment'' AND grade_level IS NULL AND is_archived = 0;';
+
+-- One per subject was the old rule; two grades of a subject can share a
+-- handout_version, so it has to go before the per-grade index can hold.
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'uq_ta_pre_per_version' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
+  DROP INDEX uq_ta_pre_per_version ON dbo.tutor_assessments;
+
+IF COL_LENGTH('dbo.tutor_assessments', 'grade_level') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'uq_ta_pre_per_grade' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
+BEGIN
+  BEGIN TRY
+    EXEC sp_executesql N'CREATE UNIQUE INDEX uq_ta_pre_per_grade
+      ON dbo.tutor_assessments(subject_id, grade_level)
+      WHERE assessment_kind = ''pre_assessment'' AND is_archived = 0 AND grade_level IS NOT NULL;';
+  END TRY
+  BEGIN CATCH
+    PRINT 'Warning: could not create uq_ta_pre_per_grade: ' + ERROR_MESSAGE();
+  END CATCH
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'uq_ta_post_per_pre' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
+BEGIN
+  BEGIN TRY
+    EXEC sp_executesql N'CREATE UNIQUE INDEX uq_ta_post_per_pre
+      ON dbo.tutor_assessments(source_pre_assessment_id)
+      WHERE assessment_kind = ''post_assessment'' AND is_archived = 0 AND source_pre_assessment_id IS NOT NULL;';
+  END TRY
+  BEGIN CATCH
+    PRINT 'Warning: could not create uq_ta_post_per_pre: ' + ERROR_MESSAGE();
+  END CATCH
+END;

@@ -6,13 +6,13 @@
         <button type="button" class="btn btn-secondary" data-modal-target="#archived-subjects">Recover</button>
         <button type="button" class="btn btn-primary" data-modal-target="#add-subject">Add Subject</button>
       <% } else { %>
-        <span class="empty-state">Admin only can add or archive subjects.</span>
+        <span class="badge badge-info">View only — the main admin adds and archives subjects</span>
       <% } %>
     </div>
   </div>
   <div class="subject-grid">
     <% subjects.filter((subject) => !subject.is_archived).forEach((subject) => { %>
-      <article class="subject-card"><div class="subject-card-body"><h3><a href="<%= basePath %>/subjects/<%= subject.id %>"><%= subject.name %></a></h3><p class="subject-card-meta">Manage subject details, tutors, and enrolled students.</p></div><% if (currentUser.role === 'admin') { %><div class="row-actions"><form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/archive"><button class="btn btn-secondary btn-sm" type="submit">Archive</button></form></div><% } %></article>
+      <article class="subject-card"><div class="subject-card-body"><h3><a href="<%= basePath %>/subjects/<%= subject.id %>"><%= subject.name %></a></h3><p class="subject-card-meta">Manage subject details, tutors, and enrolled students.</p></div><div class="row-actions"><a class="btn btn-secondary btn-sm" href="<%= basePath %>/subjects/<%= subject.id %>">Open</a><% if (currentUser.role === 'admin') { %><form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/archive" data-confirm-message="Archive <%= subject.name %>? It can be recovered later."><button class="btn btn-secondary btn-sm" type="submit">Archive</button></form><% } %></div></article>
     <% }) %>
   </div>
   <div class="global-modal" id="add-subject"><div class="global-modal-card small"><button type="button" class="modal-close" data-close-modal>&times;</button><h3>Add Subject</h3><form method="post" action="<%= basePath %>/subjects/add" class="stack-form"><label>Subject Name<input type="text" name="name" required oninput="this.value=this.value.toUpperCase()" title="Subject names are saved in uppercase" /></label><button class="btn btn-primary" type="submit">Save Subject</button></form></div></div>

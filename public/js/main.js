@@ -123,6 +123,70 @@ document.addEventListener('keydown', (event) => {
 
 document.querySelectorAll('.global-modal[data-force-open="true"]').forEach(openModal);
 
+// ============================================================================
+// Side tabs (.mq-vtabs, css/mq-data.css 12c) — one section of a page at a time
+//
+// The tab list runs down the left; clicking one shows its section and hides the
+// rest. The open tab is kept in the address (#payment-history), so a reload, a
+// form that comes back to the page, or the Back button lands on it again.
+// A section becoming visible fires `mq:vtab-shown` on it, which is when a chart
+// inside it can be drawn — a chart drawn while hidden has no size.
+// ============================================================================
+(function () {
+  document.querySelectorAll('[data-vtabs]').forEach((root) => {
+    const tabs = Array.from(root.querySelectorAll('[data-vtab]'));
+    const panels = Array.from(root.querySelectorAll('[data-vtab-panel]'));
+    if (!tabs.length) return;
+    const keyOf = (el) => el.getAttribute('data-vtab');
+
+    const show = (wanted, remember) => {
+      const key = tabs.some((tab) => keyOf(tab) === wanted) ? wanted : keyOf(tabs[0]);
+      tabs.forEach((tab) => {
+        const on = keyOf(tab) === key;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        tab.tabIndex = on ? 0 : -1;
+      });
+      panels.forEach((panel) => {
+        const on = panel.getAttribute('data-vtab-panel') === key;
+        const wasHidden = panel.hidden;
+        panel.hidden = !on;
+        if (on && wasHidden) panel.dispatchEvent(new CustomEvent('mq:vtab-shown', { bubbles: true }));
+      });
+      if (remember && window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${key}`);
+      }
+      return key;
+    };
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => {
+        show(keyOf(tab), true);
+        // On a phone the section is below the row of tabs: bring it into view.
+        if (window.innerWidth <= 860) {
+          const panel = panels.find((p) => !p.hidden);
+          if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+      tab.addEventListener('keydown', (event) => {
+        const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+        let next = null;
+        if (step) next = tabs[(index + step + tabs.length) % tabs.length];
+        else if (event.key === 'Home') next = tabs[0];
+        else if (event.key === 'End') next = tabs[tabs.length - 1];
+        if (!next) return;
+        event.preventDefault();
+        next.focus();
+        show(keyOf(next), true);
+      });
+    });
+
+    const fromHash = () => decodeURIComponent((window.location.hash || '').replace(/^#/, ''));
+    show(fromHash() || root.getAttribute('data-vtab-default') || keyOf(tabs[0]), false);
+    window.addEventListener('hashchange', () => { if (fromHash()) show(fromHash(), false); });
+  });
+})();
+
 
 // Function: ensureConfirmModal
 
@@ -130,19 +194,39 @@ document.querySelectorAll('.global-modal[data-force-open="true"]').forEach(openM
 // Role: Provides helper logic for this file.
 
 
+/**
+ * The app's own confirmation dialog — never the browser's.
+ *
+ * window.confirm() shows "mindquesttutorial.com says" in the browser's own grey
+ * box, which looks like an error from somewhere else and cannot be styled. Every
+ * "are you sure?" goes through this instead:
+ *
+ *   <form data-confirm-message="Submit your answers?"
+ *         data-confirm-title="Submit assessment?"     (optional)
+ *         data-confirm-ok="Submit"                    (optional, the OK label)
+ *         data-confirm-unanswered>                    (optional, see below)
+ *
+ * data-confirm-unanswered counts the questions left blank (inputs named
+ * answer_<id>) and says so in the dialog, so a student is not surprised by a
+ * blank marked wrong. Scripts can ask the same dialog with mqConfirm().
+ */
 function ensureConfirmModal() {
   let modal = document.querySelector('#global-confirm-modal');
   if (modal) return modal;
   modal = document.createElement('div');
   modal.className = 'global-modal global-confirm-modal';
   modal.id = 'global-confirm-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'global-confirm-title');
   modal.innerHTML = `
     <div class="global-modal-card small">
-      <button type="button" class="modal-close" data-close-modal>&times;</button>
-      <h3>Confirm Action</h3>
+      <button type="button" class="modal-close" data-close-modal aria-label="Close">&times;</button>
+      <h3 id="global-confirm-title">Confirm Action</h3>
       <p id="global-confirm-message">Are you sure?</p>
+      <p id="global-confirm-extra" class="confirm-extra" hidden></p>
       <div class="confirm-actions">
-        <button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>
+        <button type="button" class="btn btn-secondary" data-close-modal id="global-confirm-cancel">Cancel</button>
         <button type="button" class="btn btn-primary" id="global-confirm-ok">Accept</button>
       </div>
     </div>`;
@@ -151,25 +235,78 @@ function ensureConfirmModal() {
 }
 
 let confirmAction = null;
+
+/**
+ * Ask the app's confirmation dialog.
+ * @param {{title?: string, message: string, extra?: string, ok?: string, cancel?: string}} options
+ * @param {() => void} onConfirm
+ */
+function mqConfirm(options, onConfirm) {
+  const modal = ensureConfirmModal();
+  const opts = typeof options === 'string' ? { message: options } : (options || {});
+  modal.querySelector('#global-confirm-title').textContent = opts.title || 'Confirm Action';
+  modal.querySelector('#global-confirm-message').textContent = opts.message || 'Are you sure?';
+  const extra = modal.querySelector('#global-confirm-extra');
+  extra.textContent = opts.extra || '';
+  extra.hidden = !opts.extra;
+  modal.querySelector('#global-confirm-ok').textContent = opts.ok || 'Accept';
+  modal.querySelector('#global-confirm-cancel').textContent = opts.cancel || 'Cancel';
+  confirmAction = () => {
+    modal.classList.remove('is-open');
+    if (typeof onConfirm === 'function') onConfirm();
+  };
+  openModal(modal);
+  const okButton = modal.querySelector('#global-confirm-ok');
+  if (okButton && okButton.focus) okButton.focus();
+}
+window.mqConfirm = mqConfirm;
+
+/** Questions in a form left with no answer: radio groups unticked, text left empty. */
+function countUnanswered(form) {
+  const groups = new Map();
+  form.querySelectorAll('[name^="answer_"]').forEach((field) => {
+    const name = field.getAttribute('name');
+    const answered = field.type === 'radio' || field.type === 'checkbox'
+      ? field.checked
+      : String(field.value || '').trim() !== '';
+    groups.set(name, (groups.get(name) || false) || answered);
+  });
+  let blank = 0;
+  groups.forEach((answered) => { if (!answered) blank += 1; });
+  return blank;
+}
+
 document.addEventListener('click', (event) => {
   const confirmOpenButton = event.target.closest('[data-confirm-open]');
   if (confirmOpenButton) {
     event.preventDefault();
-    const modal = ensureConfirmModal();
-    modal.querySelector('#global-confirm-message').textContent = confirmOpenButton.getAttribute('data-confirm-message') || 'Continue?';
-    confirmAction = () => {
-      modal.classList.remove('is-open');
+    mqConfirm({
+      title: confirmOpenButton.getAttribute('data-confirm-title') || undefined,
+      message: confirmOpenButton.getAttribute('data-confirm-message') || 'Continue?',
+      ok: confirmOpenButton.getAttribute('data-confirm-ok') || undefined
+    }, () => {
       document.querySelectorAll('.global-modal.is-open').forEach((item) => item.classList.remove('is-open'));
       openModal(document.querySelector(confirmOpenButton.getAttribute('data-confirm-open')));
-    };
-    modal.classList.add('is-open');
+    });
   }
 
   const ok = event.target.closest('#global-confirm-ok');
   if (ok && confirmAction) {
-    confirmAction();
+    const action = confirmAction;
     confirmAction = null;
+    action();
   }
+  if (event.target.closest('#global-confirm-modal [data-close-modal]')) confirmAction = null;
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  // Escape is Cancel on the app's own dialogs, as it is on the browser's.
+  ['#global-confirm-modal', '#global-simple-modal'].forEach((selector) => {
+    const modal = document.querySelector(`${selector}.is-open`);
+    if (modal) modal.classList.remove('is-open');
+  });
+  confirmAction = null;
 });
 
 document.addEventListener('submit', (event) => {
@@ -178,15 +315,21 @@ document.addEventListener('submit', (event) => {
   const message = form.getAttribute('data-confirm-message');
   if (!message || form.dataset.confirmed === 'true') return;
   event.preventDefault();
-  const modal = ensureConfirmModal();
-  modal.querySelector('#global-confirm-message').textContent = message;
-  confirmAction = () => {
-    modal.classList.remove('is-open');
+  let extra = '';
+  if (form.hasAttribute('data-confirm-unanswered')) {
+    const blank = countUnanswered(form);
+    if (blank) extra = `You have ${blank} unanswered question${blank === 1 ? '' : 's'}. A question left blank is marked wrong.`;
+  }
+  mqConfirm({
+    title: form.getAttribute('data-confirm-title') || undefined,
+    message,
+    extra,
+    ok: form.getAttribute('data-confirm-ok') || undefined
+  }, () => {
     form.dataset.confirmed = 'true';
     form.requestSubmit();
     setTimeout(() => { form.dataset.confirmed = 'false'; }, 0);
-  };
-  modal.classList.add('is-open');
+  });
 });
 
 document.querySelectorAll('.billing-edit-form').forEach((form) => {
@@ -426,6 +569,11 @@ function showSimpleModal(title, message) {
   modal.querySelector('#global-simple-message').textContent = message || '';
   modal.classList.add('is-open');
 }
+
+/** The app's own message box, for scripts — in place of the browser's alert(). */
+window.mqAlert = function mqAlert(message, title) {
+  showSimpleModal(title || 'Notice', message);
+};
 
 
 // Dashboard sidebar mobile controls

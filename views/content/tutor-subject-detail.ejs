@@ -26,54 +26,72 @@
 
   <%# ------------------------------------------------------------------------
       Modules (overhaul Phase 6). Read-only for the tutor: Admin owns module
-      creation and handouts. Shown here so the tutor can see what material the
-      student has, and which year levels each module is restricted to.
+      creation and handouts. Each module is for ONE grade level and only that
+      grade's students see it, so they are listed grade by grade — the grades
+      this tutor's own students are in first.
       ------------------------------------------------------------------------ %>
+  <%
+    const myGrades = new Map();
+    myStudents.forEach((student) => {
+      const grade = studentGradeOf(student);
+      if (grade) myGrades.set(grade, (myGrades.get(grade) || 0) + 1);
+    });
+    const moduleGroups = [];
+    modules.forEach((mod) => {
+      const key = mod.grade_level || 'No grade level';
+      let group = moduleGroups.find((g) => g.grade === key);
+      if (!group) { group = { grade: key, modules: [], mine: myGrades.get(mod.grade_level) || 0 }; moduleGroups.push(group); }
+      group.modules.push(mod);
+    });
+    moduleGroups.sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
+  %>
   <section class="panel-card">
     <div class="panel-card-head">
       <h3>Modules</h3>
       <span class="badge badge-info"><%= modules.length %> module<%= modules.length === 1 ? '' : 's' %></span>
     </div>
-    <p class="table-note">Set up by Admin. You can build assessments on top of these modules.</p>
+    <p class="table-note">Set up by Admin. Each module is for one grade level; a student sees only their own grade's. You can build assessments on top of these modules.</p>
 
     <% if (!modules.length) { %>
       <p class="empty-state">Admin has not added a module to this subject yet.</p>
     <% } %>
 
-    <div class="module-grid">
-      <% modules.forEach((mod) => { %>
-        <article class="module-card">
-          <div class="module-card-head">
-            <span class="module-number">Module <%= mod.order_number %></span>
-            <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>">
-              <%= mod.handout_count %> handout<%= Number(mod.handout_count) === 1 ? '' : 's' %>
-            </span>
-          </div>
-          <h4><%= mod.title %></h4>
-          <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
-
-          <div class="module-card-targets">
-            <strong>Visible to</strong>
-            <div class="target-chips">
-              <% if (!mod.target_year_levels.length) { %>
-                <span class="target-chip target-chip-all">All year levels</span>
-              <% } else { %>
-                <% mod.target_year_levels.forEach((lvl) => { %>
-                  <span class="target-chip"><%= lvl %></span>
-                <% }) %>
-              <% } %>
+    <% moduleGroups.forEach((group) => { %>
+      <div class="module-grade-head">
+        <strong><%= group.grade %></strong>
+        <span class="module-card-meta">
+          <%= group.mine ? `${group.mine} of your student${group.mine === 1 ? '' : 's'}` : 'none of your students' %>
+        </span>
+      </div>
+      <div class="module-grid">
+        <% group.modules.forEach((mod) => { %>
+          <article class="module-card">
+            <div class="module-card-head">
+              <span class="module-number">Module <%= mod.order_number %></span>
+              <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>">
+                <%= mod.handout_count %> handout<%= Number(mod.handout_count) === 1 ? '' : 's' %>
+              </span>
             </div>
-          </div>
+            <h4><%= mod.title %></h4>
+            <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
 
-          <div class="module-card-foot">
-            <% if (Number(mod.assessment_count)) { %>
-              <span class="module-card-meta"><%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %></span>
-            <% } %>
-            <a class="btn btn-secondary btn-sm" href="/tutor/modules/<%= mod.id %>/create-assessment">Create Assessment</a>
-          </div>
-        </article>
-      <% }) %>
-    </div>
+            <div class="module-card-targets">
+              <strong>Grade level</strong>
+              <div class="target-chips">
+                <span class="target-chip"><%= mod.grade_level || 'Not set' %></span>
+              </div>
+            </div>
+
+            <div class="module-card-foot">
+              <% if (Number(mod.assessment_count)) { %>
+                <span class="module-card-meta"><%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %></span>
+              <% } %>
+              <a class="btn btn-secondary btn-sm" href="/tutor/modules/<%= mod.id %>/create-assessment">Create Assessment</a>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    <% }) %>
   </section>
 
   <%# ------------------------------------------------------------------------
@@ -84,7 +102,7 @@
       <h3>Pre-Assessment Results</h3>
       <span class="badge badge-info"><%= preResults.length %> submission<%= preResults.length === 1 ? '' : 's' %></span>
     </div>
-    <p class="table-note">How each student scored on the Pre-Assessment generated from this subject's handouts. Open a row to see which module and handout the missed items came from.</p>
+    <p class="table-note">How each student scored on the Pre-Assessment generated from their grade's handouts in this subject. Open a row to see which module and handout the missed items came from.</p>
 
     <% if (!preResults.length) { %>
       <p class="empty-state">No student has taken the Pre-Assessment for this subject yet.</p>
@@ -130,41 +148,21 @@
   <%# ------------------------------------------------------------------------
       Post-Assessment (overhaul Phase 8, acceptance item 12).
 
-      Readiness is per student (decision D5): the table shows who has finished,
-      and the Post-Assessment opens for those students individually rather than
-      making the whole class wait on its slowest member.
+      There is nothing to create or open: each student's Post-Assessment opens
+      by itself at 12:01 AM on the last day of THEIR enrollment in the subject,
+      and it is a copy of the exact Pre-Assessment that student took — same
+      questions, same answers — so the before-and-after compares like with like.
       ------------------------------------------------------------------------ %>
   <section class="panel-card">
     <div class="panel-card-head">
       <h3>Post-Assessment</h3>
-      <% if (postAssessment) { %>
-        <span class="badge badge-success">Open</span>
-      <% } else { %>
-        <span class="badge badge-info"><%= readiness.readyCount %> of <%= readiness.total %> ready</span>
-      <% } %>
+      <span class="badge badge-info"><%= readiness.readyCount %> of <%= readiness.total %> open now</span>
     </div>
 
-    <% if (postAssessment) { %>
-      <p class="table-note">
-        Created from the Pre-Assessment with the same <%= postAssessment.item_count %> items.
-        Each student sees it once they have opened every module and submitted every activity.
-      </p>
-    <% } else { %>
-      <p class="table-note">
-        This copies the subject's Pre-Assessment exactly — same questions, same answers — so the
-        before-and-after comparison measures the student, not a different exam.
-        It becomes available once a student has finished all their modules and activities.
-      </p>
-      <form method="post" action="/tutor/subjects/<%= subjectId %>/create-post-assessment"
-            data-confirm-message="Create the Post-Assessment for this subject? It reuses the Pre-Assessment's items exactly.">
-        <button type="submit" class="btn btn-primary" <%= readiness.readyCount ? '' : 'disabled' %>>
-          Create Post Assessment
-        </button>
-      </form>
-      <% if (!readiness.readyCount) { %>
-        <p class="empty-state">No student has finished everything yet.</p>
-      <% } %>
-    <% } %>
+    <p class="table-note">
+      Opens automatically for each student at 12:01 AM on the last day of their enrollment (enrolled
+      January 1, it opens February 1), and repeats the Pre-Assessment they took.
+    </p>
 
     <% if (readiness.students.length) { %>
       <div class="table-wrap">
@@ -201,8 +199,12 @@
                   <% if (cmp.post_submission_id) { %>
                     <a href="/tutor/results/<%= cmp.post_submission_id %>"><%= Number(cmp.post_percentage).toFixed(1) %>%</a>
                     <span class="res-level res-level-<%= String(cmp.post_level || '').toLowerCase() %>"><%= cmp.post_level %></span>
-                  <% } else if (r.isComplete) { %>
-                    <span class="module-card-meta"><%= postAssessment ? 'ready to take' : 'ready' %></span>
+                  <% } else if (r.postStatus === 'open') { %>
+                    <span class="module-card-meta">open now</span>
+                  <% } else if (r.postStatus === 'needs_pre') { %>
+                    <span class="module-card-meta">needs the Pre-Assessment first</span>
+                  <% } else if (r.postOpensAt) { %>
+                    <span class="module-card-meta">opens <%= formatDateTime(r.postOpensAt) %></span>
                   <% } else { %>
                     <span class="module-card-meta">&mdash;</span>
                   <% } %>

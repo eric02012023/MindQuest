@@ -231,5 +231,14 @@
 
   // A normal submit ends the sitting: no warning should fire while the page is
   // unloading, or the student would see a violation for finishing properly.
-  form.addEventListener('submit', function () { finished = true; });
+  //
+  // Not the FIRST submit event, though, when the form asks "are you sure?"
+  // (data-confirm-message, public/js/main.js): that one is stopped to show the
+  // dialog, and a student who presses Cancel is still sitting the assessment.
+  // Ending the sitting there switched the watcher off for the rest of it. The
+  // confirmed submit comes through again with data-confirmed="true".
+  form.addEventListener('submit', function () {
+    if (form.getAttribute('data-confirm-message') && form.dataset.confirmed !== 'true') return;
+    finished = true;
+  });
 })();

@@ -25,7 +25,10 @@ async function callOpenAI(systemPrompt, userPrompt, options = {}) {
   // back truncated — which fails as "invalid JSON" rather than as a length error.
   // A 30-item assessment needs far more room than the 4,000 that was fine for 10,
   // so callers that ask for a lot of output raise it.
-  const { maxTokens = 4000 } = options;
+  //
+  // temperature: writing questions wants a little variety; CHECKING an answer
+  // key wants none (0), the same answer every time.
+  const { maxTokens = 4000, temperature = 0.7 } = options;
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -39,7 +42,7 @@ async function callOpenAI(systemPrompt, userPrompt, options = {}) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.7,
+        temperature,
         max_tokens: maxTokens,
         response_format: { type: 'json_object' }
       })
@@ -411,6 +414,53 @@ function planQuestionMix(itemCount, requestedType = 'mixed', allowedTypes = MODU
   return mix;
 }
 
+/** Compare answer texts ignoring case, spacing and edge punctuation. */
+function normaliseChoice(text) {
+  return String(text || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/^[."'(\[]+|[.,;:!?"')\]]+$/g, '').trim();
+}
+
+/** A choice that is just a number ("36", "-3", "1,200", "2.5"), as a number. */
+function numericChoice(text) {
+  const raw = String(text || '').trim().replace(/[−–]/g, '-').replace(/,/g, '');
+  return /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : null;
+}
+
+/**
+ * The letter of the right answer to a bare arithmetic question — "What is 6 x 6?",
+ * "12 ÷ 3 = ?", "What is the sum of 7 + 5?" — worked out, not asked of anyone.
+ *
+ *   null  not a question of that kind (most questions)
+ *   ''    it is, but no choice — or more than one — holds the result, so the
+ *         item cannot be marked fairly and is dropped
+ *   'B'   the choice holding the result
+ *
+ * Deliberately narrow: only a question that IS one expression. A word problem
+ * ("8 apples in each of 5 boxes") is left to the answer-key check.
+ */
+function arithmeticKey(questionText, choices = []) {
+  const text = String(questionText || '').trim()
+    .replace(/[−–]/g, '-').replace(/×/g, 'x').replace(/÷/g, '/');
+  const match = text.match(
+    /^(?:what\s+is|what's|compute|calculate|find|solve|evaluate|give)?\s*(?:the\s+(?:value|result|answer|product|sum|difference|quotient)\s+of\s+)?(-?\d+(?:\.\d+)?)\s*([x*\/+-])\s*(-?\d+(?:\.\d+)?)\s*(?:=\s*)?(?:\?|\.)?\s*$/i
+  );
+  if (!match) return null;
+  const a = Number(match[1]);
+  const b = Number(match[3]);
+  let result;
+  switch (match[2].toLowerCase()) {
+    case 'x': case '*': result = a * b; break;
+    case '/': if (b === 0) return ''; result = a / b; break;
+    case '+': result = a + b; break;
+    case '-': result = a - b; break;
+    default: return null;
+  }
+  const hits = choices.filter((c) => {
+    const value = numericChoice(c.text);
+    return value !== null && Math.abs(value - result) < 1e-9;
+  });
+  return hits.length === 1 ? hits[0].label : '';
+}
+
 /**
  * Normalise and validate one AI-returned question.
  * Returns null when the question cannot be trusted, so bad items are dropped
@@ -480,10 +530,26 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
     let letter = /^[A-E]$/i.test(rawAnswer) ? rawAnswer.toUpperCase() : '';
     if (!letter) {
       const idx = base.choices.findIndex(
-        (c) => c.text.toLowerCase() === rawAnswer.toLowerCase()
+        (c) => normaliseChoice(c.text) === normaliseChoice(stripLabel(rawAnswer))
       );
       if (idx >= 0) letter = base.choices[idx].label;
     }
+
+    // The model also writes the answer out in words (correct_choice_text). The
+    // letter is where a slip happens — "B" written for the third choice — and
+    // that slip is a correct answer marked wrong. When the words name a
+    // different choice, the words win; verifyAnswerKeys then checks it again.
+    const answerText = stripLabel(raw.correct_choice_text || '');
+    if (answerText) {
+      const byText = base.choices.find((c) => normaliseChoice(c.text) === normaliseChoice(answerText));
+      if (byText && byText.label !== letter) letter = byText.label;
+    }
+
+    // A bare sum is worked out rather than trusted.
+    const worked = arithmeticKey(questionText, base.choices);
+    if (worked === '') return null;
+    if (worked) letter = worked;
+
     if (!letter || !base.choices.some((c) => c.label === letter)) return null;
     base.correct_answer = letter;
     return base;
@@ -503,6 +569,92 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
   base.answer_rubric = rubric;
   base.correct_answer = rubric.slice(0, 500);
   return base;
+}
+
+/**
+ * Check a batch of generated questions' answer keys before anyone is graded
+ * against them.
+ *
+ * WHY. The questions are written by a model, and a model writing questions
+ * sometimes gets its own key wrong, or writes a question with two right answers.
+ * Both were found on live: "Which of the following is a negative integer?"
+ * offered -2 AND -3 with only -3 accepted, so a student who picked -2 — a
+ * correct answer — was marked wrong. Grading itself was exact; the key was not.
+ *
+ * HOW. A second, independent pass answers every question from the same handout
+ * with temperature 0 and is NOT shown the key. It lists every choice that is
+ * correct. A question survives only when exactly one choice is correct and it is
+ * the key. Anything else — the checker disagrees, finds two right answers, or
+ * finds none — is dropped, never "fixed" by guessing; the top-up pass in
+ * generateAssessmentFromHandouts writes replacements.
+ *
+ * If the check itself cannot run (network, malformed reply), the batch is kept
+ * as it was: a failed check must not empty an assessment a class is waiting on.
+ *
+ * @returns {Promise<{kept: object[], rejected: object[], checked: boolean, tokensUsed: number}>}
+ */
+async function verifyAnswerKeys(questions = [], handout = {}) {
+  if (!questions.length) return { kept: [], rejected: [], checked: false, tokensUsed: 0 };
+
+  const systemPrompt = `You check the answer key of quiz questions that were written from a handout.
+You are NOT given the key. Answer every question yourself, using the handout text and plain, certain facts.
+
+Return a JSON object: {"results": [{"n": <question number>, "correct": [...], "reason": "<a few words>"}]}
+- multiple_choice: "correct" lists EVERY choice letter that is a right answer to the question exactly as it is
+  written. If two or more choices are right, list all of them. If none is right, return [].
+- true_false: "correct" is ["true"] or ["false"]. If the handout does not settle it, return [].
+Be strict: a question is only fair when exactly one choice is right.
+Output strict JSON only. No commentary, no markdown.`;
+
+  const lines = questions.map((q, i) => {
+    if (q.question_type === 'true_false') return `${i + 1}. [true_false] ${q.question_text}`;
+    const choices = (q.choices || []).map((c) => `   ${c.label}) ${c.text}`).join('\n');
+    return `${i + 1}. [multiple_choice] ${q.question_text}\n${choices}`;
+  });
+  const userPrompt = `HANDOUT${handout.module_title ? ` (Module ${handout.order_number} — ${handout.module_title})` : ''}
+${String(handout.extracted_text || '').trim()}
+
+QUESTIONS
+${lines.join('\n')}`;
+
+  let reply;
+  let tokensUsed = 0;
+  try {
+    const call = await callOpenAI(systemPrompt, userPrompt, {
+      maxTokens: Math.min(6000, 300 + questions.length * 70),
+      temperature: 0
+    });
+    reply = call.result;
+    tokensUsed = call.tokensUsed || 0;
+  } catch (error) {
+    console.error('[aiService] answer-key check could not run:', error.message);
+    return { kept: questions, rejected: [], checked: false, tokensUsed };
+  }
+
+  const results = Array.isArray(reply && reply.results) ? reply.results : null;
+  if (!results) return { kept: questions, rejected: [], checked: false, tokensUsed };
+
+  const byNumber = new Map();
+  results.forEach((row, i) => {
+    const n = Number(row && row.n) || i + 1;
+    if (!byNumber.has(n)) byNumber.set(n, row);
+  });
+
+  const kept = [];
+  const rejected = [];
+  questions.forEach((q, i) => {
+    const row = byNumber.get(i + 1);
+    // No verdict for this one: keep it rather than guess.
+    if (!row || !Array.isArray(row.correct)) { kept.push(q); return; }
+    const found = [...new Set(row.correct.map((value) => String(value || '').trim()).filter(Boolean))];
+    const key = String(q.correct_answer || '').trim();
+    const agrees = q.question_type === 'true_false'
+      ? found.length === 1 && found[0].toLowerCase() === key.toLowerCase()
+      : found.length === 1 && found[0].toUpperCase() === key.toUpperCase();
+    if (agrees) kept.push(q);
+    else rejected.push({ question: q, checker: found, reason: String(row.reason || '').slice(0, 200) });
+  });
+  return { kept, rejected, checked: true, tokensUsed };
 }
 
 /**
@@ -556,6 +708,21 @@ async function generateAssessmentFromHandouts(options = {}) {
   const quotas = spreadEvenly(itemCount, usable.length);
   const seen = new Set();
   let tokensUsed = 0;
+  // Items the answer-key check took out (verifyAnswerKeys).
+  let rejectedByCheck = 0;
+
+  /** Validate a reply, check its answer key, and keep what survives. */
+  const takeChecked = async (rawQuestions, slot) => {
+    const fresh = [];
+    absorb(rawQuestions, fresh);
+    const check = await verifyAnswerKeys(fresh, slot.handout);
+    tokensUsed += check.tokensUsed;
+    rejectedByCheck += check.rejected.length;
+    if (check.rejected.length) {
+      console.log(`[aiService] answer-key check dropped ${check.rejected.length} of ${fresh.length} item(s) for handout ${slot.handout.handout_id}`);
+    }
+    slot.questions.push(...check.kept);
+  };
 
   const absorb = (rawQuestions, into) => {
     for (const raw of Array.isArray(rawQuestions) ? rawQuestions : []) {
@@ -582,9 +749,11 @@ async function generateAssessmentFromHandouts(options = {}) {
       handout: slot.handout, wanted: batch, questionType, subject, yearLevel, allowedTypes
     });
     try {
-      const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: tokenBudget(batch) });
+      const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, {
+        maxTokens: tokenBudget(batch), temperature: GENERATION_TEMPERATURE
+      });
       tokensUsed += call.tokensUsed;
-      absorb(call.result.questions, slot.questions);
+      await takeChecked(call.result.questions, slot);
     } catch (error) {
       // One unreadable handout must not cost the whole assessment.
       console.error(`[aiService] generation failed for handout ${slot.handout.handout_id}:`, error.message);
@@ -604,9 +773,11 @@ async function generateAssessmentFromHandouts(options = {}) {
         avoidTexts: slot.questions.map((q) => q.question_text)
       });
       try {
-        const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, { maxTokens: tokenBudget(batch) });
+        const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, {
+          maxTokens: tokenBudget(batch), temperature: GENERATION_TEMPERATURE
+        });
         tokensUsed += call.tokensUsed;
-        absorb(call.result.questions, slot.questions);
+        await takeChecked(call.result.questions, slot);
       } catch (error) {
         console.error(`[aiService] top-up failed for handout ${slot.handout.handout_id}:`, error.message);
       }
@@ -632,9 +803,16 @@ async function generateAssessmentFromHandouts(options = {}) {
     requested: itemCount,
     kept: questions.length,
     candidates: candidates.length,
+    rejectedByCheck,
     topUpUsed
   };
 }
+
+/**
+ * How freely questions are written. Lower than the 0.7 everything else uses: a
+ * question is only useful when its key is right, and a cooler model slips less.
+ */
+const GENERATION_TEMPERATURE = 0.4;
 
 /** Split `total` into `parts` whole numbers that differ by at most one. */
 function spreadEvenly(total, parts) {
@@ -761,10 +939,14 @@ Every question object must have:
 - "correct_answer":
 ${answerLines}
 - "choices": for multiple_choice ONLY, an array of 4 distinct answer strings in A,B,C,D order. Omit for other types.
+- "correct_choice_text": for multiple_choice ONLY, the full text of the correct choice, copied exactly.
 - "explanation": one short sentence on why the answer is correct.
 
 Rules:
 - Base every question on the handout content. Never invent facts that are not in the text.
+- Exactly ONE choice may be correct. Every other choice must be clearly wrong — never offer two choices that
+  could both be right (for example two negative numbers when asking for "a negative integer").
+- Before writing "correct_answer", re-read the question and check that the letter points at the right choice.
 ${extraRules.join('\n')}
 - Make the difficulty appropriate for a ${yearLevel || 'general'} student.
 - Keep the choices out of "question_text": no "A) ... B) ..." list, no answer letter.
@@ -858,6 +1040,9 @@ module.exports = {
   generateFocusMaterial,
   planQuestionMix,
   validateGeneratedQuestion,
+  // The answer-key check every generated question passes (and scripts/audit-answer-keys.js).
+  verifyAnswerKeys,
+  arithmeticKey,
   SPEC_QUESTION_TYPES,
   PRE_POST_QUESTION_TYPES,
   MODULE_QUESTION_TYPES,

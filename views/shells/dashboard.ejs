@@ -146,7 +146,10 @@
         // Skip if it has a confirm message (handled by confirm modal first)
         if (form.getAttribute('data-confirm-message') && form.dataset.confirmed !== 'true') return;
         var action = form.getAttribute('action') || '';
-        if (action.includes('draft-assessment')) {
+        if (form.id === 'assessment-form' && /\/student\//.test(action)) {
+          // A student handing in their answers, not opening an assessment.
+          showLoading('Submitting your answers...');
+        } else if (action.includes('draft-assessment')) {
           showLoading('Drafting questions from the handouts...');
         } else if (action.includes('pre-assessment') || action.includes('post-assessment')) {
           showLoading('Preparing your assessment...');

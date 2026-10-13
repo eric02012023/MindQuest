@@ -1309,6 +1309,197 @@ a.mq-row {
 }
 
 /* -------------------------------------------------------------------------
+   12c. Side tabs — a page's sections listed down the left (Billing Data,
+        Analytics & Reports). Only the chosen section shows; the others wait
+        until they are clicked, so a long page is one section at a time instead
+        of everything stacked. On a phone the list becomes a row that scrolls
+        sideways above the section.
+
+     <div class="mq-vtabs" data-vtabs>
+       <nav class="mq-vtab-list" role="tablist" aria-orientation="vertical">
+         <button class="mq-vtab is-active" role="tab" data-vtab="history"> <svg> Payment history </button>
+       </nav>
+       <div class="mq-vtab-panels">
+         <section class="mq-vtab-panel" role="tabpanel" data-vtab-panel="history"> ... </section>
+       </div>
+     </div>
+   ---------------------------------------------------------------------- */
+
+.mq-vtabs {
+  display: grid;
+  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  gap: var(--mq-4);
+  align-items: start;
+}
+
+.mq-vtab-list {
+  position: sticky;
+  top: var(--mq-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--mq-1);
+  padding: var(--mq-2);
+  background: var(--mq-surface);
+  border: 1px solid var(--mq-line);
+  border-radius: var(--mq-radius);
+}
+
+.mq-vtab {
+  display: flex;
+  align-items: center;
+  gap: var(--mq-3);
+  width: 100%;
+  min-height: 46px;
+  padding: 0 var(--mq-3);
+  border: 0;
+  border-radius: var(--mq-radius);
+  background: transparent;
+  color: var(--mq-text);
+  font: inherit;
+  font-size: var(--mq-font-lg);
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.mq-vtab svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--mq-text-soft);
+  transition: color .15s;
+}
+
+.mq-vtab:hover {
+  background: var(--mq-surface-soft);
+}
+
+.mq-vtab.is-active {
+  background: rgba(16, 32, 51, .065);
+  font-weight: 700;
+}
+
+.mq-vtab.is-active svg {
+  color: var(--mq-accent);
+}
+
+.mq-vtab:focus-visible {
+  outline: 2px solid var(--mq-accent);
+  outline-offset: 1px;
+}
+
+.mq-vtab > span:not(.mq-vtab-count) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mq-vtab-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(16, 32, 51, .07);
+  color: var(--mq-text-soft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.mq-vtab.is-active .mq-vtab-count {
+  background: var(--mq-accent);
+  color: #fff;
+}
+
+.mq-vtab-panels,
+.mq-vtab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mq-4);
+  min-width: 0;
+}
+
+.mq-vtab-panel[hidden] {
+  display: none !important;
+}
+
+.mq-vtab-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--mq-text);
+}
+
+@media (max-width: 860px) {
+  .mq-vtabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Every tab stays in sight on a phone: they wrap into rows of chips rather
+     than scrolling sideways, where the ones past the edge go unnoticed. */
+  .mq-vtab-list {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--mq-2);
+  }
+
+  .mq-vtab {
+    flex: 1 1 auto;
+    width: auto;
+    min-height: 40px;
+    padding: 0 var(--mq-3);
+    border: 1px solid var(--mq-line);
+    font-size: var(--mq-font);
+  }
+
+  .mq-vtab.is-active {
+    border-color: var(--mq-accent);
+  }
+
+  .mq-vtab svg { width: 18px; height: 18px; }
+
+  .mq-vtab-count { margin-left: var(--mq-1); }
+}
+
+/* The confirmation dialog's second line ("You have 3 unanswered questions"). */
+.confirm-extra {
+  margin: -4px 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--mq-radius-sm);
+  background: rgba(210, 138, 31, .1);
+  color: #8a5c12;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* A form hint that has turned into a problem (a module number already used). */
+.field-hint.is-error {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+/* A grade's heading above its modules (the tutor's subject page). */
+.module-grade-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 14px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--mq-line);
+}
+
+.module-grade-head strong {
+  font-size: 15px;
+}
+
+/* -------------------------------------------------------------------------
    13. Ten rows, then scroll — and the search icon in the heading
    public/js/mq-tables.js gives every .mq-table and .table-wrap table a
    max-height of exactly its heading plus ten rows (.mq-capped), and puts a

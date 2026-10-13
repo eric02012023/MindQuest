@@ -2,12 +2,63 @@
     Purpose: A tutor's profile as their student sees it — the tutor's photo,
     how to reach them, and what they teach. Read-only.
 
-    Locals: tutor %>
+    Opened in the same tab, straight from "View profile" in the Select Tutor
+    dialog. When the student came from there, `pick` says what they were
+    choosing (subject, days, time), and the page offers "Select this tutor" and
+    "Back to tutors" — so looking at a tutor never costs the student their place.
+
+    Locals: tutor, pick (null, or { subjectId, subjectName, days, slot,
+            canSelect, canKeep, keptSchedule, waiting, alsoTeaches, backUrl }) %>
 <%
   const tutorName = [tutor.first_name, tutor.middle_name, tutor.last_name].filter(Boolean).join(' ');
   const tutorSubjects = Array.isArray(tutor.subjects) ? tutor.subjects : safeJsonArray(tutor.subjects_json || []);
+  const choosing = typeof pick !== 'undefined' && pick ? pick : null;
+  const when = choosing ? [choosing.days, choosing.slot].filter(Boolean).join(', ') : '';
 %>
 <section class="mq-profile">
+  <% if (choosing) { %>
+    <%# What the student is in the middle of choosing, and the two ways on. %>
+    <section class="mq-card st-pick-bar">
+      <div class="st-pick-text">
+        <span class="mq-card-icon"><%- icon('users', 18) %></span>
+        <div>
+          <strong>Choosing a tutor for <%= choosing.subjectName %></strong>
+          <span><%= choosing.canKeep ? `Your sessions with this tutor: ${choosing.keptSchedule || 'not scheduled yet'}` : (when || 'Pick your days and time first') %></span>
+        </div>
+      </div>
+      <div class="st-pick-actions">
+        <a class="mq-btn" href="<%= choosing.backUrl %>">&larr; Back to tutors</a>
+        <% if (choosing.canSelect) { %>
+          <form method="post" action="/student/apply-tutor"
+                data-confirm-title="Select this tutor?"
+                data-confirm-ok="Send request"
+                data-confirm-message="Ask <%= tutorName %> to be your <%= choosing.subjectName %> tutor on <%= String(choosing.days).toLowerCase() %>, <%= choosing.slot %>?">
+            <input type="hidden" name="tutor_id" value="<%= tutor.id %>" />
+            <input type="hidden" name="subject_id" value="<%= choosing.subjectId %>" />
+            <input type="hidden" name="time_slot" value="<%= choosing.slot %>" />
+            <input type="hidden" name="preferred_days" value="<%= choosing.days %>" />
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Select this tutor</button>
+          </form>
+        <% } else if (choosing.canKeep) { %>
+          <form method="post" action="/student/subjects/<%= choosing.subjectId %>/keep-tutor"
+                data-confirm-title="Keep this tutor?"
+                data-confirm-ok="Keep tutor"
+                data-confirm-message="Keep <%= tutorName %> as your <%= choosing.subjectName %> tutor<%= choosing.keptSchedule ? `, in your ${choosing.keptSchedule} sessions` : '' %>?">
+            <input type="hidden" name="tutor_id" value="<%= tutor.id %>" />
+            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Keep this tutor</button>
+          </form>
+        <% } %>
+      </div>
+      <% if (choosing.waiting) { %>
+        <p class="st-pick-note">You already have a request waiting for <%= choosing.subjectName %>. You can choose again if that tutor declines.</p>
+      <% } else if (!choosing.canSelect && !choosing.canKeep) { %>
+        <p class="st-pick-note">This tutor is not free at the days and time you picked. Go back to see the tutors who are.</p>
+      <% } else if ((choosing.alsoTeaches || []).length) { %>
+        <p class="st-pick-note is-good">Also teaches your <%= choosing.alsoTeaches.join(', ') %> — they would take it too.</p>
+      <% } %>
+    </section>
+  <% } %>
+
   <section class="mq-profile-hero">
     <div class="mq-profile-cover" aria-hidden="true"></div>
     <div class="mq-profile-main">
@@ -23,7 +74,10 @@
         </div>
       </div>
       <div class="mq-profile-actions">
-        <a class="mq-btn" href="/student/profile"><%- icon('user') %> My profile</a>
+        <% if (!choosing) { %>
+          <a class="mq-btn" href="/student/subjects">&larr; My Subjects</a>
+          <a class="mq-btn" href="/student/profile"><%- icon('user') %> My profile</a>
+        <% } %>
       </div>
     </div>
   </section>
@@ -40,6 +94,7 @@
           <div><dt>Contact number</dt><dd><%= tutor.contact_number || '—' %></dd></div>
           <div><dt>Facebook</dt><dd><%= tutor.facebook_account || '—' %></dd></div>
           <div><dt>Branch</dt><dd><%= tutor.branch_name ? titleCaseName(tutor.branch_name) : '—' %></dd></div>
+          <% if (tutor.gender) { %><div><dt>Gender</dt><dd><%= tutor.gender %></dd></div><% } %>
           <% if (tutor.grade_level) { %><div><dt>Grade level</dt><dd><%= tutor.grade_level %></dd></div><% } %>
           <div><dt>Address</dt><dd><%= tutor.address || '—' %></dd></div>
         </dl>
@@ -63,3 +118,19 @@
     </section>
   </div>
 </section>
+
+<style>
+  .st-pick-bar { display: grid; gap: 10px; padding: 14px 16px; }
+  .st-pick-bar .mq-card-icon { flex: 0 0 auto; }
+  .st-pick-text { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .st-pick-text > div { display: grid; gap: 2px; min-width: 0; }
+  .st-pick-text span { color: var(--mq-text-soft, #5f7084); font-size: 13px; overflow-wrap: anywhere; }
+  .st-pick-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .st-pick-actions form { margin: 0; }
+  .st-pick-note { margin: 0; font-size: 13px; color: var(--mq-text-soft, #5f7084); }
+  .st-pick-note.is-good { color: #1c7a22; font-weight: 600; }
+  @media (min-width: 760px) {
+    .st-pick-bar { grid-template-columns: 1fr auto; align-items: center; }
+    .st-pick-note { grid-column: 1 / -1; }
+  }
+</style>

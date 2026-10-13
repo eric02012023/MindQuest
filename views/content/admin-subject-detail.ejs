@@ -60,28 +60,32 @@
         <button type="button" class="btn btn-primary btn-sm" data-modal-target="#add-module">Add Module</button>
       <% } %>
     </div>
+    <p class="table-note">
+      Each module is for one grade level, and only that grade's students taking <%= subject.name %> see it.
+      Module numbers count within a grade: Grade 1 and Grade 6 each have their own Module 1.
+    </p>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Module</th><th data-search-col>Title</th><th>Visible to</th><th>Handouts</th><th>Assessments</th><th>Manage</th></tr>
+          <tr><th>Grade Level</th><th>Module</th><th data-search-col>Title</th><th>Handouts</th><th>Assessments</th><th>Manage</th></tr>
         </thead>
         <tbody>
           <% if (!modules.length) { %>
-            <tr><td colspan="6">No modules yet.<% if (isAdmin) { %> Use “Add Module” to create Module 1.<% } %></td></tr>
+            <tr><td colspan="6">No modules yet.<% if (isAdmin) { %> Use “Add Module” to create the first one for a grade.<% } %></td></tr>
           <% } %>
           <% modules.forEach((mod) => { %>
             <tr>
+              <td>
+                <% if (mod.grade_level) { %>
+                  <span class="target-chip"><%= mod.grade_level %></span>
+                <% } else { %>
+                  <span class="badge badge-warning">No grade — hidden from students</span>
+                <% } %>
+              </td>
               <td><strong>Module <%= mod.order_number %></strong></td>
               <td>
                 <strong><%= mod.title %></strong>
                 <% if (mod.description) { %><br /><small class="module-card-meta"><%= mod.description %></small><% } %>
-              </td>
-              <td>
-                <% if (!mod.target_year_levels.length) { %>
-                  <span class="target-chip target-chip-all">All year levels</span>
-                <% } else { %>
-                  <%= mod.target_year_levels.join(', ') %>
-                <% } %>
               </td>
               <td>
                 <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>"><%= mod.handout_count %></span>
@@ -100,40 +104,51 @@
   </section>
 
   <% if (isAdmin) { %>
-    <%# The dialog is split into head / body / foot so the year-level picker
-        scrolls on its own instead of pushing the title and the submit button
-        past the edge of the screen. %>
+    <%# The dialog is split into head / body / foot so the body scrolls on its
+        own instead of pushing the title and the submit button past the edge of
+        the screen. %>
     <div class="global-modal" id="add-module">
       <div class="global-modal-card modal-shell">
         <header class="modal-head">
           <div>
             <h3>Add Module</h3>
-            <p class="modal-sub">Choose its number, or leave it as suggested.</p>
+            <p class="modal-sub">Choose the grade level first — the number counts within that grade.</p>
           </div>
           <button type="button" class="modal-close" data-close-modal aria-label="Close">&times;</button>
         </header>
 
-        <%# The lowest number no live module is using. A number freed by removing
-            a module becomes available again. %>
+        <%# Which numbers each grade already uses, for the picker script below. A
+            number freed by removing a module becomes available again. %>
         <%
-          const usedNumbers = modules.map((m) => Number(m.order_number)).filter((n) => n > 0);
-          let suggestedNumber = 1;
-          while (usedNumbers.includes(suggestedNumber)) suggestedNumber++;
+          const numbersByGrade = {};
+          modules.forEach((m) => {
+            if (!m.grade_level) return;
+            (numbersByGrade[m.grade_level] = numbersByGrade[m.grade_level] || []).push({ n: Number(m.order_number), title: m.title });
+          });
         %>
 
-        <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/modules" class="stack-form modal-form">
+        <form method="post" action="<%= basePath %>/subjects/<%= subject.id %>/modules" class="stack-form modal-form"
+              data-module-number-form data-numbers-by-grade="<%= JSON.stringify(numbersByGrade) %>">
           <div class="modal-body">
+            <label class="field">
+              <span class="field-label">Grade Level</span>
+              <select name="grade_level" required data-module-grade>
+                <option value="">Choose a grade level</option>
+                <% moduleTargetOptions.forEach((opt) => { %>
+                  <optgroup label="<%= opt.group %>">
+                    <% opt.grades.forEach((grade) => { %>
+                      <option value="<%= grade %>"><%= grade %></option>
+                    <% }) %>
+                  </optgroup>
+                <% }) %>
+              </select>
+              <span class="field-hint">Only students in this grade who take <%= subject.name %> will see this module.</span>
+            </label>
             <label class="field">
               <span class="field-label">Module Number</span>
               <input type="number" name="order_number" min="1" max="<%= maxModuleNumber %>"
-                     value="<%= suggestedNumber %>" required />
-              <span class="field-hint">
-                <% if (usedNumbers.length) { %>
-                  Already used in this subject: <%= usedNumbers.sort((a, b) => a - b).join(', ') %>.
-                <% } else { %>
-                  No modules yet in this subject.
-                <% } %>
-              </span>
+                     value="1" required data-module-number />
+              <span class="field-hint" data-module-number-hint>Choose the grade level first.</span>
             </label>
             <label class="field">
               <span class="field-label">Module Title</span>
@@ -143,27 +158,6 @@
               <span class="field-label">Description</span>
               <textarea name="description" rows="3" placeholder="What this module covers"></textarea>
             </label>
-
-            <fieldset class="target-fieldset">
-              <legend>Visible to which year level(s)?</legend>
-              <p class="field-hint">Leave everything unchecked to show this module to all year levels.</p>
-              <% moduleTargetOptions.forEach((opt) => { %>
-                <div class="target-group">
-                  <label class="target-option target-option-group">
-                    <input type="checkbox" name="target_year_levels" value="<%= opt.group %>" />
-                    <span><%= opt.group %></span>
-                  </label>
-                  <div class="target-group-grades">
-                    <% opt.grades.forEach((grade) => { %>
-                      <label class="target-option">
-                        <input type="checkbox" name="target_year_levels" value="<%= grade %>" />
-                        <span><%= grade %></span>
-                      </label>
-                    <% }) %>
-                  </div>
-                </div>
-              <% }) %>
-            </fieldset>
           </div>
 
           <footer class="modal-foot">
@@ -177,7 +171,17 @@
 
   <%# ============================================ Pre-Assessment Results %>
   <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-pre-results" data-tab-panel="pre-results" aria-labelledby="tab-pre-results" hidden>
-    <%- include('../partials/pre-assessment-status', { preStatus, warmup }) %>
+    <%# One Pre-Assessment per grade that has a module, each written from that
+        grade's handouts only. %>
+    <% if (!(preStatuses || []).length) { %>
+      <div class="pre-status">
+        <div class="pre-status-head"><strong>Pre-Assessment</strong><span class="badge badge-info">No modules yet</span></div>
+        <p class="pre-status-detail">Each grade's Pre-Assessment is built from that grade's modules. Add a module for a grade to start.</p>
+      </div>
+    <% } %>
+    <% (preStatuses || []).forEach((status) => { %>
+      <%- include('../partials/pre-assessment-status', { preStatus: status, warmup: status.warmup }) %>
+    <% }) %>
 
     <div class="panel-card-head">
       <h3>Pre-Assessment Results</h3>
@@ -252,12 +256,12 @@
   <section class="panel-card mq-tab-panel" role="tabpanel" id="panel-pre-post" data-tab-panel="pre-post" aria-labelledby="tab-pre-post" hidden>
     <div class="panel-card-head">
       <h3>Pre vs Post</h3>
-      <% if (postAssessment) { %>
-        <span class="badge badge-success">Post-Assessment open</span>
-      <% } else { %>
-        <span class="badge badge-info">Not opened yet</span>
-      <% } %>
+      <span class="badge badge-info">Post opens on each student's last enrollment day</span>
     </div>
+    <p class="table-note">
+      Each student's Post-Assessment opens by itself at 12:01 AM on the last day of their enrollment in this
+      subject, and repeats the exact Pre-Assessment they took.
+    </p>
     <div class="table-wrap">
       <table>
         <thead>

@@ -100,10 +100,10 @@ const {
   archiveModuleHandout,
   getSubjectSubmissions,
   getPreAssessmentStatus,
+  getPreAssessmentStatuses,
   getSubmissionWithAnswers,
   getWeakAreasForSubmission,
   // Post-Assessment (Phase 8)
-  getPostAssessment,
   getSubjectPrePostComparison,
   saveHandoutExtraction,
   getModuleHandoutById,
@@ -2039,7 +2039,7 @@ function createAdminRouter(role) {
       // another: the database is remote, and each round trip is the cost.
       const [
         members, archivedAssignments, archivedTutors, subjectAssessments, modules,
-        preResults, preStatus, postAssessment, comparisons
+        preResults, preStatuses, comparisons
       ] = await Promise.all([
         getSubjectMembers(req.params.id, scopeBranchId),
         getSubjectArchivedAssignments(req.params.id),
@@ -2049,13 +2049,14 @@ function createAdminRouter(role) {
         // the Pre-Assessment, every tutor's module assessments, the
         // Post-Assessment — instead of the retired table, which was empty.
         getSubjectAssessmentsOverview(req.params.id),
-        // Module system (overhaul Phase 3): All Subjects -> subject -> Modules
+        // Module system (overhaul Phase 3): All Subjects -> subject -> Modules,
+        // each module for one grade level.
         getSubjectModules(req.params.id),
         getSubjectSubmissions(req.params.id, { kind: 'pre_assessment' }),
-        getPreAssessmentStatus(req.params.id),
-        // Post-Assessment (overhaul Phase 8): Admin reads the before-and-after,
-        // but the tutor is the one who opens it.
-        getPostAssessment(req.params.id),
+        // One Pre-Assessment per grade that has a module.
+        getPreAssessmentStatuses(req.params.id),
+        // Post-Assessment (overhaul Phase 8): Admin reads the before-and-after;
+        // each student's opens on the last day of their enrolment.
         getSubjectPrePostComparison(req.params.id)
       ]);
       const { subject, students, tutors } = members;
@@ -2082,9 +2083,10 @@ function createAdminRouter(role) {
         maxModuleNumber: MAX_MODULE_NUMBER,
         moduleTargetOptions: getModuleTargetOptions(),
         preResults,
-        preStatus,
-        warmup: getWarmupState(req.params.id),
-        postAssessment,
+        preStatuses: preStatuses.map((status) => ({
+          ...status,
+          warmup: getWarmupState(req.params.id, status.gradeLevel)
+        })),
         comparisons
       });
       res.render('shells/dashboard', shell);
@@ -2113,10 +2115,11 @@ function createAdminRouter(role) {
         title: req.body.title,
         description: req.body.description,
         order_number: req.body.order_number,
-        target_year_levels: normalizeArray(req.body.target_year_levels),
+        // The one grade this module is for; its number is unique within it.
+        grade_level: req.body.grade_level,
         uploaded_by: req.session.user.id
       });
-      setFlash(req, 'success', `"${created.title}" added. Upload its handouts next.`);
+      setFlash(req, 'success', `${created.grade_level} Module ${created.order_number} — "${created.title}" added. Upload its handouts next.`);
       res.redirect(`${basePath}/modules/${created.id}`);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not add the module.');
@@ -2133,7 +2136,8 @@ function createAdminRouter(role) {
       }
       const handouts = await getModuleHandouts(mod.id);
       // The other live modules in this subject, so the settings form can say
-      // which numbers are already spoken for before the admin submits.
+      // which numbers are already spoken for in each grade before the admin
+      // submits.
       const siblingModules = (await getSubjectModules(mod.subject_id))
         .filter((m) => Number(m.id) !== Number(mod.id));
       const shell = await buildShellData(req, {
@@ -2146,9 +2150,10 @@ function createAdminRouter(role) {
         maxModuleNumber: MAX_MODULE_NUMBER,
         moduleTargetOptions: getModuleTargetOptions(),
         // Pre-Assessment build status (Phase 10): the admin uploads handouts here,
-        // so this is where they should see the assessment being built from them.
-        preStatus: await getPreAssessmentStatus(mod.subject_id),
-        warmup: getWarmupState(mod.subject_id)
+        // so this is where they should see the assessment being built from them —
+        // this module's grade's assessment.
+        preStatus: await getPreAssessmentStatus(mod.subject_id, mod.grade_level),
+        warmup: getWarmupState(mod.subject_id, mod.grade_level)
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }
@@ -2165,9 +2170,18 @@ function createAdminRouter(role) {
         title: req.body.title,
         description: req.body.description,
         order_number: req.body.order_number,
-        target_year_levels: normalizeArray(req.body.target_year_levels)
+        grade_level: req.body.grade_level
       });
-      setFlash(req, 'success', `Module updated. It is now Module ${updated.order_number}.`);
+      // A module moved to another grade takes its handouts with it: both
+      // grades' Pre-Assessments are now built from a different set.
+      const mod = await getModuleById(Number(req.params.id));
+      if (mod) {
+        schedulePreAssessmentWarmup(mod.subject_id, updated.grade_level, 'module settings changed');
+        if (updated.previous_grade_level && updated.previous_grade_level !== updated.grade_level) {
+          schedulePreAssessmentWarmup(mod.subject_id, updated.previous_grade_level, 'module moved to another grade');
+        }
+      }
+      setFlash(req, 'success', `Module updated. It is now ${updated.grade_level} Module ${updated.order_number}.`);
       res.redirect(back);
     } catch (error) {
       setFlash(req, 'error', error.message || 'Could not update the module.');
@@ -2187,9 +2201,9 @@ function createAdminRouter(role) {
         return res.redirect(`${basePath}/modules/${req.params.id}`);
       }
       await deleteModule(Number(req.params.id));
-      // Its handouts no longer feed generation, so the cached assessment is stale.
+      // Its handouts no longer feed generation, so its grade's assessment is stale.
       await bumpSubjectHandoutVersion(mod.subject_id);
-      schedulePreAssessmentWarmup(mod.subject_id, 'module removed');
+      schedulePreAssessmentWarmup(mod.subject_id, mod.grade_level, 'module removed');
       setFlash(req, 'success', `"${mod.title}" removed.`);
       res.redirect(`${basePath}/subjects/${mod.subject_id}`);
     } catch (error) {
@@ -2247,10 +2261,10 @@ function createAdminRouter(role) {
         if (!extraction.usable) unusable++;
       }
 
-      // Build the Pre-Assessment now, in the background, so no student has to wait
-      // on it later. Debounced, so uploading several handouts in a row costs one
-      // generation rather than one per file.
-      schedulePreAssessmentWarmup(mod.subject_id, 'handouts uploaded');
+      // Build this grade's Pre-Assessment now, in the background, so no student
+      // has to wait on it later. Debounced, so uploading several handouts in a row
+      // costs one generation rather than one per file.
+      schedulePreAssessmentWarmup(mod.subject_id, mod.grade_level, 'handouts uploaded');
 
       const rejected = describeUploadRejection(req);
       const parts = [`${result.inserted} handout${result.inserted === 1 ? '' : 's'} uploaded.`];
@@ -2301,7 +2315,7 @@ function createAdminRouter(role) {
       await saveHandoutExtraction(handout.id, extraction);
       if (extraction.usable) {
         await bumpSubjectHandoutVersion(handout.subject_id);
-        schedulePreAssessmentWarmup(handout.subject_id, 'handout re-read');
+        schedulePreAssessmentWarmup(handout.subject_id, handout.grade_level, 'handout re-read');
         const how = extraction.method === 'ocr' ? ' by reading the scanned pages with AI' : '';
         setFlash(
           req,
@@ -2326,7 +2340,7 @@ function createAdminRouter(role) {
         return res.redirect(back);
       }
       const removed = await archiveModuleHandout(Number(req.params.handoutId));
-      schedulePreAssessmentWarmup(removed.subject_id, 'handout removed');
+      schedulePreAssessmentWarmup(removed.subject_id, removed.grade_level, 'handout removed');
       setFlash(req, 'success', 'Handout removed. The Pre-Assessment will regenerate from the remaining handouts.');
       res.redirect(back);
     } catch (error) {

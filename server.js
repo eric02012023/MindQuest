@@ -24,6 +24,7 @@ const studentRoutes = require('./routes/student');
 const tutorRoutes = require('./routes/tutor');
 const { formatDate, formatDateTime, money, fullName, toInputDate, safeJsonArray, branchAddress, titleCaseName, attendanceLabel, attendanceBadge } = require('./lib/utils');
 const { icon } = require('./lib/icons');
+const { studentGradeOf } = require('./lib/moduleGrades');
 const { resolvePageStyles } = require('./lib/pageStyles');
 const { uploadFolder, usingExternalUploadRoot, UPLOADS_ROOT } = require('./lib/paths');
 const { getFile, usingSupabase, describeBackend, checkBackend } = require('./lib/storage');
@@ -50,6 +51,8 @@ app.locals.attendanceLabel = attendanceLabel;
 app.locals.attendanceBadge = attendanceBadge;
 // One icon set for every row action in the app. Print it with <%- %>.
 app.locals.icon = icon;
+// The grade a student is in, read the same way the module rules read it.
+app.locals.studentGradeOf = studentGradeOf;
 // Which stylesheets a dashboard page loads. A module rather than a few lines in
 // the shell, because a section pointing at a sheet that does not exist renders
 // the page with no layout at all and nothing throws — see lib/pageStyles.js.
@@ -480,6 +483,16 @@ async function start() {
           }
         })
         .catch((error) => console.error('[PayMongo] could not re-file online payments:', error.message));
+
+      // Every grade has its own Pre-Assessment now; build the ones that are
+      // missing in the background so no student waits on the first one.
+      require('./lib/preAssessmentWarmup').warmMissingPreAssessments()
+        .then((queued) => {
+          if (queued.length) {
+            console.log(`Pre-Assessments queued to build: ${queued.map((q) => `subject ${q.subjectId} ${q.gradeLevel}`).join(', ')}`);
+          }
+        })
+        .catch((error) => console.error('[pre-assessment warmup] could not check the grades:', error.message));
 
       // Subjects enrolled between 12 AM and 8 AM Manila time ended a day early
       // (the end was counted on the server's UTC clock). They get the day back.

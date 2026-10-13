@@ -403,6 +403,55 @@ document.querySelectorAll('[data-assessment-builder]').forEach((form) => {
   updateQuestionNumbers();
 });
 
+// ============================================================================
+// A module's number counts within its GRADE (Add Module, Module Settings)
+//
+// English Grade 1 and English Grade 6 each have their own Module 1; what cannot
+// happen is a second Module 1 in English Grade 1. The form carries the numbers
+// each grade already uses (data-numbers-by-grade), suggests the lowest free one
+// when a grade is picked, and refuses a number that grade already has before the
+// form is sent. The server makes the same check (resolveModuleNumber).
+// ============================================================================
+document.querySelectorAll('[data-module-number-form]').forEach((form) => {
+  const gradeSelect = form.querySelector('[data-module-grade]');
+  const numberInput = form.querySelector('[data-module-number]');
+  const hint = form.querySelector('[data-module-number-hint]');
+  if (!gradeSelect || !numberInput) return;
+
+  let byGrade = {};
+  try { byGrade = JSON.parse(form.getAttribute('data-numbers-by-grade') || '{}'); } catch (_e) { byGrade = {}; }
+  const usedIn = (grade) => (byGrade[grade] || []).map((m) => ({ n: Number(m.n), title: m.title }));
+  let typed = form.hasAttribute('data-keep-number');
+
+  const check = () => {
+    const grade = gradeSelect.value;
+    const wanted = Number(numberInput.value);
+    const used = usedIn(grade);
+    const clash = grade ? used.find((m) => m.n === wanted) : null;
+    const message = clash ? `${grade} already has a Module ${wanted} ("${clash.title}"). Choose another number.` : '';
+    numberInput.setCustomValidity(message);
+    if (!hint) return;
+    hint.classList.toggle('is-error', !!clash);
+    if (!grade) hint.textContent = 'Choose the grade level first.';
+    else if (clash) hint.textContent = message;
+    else if (used.length) hint.textContent = `Already used in ${grade}: ${used.map((m) => m.n).sort((a, b) => a - b).join(', ')}.`;
+    else hint.textContent = `No ${grade} modules in this subject yet.`;
+  };
+
+  gradeSelect.addEventListener('change', () => {
+    const used = usedIn(gradeSelect.value).map((m) => m.n);
+    // Suggest the lowest free number, unless the one typed is free in this grade.
+    if (gradeSelect.value && (!typed || used.includes(Number(numberInput.value)))) {
+      let candidate = 1;
+      while (used.includes(candidate)) candidate += 1;
+      numberInput.value = candidate;
+    }
+    check();
+  });
+  numberInput.addEventListener('input', () => { typed = true; check(); });
+  check();
+});
+
 document.querySelectorAll('[data-assessment-builder]').forEach((form) => {
   const textInput = form.querySelector('[data-assessment-student-text]');
   const hiddenId = form.querySelector('[data-assessment-student-id]');

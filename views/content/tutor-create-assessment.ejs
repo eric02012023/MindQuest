@@ -206,9 +206,26 @@
     const cards = document.querySelectorAll('.question-card');
     if (!cards.length) {
       e.preventDefault();
-      alert('Please add at least one question.');
+      // The app's own message box (public/js/main.js), not the browser's alert().
+      if (typeof window.mqAlert === 'function') window.mqAlert('Please add at least one question.', 'No questions yet');
       return;
     }
+    // Two choices with the same text make a question unfair: one of them is
+    // marked wrong while saying exactly what the right one says. The server
+    // refuses it too; saying so here keeps the tutor's work on the page.
+    const duplicate = Array.from(cards).findIndex((card) => {
+      if (card.querySelector('.q-type').value !== 'multiple_choice') return false;
+      const texts = ['a', 'b', 'c', 'd'].map((l) => card.querySelector('.q-opt-' + l).value.trim().toLowerCase().replace(/\s+/g, ' '));
+      return new Set(texts).size !== texts.length;
+    });
+    if (duplicate !== -1) {
+      e.preventDefault();
+      if (typeof window.mqAlert === 'function') {
+        window.mqAlert('Question ' + (duplicate + 1) + ' has two choices that say the same thing. Make every choice different, so only one answer is right.', 'Check the choices');
+      }
+      return;
+    }
+
     const questions = [];
     cards.forEach((card) => {
       const type = card.querySelector('.q-type').value;

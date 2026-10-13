@@ -1,8 +1,8 @@
 <%# File: views/content/tutor-modules.ejs
     Purpose: The tutor's entry point into the module system — every assigned
-    subject, its numbered modules, and the year levels each module is restricted
-    to. Read-only: Admin owns modules and handouts; the tutor builds assessments
-    on top of them. %>
+    subject and its modules, grade by grade (each module is for one grade level,
+    numbered within it). Read-only: Admin owns modules and handouts; the tutor
+    builds assessments on top of them. %>
 <%# The page header card that used to sit here repeated the title already in the
     topbar and described what the subject panels below already show. %>
 <section class="page-stack">
@@ -36,15 +36,9 @@
             <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
 
             <div class="module-card-targets">
-              <strong>Visible to</strong>
+              <strong>Grade level</strong>
               <div class="target-chips">
-                <% if (!mod.target_year_levels.length) { %>
-                  <span class="target-chip target-chip-all">All year levels</span>
-                <% } else { %>
-                  <% mod.target_year_levels.forEach((lvl) => { %>
-                    <span class="target-chip"><%= lvl %></span>
-                  <% }) %>
-                <% } %>
+                <span class="target-chip"><%= mod.grade_level || 'Not set' %></span>
               </div>
             </div>
 

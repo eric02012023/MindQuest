@@ -33,7 +33,13 @@
       formSelector: '#assessment-form'
     }) %>
 
-    <form method="post" action="<%= isPre ? `/student/subjects/${subjectId}/pre-assessment` : `/student/tutor-assessments/${assessment.id}/submit` %>" id="assessment-form">
+    <%# The confirmation is the app's own dialog (public/js/main.js), not the
+        browser's confirm() box, and it says how many questions are blank. %>
+    <form method="post" action="<%= isPre ? `/student/subjects/${subjectId}/pre-assessment` : `/student/tutor-assessments/${assessment.id}/submit` %>" id="assessment-form"
+          data-confirm-title="Submit your answers?"
+          data-confirm-message="Are you sure you want to submit? You cannot change your answers after submission."
+          data-confirm-ok="Submit"
+          data-confirm-unanswered>
       <input type="hidden" name="assessment_id" value="<%= assessment.id %>" />
       <input type="hidden" name="started_at" value="<%= typeof startedAt === 'undefined' ? '' : startedAt %>" />
       <% if (typeof antiCheat !== 'undefined' && antiCheat) { %>
@@ -96,7 +102,7 @@
       </div>
 
       <div class="assessment-submit-area">
-        <button type="submit" class="btn btn-primary btn-lg" onclick="return confirm('Are you sure you want to submit? You cannot change your answers after submission.')">
+        <button type="submit" class="btn btn-primary btn-lg">
           Submit Assessment
         </button>
         <a href="/student/subjects/<%= subjectId %>" class="btn btn-secondary">Cancel</a>

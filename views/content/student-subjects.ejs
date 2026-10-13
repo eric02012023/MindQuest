@@ -8,7 +8,10 @@
       1. The student picks the days (Weekdays or Weekend) and the time.
       2. Only then are tutors listed: the ones in the student's branch who teach
          this subject, teach the student's year level, and are free on those
-         days at that time. Each has "View profile" before they are chosen.
+         days at that time. Each has "View profile" before they are chosen —
+         it opens the tutor's full profile in this same tab, where the student
+         can "Select this tutor" or go "Back to tutors". Coming back
+         (?pick=<subject>&days=&slot=) reopens this dialog on the same list.
 
     The chosen tutor takes every open subject they teach once they accept; a
     subject they do not teach stays open for another tutor.
@@ -88,7 +91,7 @@
                   <span>Your sessions: <%= scheduleText(kept.preferred_days, kept.time_slot) || 'not scheduled yet' %></span>
                 </div>
                 <div class="st-tutor-actions">
-                  <a class="btn btn-secondary btn-sm" href="/student/tutors/<%= kept.tutor_id %>" target="_blank" rel="noopener">View profile</a>
+                  <a class="btn btn-secondary btn-sm" href="/student/tutors/<%= kept.tutor_id %>?subject=<%= subject.subject_id %>&amp;from=keep">View profile</a>
                   <form method="post" action="/student/subjects/<%= subject.subject_id %>/keep-tutor"
                         data-confirm-message="Keep <%= kept.name %> as your <%= subject.subject_name %> tutor<%= kept.time_slot ? `, in your ${scheduleText(kept.preferred_days, kept.time_slot)} sessions` : '' %>?">
                     <input type="hidden" name="tutor_id" value="<%= kept.tutor_id %>" />
@@ -144,14 +147,6 @@
         <div class="st-tutor-list" data-picker-list></div>
         <div class="st-step-foot">
           <button type="button" class="btn btn-secondary" data-picker-go="when">Change days or time</button>
-        </div>
-      </div>
-
-      <%# A tutor's profile, opened from the list without leaving the dialog. %>
-      <div class="st-step" data-step="profile" hidden>
-        <div class="st-profile" data-picker-profile></div>
-        <div class="st-step-foot">
-          <button type="button" class="btn btn-secondary" data-picker-go="tutors">Back to tutors</button>
         </div>
       </div>
     </div>
@@ -244,41 +239,12 @@
     });
   }
 
-  function fact(label, value) {
-    var row = el('div', 'st-fact');
-    row.appendChild(el('span', '', label));
-    row.appendChild(el('strong', '', value || '—'));
-    return row;
-  }
-
-  function renderProfile(picker, tutor) {
-    var box = picker.querySelector('[data-picker-profile]');
-    box.innerHTML = '';
-    var head = el('div', 'st-profile-head');
-    var big = avatar(tutor);
-    big.className = big.className.replace('mq-avatar-md', 'mq-avatar-lg');
-    head.appendChild(big);
-    var who = el('div');
-    who.appendChild(el('h4', '', tutor.name));
-    who.appendChild(el('span', 'st-muted', ['Tutor', tutor.user_id, tutor.branch_name].filter(Boolean).join(' · ')));
-    head.appendChild(who);
-    box.appendChild(head);
-
-    var facts = el('div', 'st-facts');
-    facts.appendChild(fact('Year levels taught', (tutor.year_levels || []).join(', ') || 'All levels'));
-    facts.appendChild(fact('Subjects taught', (tutor.subjects || []).join(', ')));
-    facts.appendChild(fact('Gender', tutor.gender));
-    facts.appendChild(fact('Email', tutor.email));
-    facts.appendChild(fact('Contact number', tutor.contact_number));
-    facts.appendChild(fact('Branch', tutor.branch_name));
-    box.appendChild(facts);
-
-    var full = el('a', 'btn btn-secondary btn-sm', 'Open full profile');
-    full.href = '/student/tutors/' + tutor.id;
-    full.target = '_blank';
-    full.rel = 'noopener';
-    box.appendChild(full);
-    show(picker, 'profile');
+  // The tutor's full profile, in this same tab. The address carries what the
+  // student has chosen so the profile can offer "Select this tutor", and its
+  // "Back to tutors" brings them back to this very list.
+  function profileHref(tutor, subject, days, slot) {
+    var params = new URLSearchParams({ subject: String(subject.subject_id), days: days, slot: slot });
+    return '/student/tutors/' + tutor.id + '?' + params.toString();
   }
 
   function renderTutors(picker, subject, days, slot) {
@@ -308,9 +274,8 @@
       card.appendChild(info);
 
       var actions = el('div', 'st-tutor-actions');
-      var view = el('button', 'btn btn-secondary btn-sm', 'View profile');
-      view.type = 'button';
-      view.addEventListener('click', function () { renderProfile(picker, tutor); });
+      var view = el('a', 'btn btn-secondary btn-sm', 'View profile');
+      view.href = profileHref(tutor, subject, days, slot);
       actions.appendChild(view);
 
       var form = el('form');
@@ -337,6 +302,10 @@
     show(picker, 'tutors');
   }
 
+  // Back from a tutor's profile: /student/subjects?pick=<subject>&days=&slot=
+  var back = new URLSearchParams(window.location.search);
+  var reopen = Number(back.get('pick')) || 0;
+
   document.querySelectorAll('[data-tutor-picker]').forEach(function (picker) {
     var subjectId = Number(picker.getAttribute('data-subject-id'));
     var subject = subjects.find(function (s) { return Number(s.subject_id) === subjectId; });
@@ -361,6 +330,28 @@
         if (!problem) renderTutors(picker, subject, days, slot);
       }
     });
+
+    if (reopen !== subjectId) return;
+    // Put back the days and time they had chosen, and the list they were on.
+    var days = back.get('days') || '';
+    var slot = back.get('slot') || '';
+    var radio = Array.prototype.find.call(when.querySelectorAll('input[type="radio"]'), function (r) { return r.value === days; });
+    var select = when.querySelector('[data-picker-slot]');
+    if (radio) radio.checked = true;
+    if (select && Array.prototype.some.call(select.options, function (o) { return o.value === slot; })) select.value = slot;
+    if (radio && select && select.value) renderTutors(picker, subject, days, slot);
+    else if (!picker.querySelector('[data-step="keep"]') || days || slot) show(picker, 'when');
+    // openModal lives in /js/main.js, which loads after this page's markup.
+    var modal = picker.closest('.global-modal');
+    var openIt = function () {
+      if (!modal) return;
+      if (typeof openModal === 'function') openModal(modal);
+      else modal.classList.add('is-open');
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', openIt);
+    else openIt();
+    // A reload should not reopen it again.
+    if (window.history && window.history.replaceState) window.history.replaceState(null, '', window.location.pathname);
   });
 })();
 </script>
@@ -394,15 +385,6 @@
   .st-tutor-info .st-also { color: #1c7a22; font-weight: 600; }
   .st-tutor-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
   .st-tutor-actions form { margin: 0; }
-  .st-profile { display: grid; gap: 14px; }
-  .st-profile-head { display: flex; align-items: center; gap: 14px; }
-  .st-profile-head h4 { margin: 0 0 2px; font-size: 18px; }
-  .st-muted { color: var(--text-soft, #5f7084); font-size: 13px; }
-  .st-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-  .st-fact { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: #f5f8fa; }
-  .st-fact span { font-size: 12px; color: var(--text-soft, #5f7084); }
-  .st-fact strong { overflow-wrap: anywhere; }
-  .st-profile > .btn { justify-self: start; }
   @media (max-width: 640px) {
     .st-tutor-card { grid-template-columns: auto 1fr; }
     .st-tutor-actions { grid-column: 1 / -1; justify-content: flex-start; }

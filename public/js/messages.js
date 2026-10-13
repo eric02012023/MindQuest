@@ -6,6 +6,12 @@
  */
 
 (() => {
+  // The app's own message box (public/js/main.js), never the browser's alert().
+  const notify = (message, title) => {
+    if (typeof window.mqAlert === 'function') window.mqAlert(message, title);
+    else console.warn(title || 'Notice', message);
+  };
+
   const conversationBox = document.querySelector('[data-conversation-box]');
   if (conversationBox) conversationBox.scrollTop = conversationBox.scrollHeight;
 
@@ -29,7 +35,7 @@
     if (!menu || !menuButton) return;
     if (!menu.contains(event.target) && !menuButton.contains(event.target)) menu.classList.remove('open');
   });
-  document.querySelector('[data-groupchat-disabled]')?.addEventListener('click', () => window.alert('Group chat creation is planned for the next pass.'));
+  document.querySelector('[data-groupchat-disabled]')?.addEventListener('click', () => notify('Group chat creation is planned for the next pass.', 'Group chat'));
 
   const attachmentInput = document.querySelector('[data-attachment-input]');
   const previewWrap = document.querySelector('[data-compose-preview]');
@@ -174,7 +180,7 @@
 
   document.querySelector('[data-open-camera]')?.addEventListener('click', async () => {
     if (!cameraDialog || !navigator.mediaDevices?.getUserMedia) {
-      window.alert('This device or browser does not support direct camera capture.');
+      notify('This device or browser does not support direct camera capture.', 'Camera');
       return;
     }
     try {
@@ -183,7 +189,7 @@
       await cameraVideo?.play?.();
     } catch (error) {
       console.error(error);
-      window.alert('Camera could not open. Please allow camera permission on this device and try again.');
+      notify('Camera could not open. Please allow camera permission on this device and try again.', 'Camera');
     }
   });
 
@@ -225,7 +231,7 @@
       stopVideoButton.hidden = false;
     } catch (error) {
       console.error(error);
-      window.alert('Video recording could not start.');
+      notify('Video recording could not start.', 'Video');
     }
   });
 
