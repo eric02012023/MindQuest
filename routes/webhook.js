@@ -38,8 +38,11 @@ router.post('/paymongo', async (req, res) => {
             return res.status(503).send('Could not confirm the payment with PayMongo yet.');
           }
           if (!checkout.paidPayment) {
-            console.warn(`[PayMongo Webhook] ${checkoutSessionId}: PayMongo does not report it paid — ignored.`);
-            return res.status(200).send('Webhook received');
+            // Not paid by PayMongo's own account — a forged message, or a real
+            // one that arrived before PayMongo shows the payment. Nothing is
+            // recorded; a failure status makes PayMongo deliver it again later.
+            console.warn(`[PayMongo Webhook] ${checkoutSessionId}: PayMongo does not report it paid — not recorded.`);
+            return res.status(503).send('Not confirmed by PayMongo yet.');
           }
 
           // The reference the student is shown and the office quotes back to the

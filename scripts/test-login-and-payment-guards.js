@@ -155,7 +155,7 @@ const { checkHandoutAccess } = require('../lib/handoutAccess');
     const paid = await deliver('cs_known');
     const unknown = await deliver('cs_nobody');
     console.log = quiet; console.warn = quietWarn; console.error = quietErr;
-    ok('a "paid" message PayMongo does not confirm records nothing', forged === 0 && res.status === 200, `${res.status}, ${forged} recorded`);
+    ok('a "paid" message PayMongo does not confirm records nothing', forged === 0 && res.status === 503, `${res.status}, ${forged} recorded`);
     ok('when PayMongo cannot be asked, it is retried later (503), not recorded', unreachable.status === 503 && afterUnreachable === 0, `${unreachable.status}, ${afterUnreachable} recorded`);
     ok('a payment PayMongo confirms is recorded', paid.status === 200 && paymongo.completed.length === 1);
     ok('…under PayMongo\'s payment id and method, not the message\'s', paymongo.completed[0] && paymongo.completed[0].transactionReference === 'pay_real' && paymongo.completed[0].method === 'gcash', JSON.stringify(paymongo.completed[0]));
