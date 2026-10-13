@@ -39,16 +39,13 @@
     </div>
   </div>
   <%- include('../partials/flash-modal', { flash }) %>
-  <script>
-    window.mqtcUser = <%- JSON.stringify(currentUser || null) %>;
-  </script>
-  <script src="/socket.io/socket.io.js"></script>
+  <%# Messages and calls are gone from the system (the sidebar links went first);
+      their scripts, the Socket.IO client and the user object they read are gone
+      with them. %>
   <script src="/js/main.js"></script>
   <%# Every table: ten rows then it scrolls, and a search icon in its heading. %>
   <script src="/js/mq-tables.js"></script>
   <script src="/js/dashboard.js"></script>
-  <script src="/js/messages.js"></script>
-  <script src="/js/calls.js"></script>
 
   <!-- Global Loading Overlay -->
   <div id="mqtc-loading-overlay" style="display:none;">

@@ -1803,3 +1803,50 @@ BEGIN
     PRINT 'Warning: could not create uq_ta_post_per_pre: ' + ERROR_MESSAGE();
   END CATCH
 END;
+
+-- ---------------------------------------------------------------------------
+-- 44. Login codes can be guessed only five times, and no password is kept in
+--     plain text.
+--
+--   otps.failed_attempts   wrong tries against one code. lib/otp.js spends the
+--                          code at five: a 4-digit code has 9,000 values, and
+--                          with no limit a script could try them all inside the
+--                          code's ten minutes — the reset code needs only an
+--                          email address to ask for.
+--
+--   visible_password       registration, a password change and the assistant
+--                          account forms copied the password, in plain text,
+--                          into users.extra_json and submissions.extra_json.
+--                          Nothing ever showed or used it. The code no longer
+--                          writes it, and this takes it out of the rows that
+--                          have it. The hash in password_hash is untouched, so
+--                          everyone logs in exactly as before.
+-- ---------------------------------------------------------------------------
+IF COL_LENGTH('dbo.otps', 'failed_attempts') IS NULL
+  ALTER TABLE dbo.otps ADD failed_attempts INT NOT NULL CONSTRAINT df_otps_failed_attempts DEFAULT 0;
+
+IF COL_LENGTH('dbo.users', 'extra_json') IS NOT NULL
+BEGIN
+  BEGIN TRY
+    EXEC sp_executesql N'
+      UPDATE dbo.users
+         SET extra_json = JSON_MODIFY(extra_json, ''$.visible_password'', NULL)
+       WHERE extra_json LIKE ''%"visible_password"%'' AND ISJSON(extra_json) = 1;';
+  END TRY
+  BEGIN CATCH
+    PRINT 'Warning: could not clear users.extra_json.visible_password: ' + ERROR_MESSAGE();
+  END CATCH
+END;
+
+IF COL_LENGTH('dbo.submissions', 'extra_json') IS NOT NULL
+BEGIN
+  BEGIN TRY
+    EXEC sp_executesql N'
+      UPDATE dbo.submissions
+         SET extra_json = JSON_MODIFY(extra_json, ''$.visible_password'', NULL)
+       WHERE extra_json LIKE ''%"visible_password"%'' AND ISJSON(extra_json) = 1;';
+  END TRY
+  BEGIN CATCH
+    PRINT 'Warning: could not clear submissions.extra_json.visible_password: ' + ERROR_MESSAGE();
+  END CATCH
+END;

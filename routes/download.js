@@ -153,7 +153,7 @@ router.get('/', async (req, res, next) => {
     const fileUrlPath = req.query.path;
     if (!fileUrlPath) {
       setFlash(req, 'error', 'No file specified.');
-      return res.redirect('back');
+      return res.redirect(req.get('Referer') || '/');
     }
 
     const decoded = decodeURIComponent(fileUrlPath);
@@ -161,7 +161,16 @@ router.get('/', async (req, res, next) => {
 
     if (!cleaned.startsWith('/uploads/')) {
       setFlash(req, 'error', 'Invalid file path.');
-      return res.redirect('back');
+      return res.redirect(req.get('Referer') || '/');
+    }
+
+    // A handout is study material behind the Pre-Assessment lock and the grade
+    // rule. This route used to hand any of them to anyone logged in, which made
+    // both checks on /uploads/handouts pointless (lib/handoutAccess.js).
+    if (cleaned.startsWith('/uploads/handouts/')) {
+      const { checkHandoutAccess } = require('../lib/handoutAccess');
+      const verdict = await checkHandoutAccess(req.session.user, cleaned);
+      if (!verdict.ok) return res.status(verdict.status).type('text/plain').send(verdict.message);
     }
 
     const stored = await getFile(cleaned);
@@ -180,7 +189,7 @@ router.get('/', async (req, res, next) => {
         console.error('[Download DB Fallback Error]', dbErr);
       }
       setFlash(req, 'error', 'File not found or has been removed from the server.');
-      return res.redirect('back');
+      return res.redirect(req.get('Referer') || '/');
     }
 
     const ext = path.extname(cleaned).toLowerCase();
@@ -207,7 +216,7 @@ router.get('/', async (req, res, next) => {
     console.error('[Download Route Error]', err);
     try {
       setFlash(req, 'error', 'An error occurred while accessing the file.');
-      res.redirect('back');
+      res.redirect(req.get('Referer') || '/');
     } catch (redirectErr) {
       res.status(500).send('File access error. Please go back and try again.');
     }

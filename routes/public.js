@@ -123,7 +123,11 @@ router.get('/', ensureGuest, async (req, res, next) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.get('/register/:type', ensureGuest, async (req, res, next) => {
+// `:type` is only ever student or tutor. As a bare `:type` this route also
+// caught /register/check-name below — the live "this name already exists" check
+// got the registration PAGE back instead of its JSON, so the warning never
+// showed while typing (the duplicate was caught only after Submit).
+router.get('/register/:type(student|tutor)', ensureGuest, async (req, res, next) => {
   try {
     const type = req.params.type === 'tutor' ? 'tutor' : 'student';
     const [branches, subjects] = await Promise.all([getBranches(), getSubjects(false)]);
@@ -143,7 +147,7 @@ router.get('/register/:type', ensureGuest, async (req, res, next) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.post('/register/:type/details', ensureGuest, async (req, res, next) => {
+router.post('/register/:type(student|tutor)/details', ensureGuest, async (req, res, next) => {
   try {
     const type = req.params.type === 'tutor' ? 'tutor' : 'student';
     const payload = buildDetailsPayload(req, type);
@@ -254,7 +258,7 @@ router.post('/register/:type/details', ensureGuest, async (req, res, next) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.get('/register/:type/verify', ensureGuest, (req, res) => {
+router.get('/register/:type(student|tutor)/verify', ensureGuest, (req, res) => {
   const type = req.params.type === 'tutor' ? 'tutor' : 'student';
   req.session.flash = { type: 'error', message: 'Registration OTP is disabled. Please wait for admin approval after registration.' };
   return res.redirect(`/register/${type}`);
@@ -264,7 +268,7 @@ router.get('/register/:type/verify', ensureGuest, (req, res) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.post('/register/:type/verify', ensureGuest, (req, res) => {
+router.post('/register/:type(student|tutor)/verify', ensureGuest, (req, res) => {
   const type = req.params.type === 'tutor' ? 'tutor' : 'student';
   req.session.flash = { type: 'error', message: 'Registration OTP is disabled. Please wait for admin approval after registration.' };
   return res.redirect(`/register/${type}`);
@@ -274,7 +278,7 @@ router.post('/register/:type/verify', ensureGuest, (req, res) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.post('/register/:type/resend-otp', ensureGuest, (req, res) => {
+router.post('/register/:type(student|tutor)/resend-otp', ensureGuest, (req, res) => {
   const type = req.params.type === 'tutor' ? 'tutor' : 'student';
   req.session.flash = { type: 'error', message: 'Registration OTP is disabled. Please wait for admin approval after registration.' };
   return res.redirect(`/register/${type}`);
@@ -284,7 +288,7 @@ router.post('/register/:type/resend-otp', ensureGuest, (req, res) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.get('/register/:type/account', ensureGuest, async (req, res) => {
+router.get('/register/:type(student|tutor)/account', ensureGuest, async (req, res) => {
   const type = req.params.type === 'tutor' ? 'tutor' : 'student';
   return res.redirect(`/register/${type}`);
 });
@@ -293,7 +297,7 @@ router.get('/register/:type/account', ensureGuest, async (req, res) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.post('/register/:type/account', ensureGuest, async (req, res) => {
+router.post('/register/:type(student|tutor)/account', ensureGuest, async (req, res) => {
   const type = req.params.type === 'tutor' ? 'tutor' : 'student';
   return res.redirect(`/register/${type}`);
 });
@@ -302,7 +306,7 @@ router.post('/register/:type/account', ensureGuest, async (req, res) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.get('/register/:type/done', ensureGuest, (req, res) => {
+router.get('/register/:type(student|tutor)/done', ensureGuest, (req, res) => {
   const type = req.params.type === 'tutor' ? 'tutor' : 'student';
   res.render('register-done', {
     pageTitle: 'Submitted',

@@ -439,3 +439,77 @@ node scripts/apply-schema.js --check                      # parses cleanly
 node scripts/repair-answer-keys.js                        # prints what it would correct
 node scripts/repair-answer-keys.js --commit               # applies it (idempotent)
 ```
+
+### This release: security and the actions behind every page
+
+Applied automatically by `sql/schema.sql` (section 44) on the next boot.
+
+**Accounts and login**
+- **A login or reset code survives five wrong guesses** (`otps.failed_attempts`),
+  then a new one must be requested. A 4-digit code with no limit could be found
+  by a script inside its ten minutes — and the reset code needs only an email.
+  Codes are drawn with `crypto.randomInt`, and are no longer printed to the
+  server log when an email cannot be sent ("Check the server console" is gone).
+- **One password rule everywhere**: reset, change, assistant accounts and
+  registration all need 8+ characters with A-Z, a-z, 0-9 and a symbol (reset
+  allowed any 6).
+- **No plain-text passwords.** Registration, password changes and assistant
+  accounts wrote the password beside its hash in `extra_json.visible_password`;
+  nothing read it. The code stops, and section 44 removes it from every row.
+- **The admin's own password is kept.** It was reset to `DEFAULT_ADMIN_PASSWORD`
+  on every boot, so a change made in My Profile reverted at the next deploy. To
+  recover a lost admin password: set `RESET_ADMIN_PASSWORD=1` on Render, restart
+  once, log in with `DEFAULT_ADMIN_PASSWORD`, then remove the setting. The boot
+  log no longer prints a password.
+- **An archived account is logged out on its next click**, not 8 hours later.
+- A student's own profile can no longer change their **grade, year level or
+  login email**, nor a tutor's their **login email** (a typo locked a tutor out
+  of the OTP login); the office changes them in User Management.
+
+**Money**
+- **The PayMongo webhook asks PayMongo before recording anything.** A forged
+  POST naming a checkout session as paid used to settle it — the id is in the
+  student's own checkout URL. Without a gateway key, "Pay online" no longer
+  marks payments paid as "MindQuest Mock Pay" unless `PAYMENTS_MOCK=1`.
+- An **Assistant Admin's** bill edits, "mark paid", SOA posting and re-enrolment
+  are limited to their branch, like payments already were.
+
+**Access**
+- `/download?path=/uploads/handouts/...` applies the handout lock (enrolled,
+  Pre-Assessment done, the student's grade) — it served any handout to anyone
+  logged in (`lib/handoutAccess.js`, shared with `/uploads/handouts`).
+- An assistant's subject actions (assign students, archive tutors or
+  enrolments), Assessment Monitoring results and result pages are their
+  branch's only.
+- **Messages and calls are removed for good.** Their sidebar links were taken
+  out earlier, but the pages, the send/edit/unsend actions, the public
+  `/uploads/messages` folder and the Socket.IO call signalling on every
+  dashboard page were still running — and the signalling trusted the browser
+  for who was who (anyone could "register" as another user and receive their
+  calls, and an incoming call turned the camera on unasked). The old addresses
+  now land on the dashboard; the `socket.io` package is uninstalled. The
+  `messages` table and its rows are left as they are.
+
+**Records**
+- "Delete permanently" keeps what the centre must keep: a person with payments,
+  results, attendance, assessments they wrote or posted statements stays
+  archived, with the reason; a subject with enrolments, attendance, modules or
+  assessments is never deleted (its enrolments and attendance were wiped by
+  cascade).
+- Refused actions show their reason instead of the Server Error page (marking
+  an unpaid bill paid, an email already in use, …), and archive/recover/delete
+  of a user no longer says "successfully" when nothing changed.
+- The retired "Assessments" pages (admin templates, the tutor's list and its
+  unchecked delete/recover, the old AI "publish", the student's old exam page
+  with the browser's "Leave site?" dialog) and the removed "Database cleanup"
+  now explain themselves and point to Modules & Assessments / Assessment
+  Monitoring.
+- `/register/check-name` answers JSON again (the duplicate-name warning while
+  typing never worked: `/register/:type` caught it).
+
+Already applied on live on 2026-10-14 (a rerun changes nothing; dry-run by default):
+
+```bash
+node scripts/remove-stray-records.js            # attempts across grades, test assessments #2/#3,
+                                                # the levels they set, focus handout #5
+```

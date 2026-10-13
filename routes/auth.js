@@ -11,8 +11,29 @@ const { query } = require('../config/db');
 const { sendOtpEmail } = require('../lib/email');
 const { generateOtp, storeOtp, verifyOtp, parseCookieHeader, getDeviceFingerprint, getTrustedDevice, registerTrustedDevice, touchTrustedDevice, TRUSTED_DEVICE_DAYS } = require('../lib/otp');
 const { ensureGuest, ensureAuthenticated, getRoleHome } = require('../middleware/auth');
+const { validateStrongPassword } = require('../lib/utils');
 
 const router = express.Router();
+
+// When the code cannot be emailed. It used to say "Check the server console for
+// your code" — a place no student or tutor can see — and print the code into
+// the server log, where anyone reading the log could use it.
+const OTP_EMAIL_FAILED = 'We could not send the code to your email just now. Please try again in a minute.';
+
+/**
+ * storeOtp, or false — with the reason flashed — when the account has been sent
+ * too many codes this hour (lib/otp.js). The caller redirects.
+ */
+async function storeOtpOrRefuse(req, input) {
+  try {
+    await storeOtp(input);
+    return true;
+  } catch (error) {
+    if (error.code !== 'OTP_RATE_LIMIT') throw error;
+    req.session.flash = { type: 'error', message: error.message };
+    return false;
+  }
+}
 
 // Route handler: GET request
 
@@ -103,14 +124,13 @@ if (trustedDevice) {
 }
 
 const otp = generateOtp();
-await storeOtp({ userId: user.id, purpose: 'login', code: otp });
+if (!(await storeOtpOrRefuse(req, { userId: user.id, purpose: 'login', code: otp }))) return res.redirect('/login');
 try {
   await sendOtpEmail({ to: user.email, otp, purpose: 'login' });
   req.session.flash = { type: 'success', message: 'A 4-digit OTP was sent to your email. Enter it to continue.' };
 } catch (emailErr) {
   console.error('[OTP EMAIL ERROR]', emailErr.message);
-  console.log(`[OTP FALLBACK] OTP for ${user.email}: ${otp}`);
-  req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
+  req.session.flash = { type: 'error', message: OTP_EMAIL_FAILED };
 }
 req.session.pendingLogin = { user: { ...user, password_hash: undefined } };
 return res.redirect('/login/verify');
@@ -175,14 +195,13 @@ router.post('/login/resend-otp', ensureGuest, async (req, res, next) => {
       return res.redirect('/login');
     }
     const otp = generateOtp();
-    await storeOtp({ userId: pending.user.id, purpose: 'login', code: otp });
+    if (!(await storeOtpOrRefuse(req, { userId: pending.user.id, purpose: 'login', code: otp }))) return res.redirect('/login/verify');
     try {
       await sendOtpEmail({ to: pending.user.email, otp, purpose: 'login' });
       req.session.flash = { type: 'success', message: 'A new 4-digit OTP was sent to your email.' };
     } catch (emailErr) {
       console.error('[OTP EMAIL ERROR]', emailErr.message);
-      console.log(`[OTP FALLBACK] OTP for ${pending.user.email}: ${otp}`);
-      req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
+      req.session.flash = { type: 'error', message: OTP_EMAIL_FAILED };
     }
     return res.redirect('/login/verify');
   } catch (error) {
@@ -232,15 +251,14 @@ router.post('/forgot-password', ensureGuest, async (req, res, next) => {
     }
 
     const otp = generateOtp();
-    await storeOtp({ userId: user.id, purpose: 'reset', code: otp });
+    if (!(await storeOtpOrRefuse(req, { userId: user.id, purpose: 'reset', code: otp }))) return res.redirect('/forgot-password');
 
     try {
       await sendOtpEmail({ to: user.email, otp, purpose: 'reset' });
       req.session.flash = { type: 'success', message: 'A 4-digit OTP was sent to your email. Enter it below to reset your password.' };
     } catch (emailErr) {
       console.error('[OTP EMAIL ERROR]', emailErr.message);
-      console.log(`[OTP FALLBACK] Reset OTP for ${user.email}: ${otp}`);
-      req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
+      req.session.flash = { type: 'error', message: OTP_EMAIL_FAILED };
     }
 
     req.session.pendingReset = { userId: user.id, email: user.email };
@@ -275,8 +293,11 @@ router.post('/reset-password', ensureGuest, async (req, res, next) => {
     const password = String(req.body.password || '');
     const confirmPassword = String(req.body.confirm_password || '');
 
-    if (password.length < 6) {
-      req.session.flash = { type: 'error', message: 'Password must be at least 6 characters.' };
+    // The same rule registration uses. This allowed any 6 characters ("123456"),
+    // so resetting a password could leave it weaker than the account began with.
+    const strong = validateStrongPassword(password);
+    if (!strong.ok) {
+      req.session.flash = { type: 'error', message: strong.message };
       return res.redirect('/reset-password');
     }
 
@@ -313,15 +334,14 @@ router.post('/forgot-password/resend-otp', ensureGuest, async (req, res, next) =
     }
 
     const otp = generateOtp();
-    await storeOtp({ userId: pending.userId, purpose: 'reset', code: otp });
+    if (!(await storeOtpOrRefuse(req, { userId: pending.userId, purpose: 'reset', code: otp }))) return res.redirect('/reset-password');
 
     try {
       await sendOtpEmail({ to: pending.email, otp, purpose: 'reset' });
       req.session.flash = { type: 'success', message: 'A new 4-digit OTP was sent to your email.' };
     } catch (emailErr) {
       console.error('[OTP EMAIL ERROR]', emailErr.message);
-      console.log(`[OTP FALLBACK] Reset OTP for ${pending.email}: ${otp}`);
-      req.session.flash = { type: 'error', message: 'OTP could not be emailed. Check the server console for your code.' };
+      req.session.flash = { type: 'error', message: OTP_EMAIL_FAILED };
     }
 
     return res.redirect('/reset-password');

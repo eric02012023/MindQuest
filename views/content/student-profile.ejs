@@ -126,13 +126,15 @@
           <div><h3>School &amp; home</h3></div>
         </div>
         <div class="mq-card-body mq-fields">
-          <label>Year level<input type="text" name="year_level" value="<%= profileUser.year_level || '' %>" /></label>
-          <label>Grade level<input type="text" name="grade_level" value="<%= profileUser.grade_level || '' %>" /></label>
+          <%# Set by the office: the grade decides which modules and which
+              Pre-Assessment this student gets, so it is shown, not edited. %>
+          <label>Year level<input type="text" value="<%= profileUser.year_level || '' %>" readonly /></label>
+          <label>Grade level<input type="text" value="<%= profileUser.grade_level || '' %>" readonly /></label>
           <label>Branch<input type="text" value="<%= profileUser.branch_name || '' %>" readonly /></label>
           <label class="is-wide">Address<input type="text" name="address" value="<%= profileUser.address || '' %>" /></label>
         </div>
         <div class="mq-card-foot">
-          <span class="mq-card-foot-note" data-avatar-note></span>
+          <span class="mq-card-foot-note" data-avatar-note>Your year level, grade level, branch and login email are set by the office. Ask them if one is wrong.</span>
           <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save changes</button>
         </div>
       </section>

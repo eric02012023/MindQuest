@@ -16,27 +16,13 @@ const {
   getTutorStudentsBySubject,
   getAdminSubjectResources,
   getTutorSharedResources,
-  shareAdminResourceToStudents,
-  deleteSubjectResource,
   saveAttendance,
   updateAttendanceStatus,
   getAttendanceByTutor,
-  getAllowedContacts,
-  getConversation,
-  saveMessage,
-  getMessageById,
-  updateMessageBody,
-  unsendMessage,
   getUserById,
   updateUser,
   getAssessments,
   getAssessmentHistory,
-  getAssessmentById,
-  getAssessmentTemplates,
-  assignAssessmentTemplateToStudents,
-  markAssessmentDone,
-  recoverAssessment,
-  deleteAssessmentPermanently,
   getTutorScheduleNotifications,
   acceptTutorScheduleApplication,
   cancelTutorScheduleApplication,
@@ -88,24 +74,24 @@ const {
   getScheduleRequestHistory
 } = require('../lib/data');
 const { buildBellItems } = require('../lib/bell');
-const { normalizeArray } = require('../lib/utils');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
 const { TUTOR_ASSESSMENT_MIN_ITEMS, TUTOR_ASSESSMENT_MAX_ITEMS } = require('../config/assessmentDefaults');
 
-const YEAR_LEVEL_OPTIONS = ['Pre School Level', 'Primary Level', 'Junior High Level', 'Senior High Level'];
-const GRADE_LEVEL_MAP = {
-  'Pre School Level': ['Nursery', 'Kinder'],
-  'Primary Level': ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
-  'Junior High Level': ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'],
-  'Senior High Level': ['Grade 11', 'Grade 12']
-};
-
 const router = express.Router();
 const profileUploader = createUploader('profiles');
-const messageUploader = createUploader('messages');
-const resourceUploader = createUploader('resources');
 
 router.use(authorize(['tutor']));
+
+/**
+ * A refused or failed action goes back to the page it came from with the reason
+ * as a message. These actions used to hand the error to the error page, so a
+ * plain "not allowed" — marking an unpaid bill paid, an email already in use,
+ * a student from another branch — showed "Server Error" instead.
+ */
+function failBack(req, res, error, fallback) {
+  setFlash(req, 'error', (error && error.message) || 'That could not be done. Please try again.');
+  return res.redirect(req.get('Referer') || fallback);
+}
 
 // Function: buildShell
 
@@ -259,10 +245,10 @@ router.post('/notifications/:id/accept', async (req, res, next) => {
     setFlash(req, 'success', subjects.length
       ? `Schedule request accepted. You now teach this student ${subjects.join(', ')}.`
       : 'Student schedule application accepted.');
-    res.redirect('back');
+    res.redirect(req.get('Referer') || '/tutor');
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not accept application.');
-    res.redirect('back');
+    res.redirect(req.get('Referer') || '/tutor');
   }
 });
 
@@ -274,10 +260,10 @@ router.post('/notifications/:id/cancel', async (req, res, next) => {
   try {
     await cancelTutorScheduleApplication(Number(req.params.id), req.session.user.id);
     setFlash(req, 'success', 'Request declined. The student will be told.');
-    res.redirect('back');
+    res.redirect(req.get('Referer') || '/tutor');
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not decline the request.');
-    res.redirect('back');
+    res.redirect(req.get('Referer') || '/tutor');
   }
 });
 
@@ -309,7 +295,7 @@ router.post('/notifications/mark-all-read', async (req, res, next) => {
     await markAllAppNotificationsRead(req.session.user);
     setFlash(req, 'success', 'All notifications marked as read. Student requests stay until you accept or decline them.');
     res.redirect(req.get('Referer') || '/tutor/notifications');
-  } catch (error) { next(error); }
+  } catch (error) { failBack(req, res, error, '/tutor/notifications'); }
 });
 
 router.get('/notifications/archive', async (req, res, next) => {
@@ -348,8 +334,8 @@ router.post('/alerts/:id/read', async (req, res, next) => {
     await markOwnAppNotificationRead(Number(req.params.id), req.session.user);
     if (isBackgroundRequest(req)) return res.status(204).end();
     setFlash(req, 'success', 'Notification marked as read.');
-    res.redirect('back');
-  } catch (error) { next(error); }
+    res.redirect(req.get('Referer') || '/tutor');
+  } catch (error) { failBack(req, res, error, '/tutor/notifications'); }
 });
 
 router.post('/alerts/:id/archive', async (req, res, next) => {
@@ -357,7 +343,7 @@ router.post('/alerts/:id/archive', async (req, res, next) => {
     await archiveAppNotification(Number(req.params.id), req.session.user);
     setFlash(req, 'success', 'Notification archived.');
     res.redirect('/tutor/notifications');
-  } catch (error) { next(error); }
+  } catch (error) { failBack(req, res, error, '/tutor/notifications'); }
 });
 
 router.post('/alerts/:id/recover', async (req, res, next) => {
@@ -365,7 +351,7 @@ router.post('/alerts/:id/recover', async (req, res, next) => {
     await recoverAppNotification(Number(req.params.id), req.session.user);
     setFlash(req, 'success', 'Notification recovered.');
     res.redirect('/tutor/notifications/archive');
-  } catch (error) { next(error); }
+  } catch (error) { failBack(req, res, error, '/tutor/notifications'); }
 });
 
 // Route handler: POST request
@@ -376,10 +362,10 @@ router.post('/schedule/:id/finish', async (req, res, next) => {
   try {
     await finishTutorScheduleApplication(Number(req.params.id), req.session.user.id);
     setFlash(req, 'success', 'Session marked as finished. Time slot is now available.');
-    res.redirect('back');
+    res.redirect(req.get('Referer') || '/tutor');
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not finish session.');
-    res.redirect('back');
+    res.redirect(req.get('Referer') || '/tutor');
   }
 });
 
@@ -450,105 +436,19 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.post('/subjects/:subjectId/resources/share', async (req, res, next) => {
-  try {
-    const students = await getTutorStudentsBySubject(req.session.user.id, req.params.subjectId);
-    const allowed = new Set(students.map((s) => Number(s.student_id || s.id)));
-    const selectedIds = Array.isArray(req.body.assigned_student_ids) ? req.body.assigned_student_ids : [req.body.assigned_student_ids];
-    const assignedStudentIds = [...new Set(selectedIds.map((value) => Number(value)).filter(Boolean))];
-    if (!assignedStudentIds.length || assignedStudentIds.some((id) => !allowed.has(id))) {
-      setFlash(req, 'error', 'You can only post modules to your assigned students.');
-      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
-    }
-    await shareAdminResourceToStudents(req.body.resource_id, req.session.user.id, assignedStudentIds);
-    setFlash(req, 'success', 'Admin module posted to selected students.');
-    res.redirect(`/tutor/subjects/${req.params.subjectId}`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Phase 5: Tutor publishes an AI assessment from a module
-router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', async (req, res, next) => {
-  const subjectId = parseInt(req.params.subjectId, 10);
-  const resourceId = parseInt(req.params.resourceId, 10);
-  const tutorUserId = parseInt(req.session.user.id, 10);
-  try {
-    const { query: dbQuery } = require('../config/db');
-    const { generateAssessmentFromModule } = require('../services/aiService');
-    const { getSubjectById, logAiGeneration } = require('../lib/data');
-
-    if (isNaN(subjectId) || isNaN(resourceId) || isNaN(tutorUserId)) {
-      setFlash(req, 'error', 'Invalid request parameters.');
-      return res.redirect(`/tutor/subjects/${req.params.subjectId}`);
-    }
-
-    const itemCount = Number(req.body.item_count) || 10;
-    if (itemCount < 5 || itemCount > 50) {
-      setFlash(req, 'error', 'Please enter a valid number of items (5–50).');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    const moduleRows = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [resourceId]);
-    if (!moduleRows.length) {
-      setFlash(req, 'error', 'Module not found.');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-    const mod = moduleRows[0];
-    let moduleContent = mod.content_text || mod.description || '';
-    if (!moduleContent && mod.source_resource_id) {
-      const src = await dbQuery('SELECT TOP 1 * FROM subject_resources WHERE id = ?', [parseInt(mod.source_resource_id, 10)]);
-      if (src.length) moduleContent = src[0].content_text || src[0].description || '';
-    }
-
-    const subject = await getSubjectById(subjectId);
-    if (!subject) {
-      setFlash(req, 'error', 'Subject not found.');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    const aiResult = await generateAssessmentFromModule({
-      moduleContent,
-      subject: subject.name,
-      levelGroup: mod.type_of_module || 'General',
-      questionCount: itemCount
-    });
-
-    const tutorStudents = await getTutorStudentsBySubject(tutorUserId, subjectId);
-    if (!tutorStudents.length) {
-      setFlash(req, 'error', 'No students assigned to you in this subject.');
-      return res.redirect(`/tutor/subjects/${subjectId}`);
-    }
-
-    const title = `AI Assessment: ${mod.title || subject.name}`;
-    for (const student of tutorStudents) {
-      const studentId = parseInt(student.student_id, 10);
-      const insertResult = await dbQuery(
-        `INSERT INTO assessments (title, assessment_type, assigned_student_id, created_by, is_published, subject_id, assessment_origin, source_module_title, source_resource_id)
-         VALUES (?, 'post', ?, ?, 1, ?, 'ai_generated', ?, ?)`,
-        [title, studentId, tutorUserId, subjectId, mod.title || null, parseInt(mod.id, 10)]
-      );
-      const assessmentId = insertResult.insertId;
-      for (const q of aiResult.questions) {
-        await dbQuery(
-          `INSERT INTO assessment_questions (assessment_id, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, question_type, points)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [assessmentId, q.question_text, q.choice_a || '', q.choice_b || '', q.choice_c || '', q.choice_d || '', q.correct_answer, q.question_type || 'Multiple Choice', q.points || 1]
-        );
-      }
-    }
-
-    try {
-      await logAiGeneration({ student_id: parseInt(tutorStudents[0].student_id, 10), subject_id: subjectId, generation_type: 'tutor_publish_assessment', provider: aiResult.provider, model: aiResult.model, tokens_used: aiResult.tokensUsed });
-    } catch(e) { /* non-critical */ }
-
-    setFlash(req, 'success', `AI Assessment published to ${tutorStudents.length} student(s) with ${aiResult.questions.length} items!`);
-    res.redirect(`/tutor/subjects/${subjectId}`);
-  } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not publish assessment.');
-    res.redirect(`/tutor/subjects/${subjectId}`);
-  }
-});
+/*
+ * Two Phase 5 actions on the retired subject resources — "post an admin module to
+ * students" and "publish an AI assessment from it" — are gone from every page.
+ * The second wrote into the old assessments table, which no student page lists,
+ * so what it published could never be opened. Modules and their assessments
+ * live in Modules & Assessments now.
+ */
+function retiredResourceAction(req, res) {
+  setFlash(req, 'info', 'That old module action was retired. Modules and their assessments are in Modules & Assessments.');
+  res.redirect('/tutor/modules');
+}
+router.post('/subjects/:subjectId/resources/share', retiredResourceAction);
+router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', retiredResourceAction);
 
 // --------------------------------------------------------------------------
 // The old "Create Post Assessment" button.
@@ -584,15 +484,7 @@ router.post('/subjects/:subjectId/create-post-assessment', (req, res) => {
 
 
 
-router.post('/resources/:resourceId/delete', async (req, res, next) => {
-  try {
-    await deleteSubjectResource(req.params.resourceId, req.session.user.id);
-    setFlash(req, 'success', 'Resource deleted successfully.');
-    res.redirect('back');
-  } catch (error) {
-    next(error);
-  }
-});
+router.post('/resources/:resourceId/delete', retiredResourceAction);
 
 // Route handler: GET request
 
@@ -668,233 +560,36 @@ router.post('/attendance/:id/status', async (req, res) => {
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
 
-router.get('/assessments', async (req, res, next) => {
-  try {
-    const students = await getTutorStudentsBySubject(req.session.user.id);
-    const studentIds = [...new Set(students.map((s) => Number(s.student_id)).filter(Boolean))];
-    const subjectIds = [...new Set(students.map((s) => Number(s.subject_id)).filter(Boolean))];
-    const [assessments, assessmentHistory, templates] = await Promise.all([
-      getAssessments(null),
-      getAssessmentHistory(null),
-      Promise.all(subjectIds.map((id) => getAssessmentTemplates(id))).then((sets) => sets.flat())
-    ]);
-    const allowed = new Set(studentIds);
-    const uniqueTemplates = Array.from(new Map(templates.map((item) => [item.id, item])).values());
-    const shell = await buildShell(req, {
-      pageTitle: 'Assessments',
-      section: 'assessments',
-      contentView: '../content/admin-assessments',
-      assessments: assessments.filter((a) => allowed.has(Number(a.assigned_student_id))),
-      assessmentHistory: assessmentHistory.filter((a) => allowed.has(Number(a.assigned_student_id))),
-      students,
-      templates: uniqueTemplates,
-      templateStudentMap: {},
-      yearLevelOptions: YEAR_LEVEL_OPTIONS,
-      gradeLevelMap: GRADE_LEVEL_MAP,
-      subjects: [],
-      viewOnly: false,
-      canCreateTemplate: false,
-      tutorBranchName: (await getUserById(req.session.user.id))?.branch_name || ''
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) { next(error); }
-});
+/*
+ * The old "Assessments" list — admin templates a tutor forwarded to students —
+ * is retired with the admin's page it came from: nothing links to it, no
+ * student page lists what it sent, and its table is empty. Its recover and
+ * delete actions also never checked whose assessment it was, so any tutor
+ * could remove any other's. A tutor's assessments are written on each module.
+ */
+function retiredAssessments(req, res) {
+  setFlash(req, 'info', 'The old Assessments list was retired. Write and check assessments on each module in Modules & Assessments.');
+  res.redirect('/tutor/modules');
+}
+router.get('/assessments', retiredAssessments);
+router.get('/assessments/:id', retiredAssessments);
+router.post('/assessments/templates/:templateId/assign', retiredAssessments);
+router.post('/assessments/:id/done', retiredAssessments);
+router.post('/assessments/:id/recover', retiredAssessments);
+router.post('/assessments/:id/delete', retiredAssessments);
 
-
-// Route handler: GET request
-
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-
-router.get('/assessments/:id', async (req, res, next) => {
-  try {
-    const assessment = await getAssessmentById(req.params.id);
-    if (!assessment) {
-      setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/tutor/assessments');
-    }
-    const students = await getTutorStudentsBySubject(req.session.user.id);
-    const allowed = new Set(students.map((s) => Number(s.student_id || s.id)));
-    if (!allowed.has(Number(assessment.assigned_student_id))) {
-      setFlash(req, 'error', 'You can only view assessments for your assigned students.');
-      return res.redirect('/tutor/assessments');
-    }
-    const shell = await buildShell(req, {
-      pageTitle: 'Assessment Details',
-      section: 'assessments',
-      contentView: '../content/admin-assessment-detail',
-      assessment
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/assessments/templates/:templateId/assign', async (req, res, next) => {
-  try {
-    const students = await getTutorStudentsBySubject(req.session.user.id);
-    const selectedIds = Array.isArray(req.body.assigned_student_ids) ? req.body.assigned_student_ids : [req.body.assigned_student_ids];
-    const assignedStudentIds = [...new Set(selectedIds.map((value) => Number(value)).filter(Boolean))];
-    const allowed = new Set(students.map((s) => Number(s.student_id || s.id)));
-    if (!assignedStudentIds.length || assignedStudentIds.some((id) => !allowed.has(id))) {
-      setFlash(req, 'error', 'You can only send assessments to your assigned students.');
-      return res.redirect('/tutor/assessments');
-    }
-    const firstStudent = students.find((s) => Number(s.student_id || s.id) === assignedStudentIds[0]);
-    // The student's own branch first: the assignment row's branch_id is nullable.
-    const assignBranchId = firstStudent?.student_branch_id || firstStudent?.branch_id || req.session.user.branch_id || null;
-    await assignAssessmentTemplateToStudents(req.params.templateId, req.session.user.id, assignedStudentIds, assignBranchId);
-    setFlash(req, 'success', 'Admin assessment sent to selected students.');
-    res.redirect('/tutor/assessments');
-  } catch (error) {
-    next(error);
-  }
-});
-
-
-// Route handler: POST request
-
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-
-router.post('/assessments/:id/done', async (req, res, next) => {
-  try {
-    const assessment = await getAssessmentById(req.params.id);
-    const students = await getTutorStudentsBySubject(req.session.user.id);
-    const allowed = new Set(students.map((s) => Number(s.student_id || s.id)));
-    if (!assessment || !assessment.result || !allowed.has(Number(assessment.assigned_student_id))) {
-      setFlash(req, 'error', 'Only completed assessments for your assigned students can be marked done.');
-      return res.redirect('/tutor/assessments');
-    }
-    await markAssessmentDone(req.params.id);
-    setFlash(req, 'success', 'Assessment moved to history.');
-    res.redirect('/tutor/assessments');
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/assessments/:id/recover', async (req, res, next) => {
-  try {
-    await recoverAssessment(req.params.id);
-    setFlash(req, 'success', 'Assessment recovered successfully.');
-    res.redirect('/tutor/assessments');
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/assessments/:id/delete', async (req, res, next) => {
-  try {
-    await deleteAssessmentPermanently(req.params.id);
-    setFlash(req, 'success', 'Assessment deleted permanently.');
-    res.redirect('/tutor/assessments');
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: GET request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.get('/messages', async (req, res, next) => {
-  try {
-    const search = String(req.query.search || '').trim();
-    const contacts = await getAllowedContacts(req.session.user, search);
-    const activeContactId = req.query.contact ? Number(req.query.contact) : (search ? null : contacts[0]?.id || null);
-    const activeContact = activeContactId ? await getUserById(activeContactId) : null;
-    const conversation = activeContactId ? await getConversation(req.session.user.id, activeContactId) : [];
-    const shell = await buildShell(req, {
-      pageTitle: 'Message',
-      section: 'messages',
-      contentView: '../content/tutor-messages',
-      contacts,
-      activeContact,
-      conversation,
-      search
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/messages/send', messageUploader.single('attachment'), async (req, res, next) => {
-  try {
-    const body = String(req.body.body || '').trim();
-    if (!body && !req.file) {
-      setFlash(req, 'error', 'Type a message or attach a file.');
-      return res.redirect(`/tutor/messages?contact=${req.body.receiver_id}`);
-    }
-    await saveMessage({
-      sender_id: req.session.user.id,
-      receiver_id: req.body.receiver_id,
-      body,
-      file_path: req.file ? `/uploads/messages/${req.file.filename}` : null,
-      file_original_name: req.file ? req.file.originalname : null,
-      file_type: req.file ? req.file.mimetype : ''
-    });
-    res.redirect(`/tutor/messages?contact=${req.body.receiver_id}`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/messages/:id/edit', async (req, res, next) => {
-  try {
-    const message = await getMessageById(req.params.id);
-    if (!message || Number(message.sender_id) !== Number(req.session.user.id)) {
-      setFlash(req, 'error', 'You can only edit your own message.');
-      return res.redirect(`/tutor/messages?contact=${req.body.contact_id || req.query.contact || ''}`);
-    }
-    await updateMessageBody(message.id, req.body.body);
-    res.redirect(`/tutor/messages?contact=${message.receiver_id === req.session.user.id ? message.sender_id : message.receiver_id}`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/messages/:id/unsend', async (req, res, next) => {
-  try {
-    const message = await getMessageById(req.params.id);
-    if (!message || Number(message.sender_id) !== Number(req.session.user.id)) {
-      setFlash(req, 'error', 'You can only unsend your own message.');
-      return res.redirect(`/tutor/messages?contact=${req.body.contact_id || req.query.contact || ''}`);
-    }
-    await unsendMessage(message.id);
-    res.redirect(`/tutor/messages?contact=${message.receiver_id === req.session.user.id ? message.sender_id : message.receiver_id}`);
-  } catch (error) {
-    next(error);
-  }
-});
+// Messages were removed from the system (their sidebar link first, now the
+// pages and the actions behind them). An old link or bookmark lands on the
+// dashboard with a word of explanation instead of a working chat nobody is
+// meant to use.
+function retiredMessages(req, res) {
+  setFlash(req, 'info', 'Messages are no longer part of MindQuest.');
+  res.redirect('/tutor');
+}
+router.get('/messages', retiredMessages);
+router.post('/messages/send', retiredMessages);
+router.post('/messages/:id/edit', retiredMessages);
+router.post('/messages/:id/unsend', retiredMessages);
 
 // Route handler: GET request
 
@@ -930,8 +625,14 @@ router.post('/profile', profileUploader.single('image'), async (req, res, next) 
     // the stored lists back unchanged. They used to be re-read from the raw JSON
     // and split on commas: the tutor's subjects became names no subject has,
     // and the cleanup that follows a save unassigned every one of their students.
+    //
+    // The login email and year levels are the office's too. A tutor signs in with
+    // a code sent to that email, so a typo saved here locked them out with no way
+    // back in; the student's profile has always shown it read-only.
+    const { email: _e, year_level: _y, year_levels: _ys, branch_ids: _b, ...editable } = req.body || {};
     await updateUser(req.session.user.id, {
-      ...req.body,
+      ...editable,
+      email: current.email,
       branch_id: current.branch_id,
       subjects: current.subjects || [],
       supports: current.supports || [],
@@ -1278,7 +979,7 @@ router.post('/modules/:id/draft-assessment', async (req, res, next) => {
       }
     }));
     res.render('shells/dashboard', shell);
-  } catch (error) { next(error); }
+  } catch (error) { failBack(req, res, error, `/tutor/modules/${Number(req.params.id) || ''}`); }
 });
 
 // Tutor: Submit new assessment (JSON payload)

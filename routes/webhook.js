@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../config/db');
-const { completeOnlinePayment } = require('../lib/data');
+const { completeOnlinePayment, fetchPayMongoCheckout } = require('../lib/data');
 
 router.post('/paymongo', async (req, res) => {
   try {
@@ -13,19 +13,7 @@ router.post('/paymongo', async (req, res) => {
 
       if (eventType === 'checkout_session.payment.paid') {
         const session = payload.data.attributes.data;
-        const checkoutSessionId = session.id;
-
-        // The reference the student is shown and the office quotes back to the
-        // gateway is the PAYMENT id, not the checkout session id — the session
-        // exists from the moment they click Pay, whereas a payment id only
-        // exists once money actually moved. Take the paid one if the payload
-        // carries it; completeOnlinePayment falls back to the session id.
-        const payments = session?.attributes?.payments || [];
-        const paidPayment = payments.find((p) => p?.attributes?.status === 'paid') || payments[0] || null;
-        const transactionReference = paidPayment?.id || null;
-        // How it was paid — 'gcash', 'card', ... — so the ledger files it under
-        // GCash rather than "Online".
-        const method = session?.attributes?.payment_method_used || paidPayment?.attributes?.source?.type || null;
+        const checkoutSessionId = String(session?.id || '');
 
         // Find the pending payment using the checkout session id
         const rows = await query(
@@ -35,6 +23,34 @@ router.post('/paymongo', async (req, res) => {
 
         if (rows && rows.length > 0) {
           const paymentId = rows[0].id;
+
+          // This address is public, so the message itself proves nothing: a
+          // POST naming a session id as paid used to settle it, and the id is
+          // in the student's own checkout URL. PayMongo is asked instead, and
+          // the reference and method are taken from its answer, not the body.
+          const checkout = await fetchPayMongoCheckout(checkoutSessionId).catch((error) => {
+            console.error('[PayMongo Webhook] could not ask PayMongo about', checkoutSessionId, error.message);
+            return null;
+          });
+          if (!checkout) {
+            // PayMongo retries a failed delivery; the student's Billing Data also
+            // asks again when they return (reconcilePayMongoPayments).
+            return res.status(503).send('Could not confirm the payment with PayMongo yet.');
+          }
+          if (!checkout.paidPayment) {
+            console.warn(`[PayMongo Webhook] ${checkoutSessionId}: PayMongo does not report it paid — ignored.`);
+            return res.status(200).send('Webhook received');
+          }
+
+          // The reference the student is shown and the office quotes back to the
+          // gateway is the PAYMENT id, not the checkout session id — the session
+          // exists from the moment they click Pay, whereas a payment id only
+          // exists once money actually moved.
+          const transactionReference = checkout.paidPayment.id || null;
+          // How it was paid — 'gcash', 'card', ... — so the ledger files it under
+          // GCash rather than "Online".
+          const method = checkout.attributes.payment_method_used
+            || checkout.paidPayment.attributes?.source?.type || null;
 
           // Call the existing completeOnlinePayment logic to deduct bill. The
           // student's return to Billing Data may have recorded it a moment

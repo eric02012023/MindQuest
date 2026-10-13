@@ -15,7 +15,7 @@ const path = require('path');
 const { createUploader, describeUploadRejection } = require('../lib/uploads');
 const { extractHandoutText } = require('../services/extractionService');
 const { schedulePreAssessmentWarmup, getWarmupState } = require('../lib/preAssessmentWarmup');
-const { getFile, deleteFile } = require('../lib/storage');
+const { getFile } = require('../lib/storage');
 const {
   getBranches,
   addBranch,
@@ -72,17 +72,6 @@ const {
   getSubjectArchivedTutors,
   archiveTutorSubject,
   recoverTutorSubject,
-  getAssessments,
-  getAssessmentHistory,
-  createAssessmentTemplate,
-  getAssessmentTemplates,
-  getAssessmentTemplateById,
-  getStudentsMatchingAssessmentTemplate,
-  assignAssessmentTemplateToStudents,
-  getAssessmentById,
-  markAssessmentDone,
-  recoverAssessment,
-  deleteAssessmentPermanently,
   archiveSubjectResource,
   recoverSubjectResource,
   getAdminSubjectResourcesWithArchived,
@@ -185,14 +174,6 @@ function displayActor(user) {
 const profileUploader = createUploader('profiles');
 const resourceUploader = createUploader('resources');
 
-const YEAR_LEVEL_OPTIONS = ['Pre School Level', 'Primary Level', 'Junior High Level', 'Senior High Level'];
-const GRADE_LEVEL_MAP = {
-  'Pre School Level': ['Kinder 1', 'Kinder 2'],
-  'Primary Level': ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
-  'Junior High Level': ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'],
-  'Senior High Level': ['Grade 11', 'Grade 12']
-};
-
 // Function: normalizeRouteId
 
 // Role: Provides helper logic for this file.
@@ -232,6 +213,18 @@ function createAdminRouter(role) {
 
   router.use(authorize(allowedRoles));
 
+  /**
+   * A refused or failed action goes back to the page it came from with the reason
+   * as a message. These actions used to hand the error to the error page, so a
+   * plain "not allowed" — marking an unpaid bill paid, an email already in use,
+   * a student from another branch — showed "Server Error" instead.
+   */
+  function failBack(req, res, error, fallback) {
+    setFlash(req, 'error', (error && error.message) || 'That could not be done. Please try again.');
+    return res.redirect(req.get('Referer') || fallback);
+  }
+
+
   // Function: getScopeBranchId
 
   // Role: Provides helper logic for this file.
@@ -244,6 +237,37 @@ function createAdminRouter(role) {
       return Number(req.query.branch_id);
     }
     return null;
+  }
+
+  /**
+   * An Assistant Admin acts only on their own branch's people. The check used to
+   * sit on some actions and not on the ones beside them — recording a payment
+   * was branch-checked, editing that same bill, marking it paid, posting its
+   * SOA and re-enrolling were not; so were assigning a subject's students and
+   * archiving its tutors. The lists on screen were scoped, but each POST is its
+   * own request and has to be checked on its own.
+   *
+   * Returns true after flashing and redirecting when the action is refused.
+   * `people` is one user id or several; a tutor counts as in the branch when it
+   * is their home branch or one of the branches they also serve.
+   */
+  async function refuseOutsideBranch(req, res, people, backTo, message) {
+    if (req.session.user.role === 'admin') return false;
+    const ids = [...new Set((Array.isArray(people) ? people : [people]).map(Number).filter(Boolean))];
+    const scope = Number(req.session.user.assistant_scope_branch_id) || 0;
+    let allowed = !!ids.length && !!scope;
+    for (const id of ids) {
+      if (!allowed) break;
+      const person = await getUserById(id);
+      const branches = person
+        ? [person.branch_id, ...normalizeArray(person.extra?.branch_ids || [])].map(Number).filter(Boolean)
+        : [];
+      allowed = branches.includes(scope);
+    }
+    if (allowed) return false;
+    setFlash(req, 'error', message || 'You can only manage people from your branch.');
+    res.redirect(backTo);
+    return true;
   }
 
   // Function: resolveBillingStudentId
@@ -423,7 +447,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', 'Notification marked as read.');
       res.redirect(inboxPath);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/notifications`);
     }
   });
 
@@ -448,7 +472,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', 'Notification archived successfully.');
       res.redirect(inboxPath);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/notifications`);
     }
   });
 
@@ -462,7 +486,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', 'Archived notification recovered.');
       res.redirect(`${basePath}/notifications/archive`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/notifications`);
     }
   });
 
@@ -860,7 +884,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', 'Profile updated successfully.');
       res.redirect(`${basePath}/profile/${req.params.id}`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/users`);
     }
   });
 
@@ -905,11 +929,15 @@ function createAdminRouter(role) {
   router.post('/users/:id/archive', async (req, res, next) => {
     try {
       const scope = req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null;
-      await archiveUser(req.params.id, scope);
-      setFlash(req, 'success', 'User archived successfully.');
+      // false: not found, the main admin, or (for an assistant) another
+      // branch's user — nothing changed, so it must not say it did.
+      const changed = await archiveUser(req.params.id, scope);
+      setFlash(req, changed === false ? 'error' : 'success', changed === false
+        ? 'You can only archive users from your branch.'
+        : 'User archived successfully.');
       res.redirect(`${basePath}/users`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/users`);
     }
   });
 
@@ -920,11 +948,15 @@ function createAdminRouter(role) {
   router.post('/users/:id/recover', async (req, res, next) => {
     try {
       const scope = req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null;
-      await recoverUser(req.params.id, scope);
-      setFlash(req, 'success', 'User recovered successfully.');
+      // false: not found, the main admin, or (for an assistant) another
+      // branch's user — nothing changed, so it must not say it did.
+      const changed = await recoverUser(req.params.id, scope);
+      setFlash(req, changed === false ? 'error' : 'success', changed === false
+        ? 'You can only recover users from your branch.'
+        : 'User recovered successfully.');
       res.redirect(`${basePath}/users`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/users`);
     }
   });
 
@@ -1019,7 +1051,7 @@ function createAdminRouter(role) {
       await archiveUser(req.params.id);
       setFlash(req, 'success', 'Assistant account archived. Their tutors and students stay on record in their profile.');
       res.redirect(assistantAccountReturn(req));
-    } catch (error) { next(error); }
+    } catch (error) { failBack(req, res, error, `${basePath}/users`); }
   });
 
   router.post('/assistant-accounts/:id/recover', async (req, res, next) => {
@@ -1028,7 +1060,7 @@ function createAdminRouter(role) {
       await recoverUser(req.params.id);
       setFlash(req, 'success', 'Assistant account recovered successfully.');
       res.redirect(assistantAccountReturn(req));
-    } catch (error) { next(error); }
+    } catch (error) { failBack(req, res, error, `${basePath}/users`); }
   });
 
 
@@ -1041,11 +1073,15 @@ function createAdminRouter(role) {
   router.post('/users/:id/delete', async (req, res, next) => {
     try {
       const scope = req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null;
-      await deleteUserPermanently(req.params.id, scope);
-      setFlash(req, 'success', 'User deleted permanently.');
+      // false: not found, the main admin, or (for an assistant) another
+      // branch's user — nothing changed, so it must not say it did.
+      const changed = await deleteUserPermanently(req.params.id, scope);
+      setFlash(req, changed === false ? 'error' : 'success', changed === false
+        ? 'You can only delete users from your branch.'
+        : 'User deleted permanently.');
       res.redirect(`${basePath}/users`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/users`);
     }
   });
 
@@ -1459,11 +1495,12 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Invalid student billing record.');
         return res.redirect(`${basePath}/billing`);
       }
+      if (await refuseOutsideBranch(req, res, studentId, `${basePath}/billing`, 'You can only edit the bills of students in your branch.')) return;
       await updateBilling(studentId, req.body, req.session.user.id);
       setFlash(req, 'success', 'Billing information updated.');
       res.redirect(`${basePath}/billing?edit=${studentId}`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/billing`);
     }
   });
 
@@ -1484,11 +1521,12 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Invalid student billing record.');
         return res.redirect(`${basePath}/billing`);
       }
+      if (await refuseOutsideBranch(req, res, studentId, `${basePath}/billing`, 'You can only edit the bills of students in your branch.')) return;
       await updateBilling(studentId, req.body, req.session.user.id);
       setFlash(req, 'success', 'Billing information updated.');
       res.redirect(`${basePath}/billing?edit=${studentId}`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/billing`);
     }
   });
 
@@ -1503,11 +1541,13 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Invalid billing record.');
         return res.redirect(`${basePath}/billing`);
       }
+      const billRows = await query('SELECT TOP 1 student_id FROM billing WHERE id = ?', [Number(billingId)]);
+      if (await refuseOutsideBranch(req, res, billRows[0]?.student_id, `${basePath}/billing`, 'You can only update the bills of students in your branch.')) return;
       await markBillPaid(billingId, req.session.user.id);
       setFlash(req, 'success', 'Student marked as paid.');
       res.redirect(`${basePath}/billing`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/billing`);
     }
   });
 
@@ -1522,11 +1562,12 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Invalid student billing record.');
         return res.redirect(`${basePath}/billing`);
       }
+      if (await refuseOutsideBranch(req, res, studentId, `${basePath}/billing`, 'You can only post the SOA of students in your branch.')) return;
       await postSoa(studentId, req.session.user.id);
       setFlash(req, 'success', 'SOA posted to the student billing page.');
       res.redirect(`${basePath}/billing?info=${studentId}`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/billing`);
     }
   });
 
@@ -1550,11 +1591,12 @@ function createAdminRouter(role) {
         setFlash(req, 'error', 'Invalid student billing record.');
         return res.redirect(`${basePath}/billing`);
       }
+      if (await refuseOutsideBranch(req, res, studentId, `${basePath}/billing`, 'You can only post the SOA of students in your branch.')) return;
       await postSoa(studentId, req.session.user.id);
       setFlash(req, 'success', 'SOA posted to the student billing page.');
       res.redirect(`${basePath}/billing?info=${studentId}`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/billing`);
     }
   });
 
@@ -1564,11 +1606,16 @@ function createAdminRouter(role) {
 
   router.post('/billing/reenroll', async (req, res, next) => {
     try {
-      const ids = Array.isArray(req.body.student_ids) ? req.body.student_ids : [req.body.student_ids];
+      const ids = (Array.isArray(req.body.student_ids) ? req.body.student_ids : [req.body.student_ids]).filter(Boolean);
+      if (!ids.length) {
+        setFlash(req, 'error', 'Choose at least one student to re-enroll.');
+        return res.redirect(`${basePath}/billing`);
+      }
+      if (await refuseOutsideBranch(req, res, ids, `${basePath}/billing`, 'You can only re-enroll students in your branch.')) return;
       await reenrollStudents(ids);
       setFlash(req, 'success', 'Selected students were re-enrolled to billing list.');
       res.redirect(`${basePath}/billing`);
-    } catch (error) { next(error); }
+    } catch (error) { failBack(req, res, error, `${basePath}/billing`); }
   });
 
   // Route handler: GET request
@@ -1902,7 +1949,7 @@ function createAdminRouter(role) {
       // The bell's × sends this in the background and wants no page back.
       if (req.get('X-Requested-With') === 'fetch') return res.status(204).end();
       res.redirect(req.get('Referer') || `${basePath}/notifications`);
-    } catch (error) { next(error); }
+    } catch (error) { failBack(req, res, error, `${basePath}/notifications`); }
   });
 
   // "Mark all read" in the bell. Registrations and subject requests are not
@@ -1912,7 +1959,7 @@ function createAdminRouter(role) {
       await markAllAppNotificationsRead(req.session.user);
       setFlash(req, 'success', 'All notifications marked as read. Registrations and subject requests stay until they are accepted or declined.');
       res.redirect(req.get('Referer') || `${basePath}/notifications`);
-    } catch (error) { next(error); }
+    } catch (error) { failBack(req, res, error, `${basePath}/notifications`); }
   });
 
   router.post('/alerts/:id/archive', async (req, res, next) => {
@@ -1920,7 +1967,7 @@ function createAdminRouter(role) {
       await archiveAppNotification(Number(req.params.id), req.session.user);
       setFlash(req, 'success', 'Notification archived.');
       res.redirect(`${basePath}/notifications`);
-    } catch (error) { next(error); }
+    } catch (error) { failBack(req, res, error, `${basePath}/notifications`); }
   });
 
   router.post('/alerts/:id/recover', async (req, res, next) => {
@@ -1928,7 +1975,7 @@ function createAdminRouter(role) {
       await recoverAppNotification(Number(req.params.id), req.session.user);
       setFlash(req, 'success', 'Notification recovered.');
       res.redirect(`${basePath}/notifications/archive`);
-    } catch (error) { next(error); }
+    } catch (error) { failBack(req, res, error, `${basePath}/notifications`); }
   });
 
   // Route handler: GET request
@@ -1988,7 +2035,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', 'Subject archived successfully.');
       res.redirect(`${basePath}/subjects`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2006,7 +2053,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', 'Subject recovered successfully.');
       res.redirect(`${basePath}/subjects`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2024,7 +2071,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', 'Subject deleted permanently.');
       res.redirect(`${basePath}/subjects`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2397,11 +2444,12 @@ function createAdminRouter(role) {
 
   router.post('/subjects/:id/tutors/:tutorId/archive', async (req, res, next) => {
     try {
+      if (await refuseOutsideBranch(req, res, req.params.tutorId, `${basePath}/subjects/${Number(req.params.id)}`, 'You can only archive tutors who teach in your branch.')) return;
       await archiveTutorSubject(req.params.id, req.params.tutorId);
       setFlash(req, 'success', 'Tutor archived from subject.');
       redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2411,11 +2459,12 @@ function createAdminRouter(role) {
 
   router.post('/subjects/:id/tutors/:tutorId/recover', async (req, res, next) => {
     try {
+      if (await refuseOutsideBranch(req, res, req.params.tutorId, `${basePath}/subjects/${Number(req.params.id)}`, 'You can only recover tutors who teach in your branch.')) return;
       await recoverTutorSubject(req.params.id, req.params.tutorId);
       setFlash(req, 'success', 'Tutor recovered into subject.');
       redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2426,11 +2475,12 @@ function createAdminRouter(role) {
   router.post('/subjects/:id/assign', async (req, res, next) => {
     try {
       const studentIds = Array.isArray(req.body.student_ids) ? req.body.student_ids : [req.body.student_ids];
+      if (await refuseOutsideBranch(req, res, [req.body.tutor_id, ...studentIds], `${basePath}/subjects/${Number(req.params.id)}`, 'You can only assign tutors and students from your branch.')) return;
       await assignStudentsToTutor(req.params.id, req.body.tutor_id, studentIds, req.session.user.id);
       setFlash(req, 'success', 'Students assigned to tutor successfully.');
       res.redirect(`${basePath}/subjects/${req.params.id}`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2440,11 +2490,13 @@ function createAdminRouter(role) {
 
   router.post('/subjects/assignments/:id/archive', async (req, res, next) => {
     try {
+      const assignmentRows = await query('SELECT TOP 1 student_id FROM user_subject_assignments WHERE id = ?', [Number(req.params.id)]);
+      if (await refuseOutsideBranch(req, res, assignmentRows[0]?.student_id, `${basePath}/subjects`, 'You can only archive enrollments of students in your branch.')) return;
       await archiveAssignment(req.params.id);
       setFlash(req, 'success', 'Assignment archived.');
       redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2454,11 +2506,13 @@ function createAdminRouter(role) {
 
   router.post('/subjects/assignments/:id/recover', async (req, res, next) => {
     try {
+      const assignmentRows = await query('SELECT TOP 1 student_id FROM user_subject_assignments WHERE id = ?', [Number(req.params.id)]);
+      if (await refuseOutsideBranch(req, res, assignmentRows[0]?.student_id, `${basePath}/subjects`, 'You can only recover enrollments of students in your branch.')) return;
       await recoverAssignment(req.params.id);
       setFlash(req, 'success', 'Assignment recovered.');
       redirectBackToTab(req, res, `${basePath}/subjects`);
     } catch (error) {
-      next(error);
+      failBack(req, res, error, `${basePath}/subjects`);
     }
   });
 
@@ -2469,228 +2523,27 @@ function createAdminRouter(role) {
   // Purpose: Processes this endpoint and returns the correct view or action result.
 
 
-  router.get('/assessments', async (req, res, next) => {
-    try {
-      const scopeBranchId = getScopeBranchId(req);
-      const [assessments, assessmentHistory, students, subjects, templates] = await Promise.all([
-        getAssessments(scopeBranchId),
-        getAssessmentHistory(scopeBranchId),
-        getUsers({ scopeBranchId, role: 'student', archived: false }),
-        getSubjects(false),
-        getAssessmentTemplates()
-      ]);
-      const templateStudentEntries = await Promise.all(
-        (templates || []).map(async (template) => [String(template.id), await getStudentsMatchingAssessmentTemplate(template, scopeBranchId)])
-      );
-      const templateStudentMap = Object.fromEntries(templateStudentEntries);
-      const shell = await buildShellData(req, {
-        pageTitle: 'Assessments',
-        section: 'assessments',
-        contentView: '../content/admin-assessments',
-        assessments,
-        assessmentHistory,
-        students,
-        subjects,
-        templates,
-        templateStudentMap,
-        yearLevelOptions: YEAR_LEVEL_OPTIONS,
-        gradeLevelMap: GRADE_LEVEL_MAP,
-        viewOnly: req.session.user.role !== 'admin',
-        canCreateTemplate: role === 'admin',
-        showAssessmentTemplates: true
-      });
-      res.render('shells/dashboard', shell);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-
-  // Route handler: GET request
-
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-
-  router.get('/assessments/:id', async (req, res, next) => {
-    try {
-      const assessment = await getAssessmentById(req.params.id);
-      if (!assessment) {
-        setFlash(req, 'error', 'Assessment not found.');
-        return res.redirect(`${basePath}/assessments`);
-      }
-      // assessments.branch_id is nullable on older rows, so fall back to the
-      // branch of the student it was assigned to rather than failing the check
-      // against NULL and locking the assistant out of their own branch.
-      const assessmentBranchId = assessment.branch_id ?? assessment.student_branch_id;
-      if (req.session.user.role === 'admin_assistant' && Number(assessmentBranchId) !== Number(req.session.user.assistant_scope_branch_id)) {
-        setFlash(req, 'error', 'You can only view assessments from your branch.');
-        return res.redirect(`${basePath}/assessments`);
-      }
-      const shell = await buildShellData(req, {
-        pageTitle: 'Assessment Details',
-        section: 'assessments',
-        contentView: '../content/admin-assessment-detail',
-        assessment
-      });
-      res.render('shells/dashboard', shell);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-  router.post('/assessments/create', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Assistant admin can only view assessments.');
-        return res.redirect(`${basePath}/assessments`);
-      }
-
-      const targetSubjectIds = [...new Set((Array.isArray(req.body.target_subject_ids) ? req.body.target_subject_ids : [req.body.target_subject_ids]).map((value) => Number(value)).filter(Boolean))];
-      const primarySubjectId = Number(req.body.subject_id || targetSubjectIds[0] || 0);
-      const targetYearLevels = normalizeArray(req.body.target_year_levels || []).map((value) => String(value || '').trim()).filter(Boolean);
-      const targetGradeLevels = normalizeArray(req.body.target_grade_levels || []).map((value) => String(value || '').trim()).filter(Boolean);
-      const selectedAssessmentTypes = normalizeArray(req.body.type_of_assessment || []).map((value) => String(value || '').trim()).filter(Boolean);
-
-      if (!primarySubjectId) {
-        setFlash(req, 'error', 'Please choose a subject before creating the assessment template.');
-        return res.redirect(`${basePath}/assessments`);
-      }
-
-      const questions = [];
-      const questionTexts = Array.isArray(req.body.question_text) ? req.body.question_text : [req.body.question_text];
-      const choiceA = Array.isArray(req.body.choice_a) ? req.body.choice_a : [req.body.choice_a];
-      const choiceB = Array.isArray(req.body.choice_b) ? req.body.choice_b : [req.body.choice_b];
-      const choiceC = Array.isArray(req.body.choice_c) ? req.body.choice_c : [req.body.choice_c];
-      const choiceD = Array.isArray(req.body.choice_d) ? req.body.choice_d : [req.body.choice_d];
-      const correctAnswers = Array.isArray(req.body.correct_answer) ? req.body.correct_answer : [req.body.correct_answer];
-      const questionTypes = Array.isArray(req.body.question_type) ? req.body.question_type : [req.body.question_type];
-      for (let i = 0; i < questionTexts.length; i += 1) {
-        if (!questionTexts[i]) continue;
-        questions.push({
-          question_text: questionTexts[i],
-          choice_a: choiceA[i] || '',
-          choice_b: choiceB[i] || '',
-          choice_c: choiceC[i] || '',
-          choice_d: choiceD[i] || '',
-          correct_answer: correctAnswers[i] || '',
-          question_type: questionTypes[i] || (selectedAssessmentTypes.length === 1 ? selectedAssessmentTypes[0] : 'Multiple Choice'),
-          points: 1
-        });
-      }
-
-      const templateId = await createAssessmentTemplate({
-        title: req.body.title || 'Assessment',
-        assessment_type: 'assessment',
-        subject_id: primarySubjectId,
-        target_subject_ids: targetSubjectIds.length ? targetSubjectIds : [primarySubjectId],
-        target_year_levels: targetYearLevels,
-        target_grade_levels: targetGradeLevels,
-        type_of_assessment: selectedAssessmentTypes.length ? selectedAssessmentTypes : ['Multiple Choice'],
-        created_by: req.session.user.id,
-        questions
-      });
-
-      const template = await getAssessmentTemplateById(templateId);
-      const matchedStudents = await getStudentsMatchingAssessmentTemplate(template);
-      const matchedStudentIds = matchedStudents.map((student) => Number(student.student_id || student.id)).filter(Boolean);
-
-      if (matchedStudentIds.length) {
-        await assignAssessmentTemplateToStudents(templateId, null, matchedStudentIds, null);
-      }
-
-      const sentSummary = matchedStudentIds.length
-        ? ` and sent to ${matchedStudentIds.length} matching student${matchedStudentIds.length > 1 ? 's' : ''}`
-        : '. No matching students were found yet.';
-      setFlash(req, 'success', `Assessment template created successfully${sentSummary}`);
-      res.redirect(`${basePath}/assessments`);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-  router.post('/assessments/templates/:templateId/assign', async (req, res, next) => {
-    try {
-      const template = await getAssessmentTemplateById(req.params.templateId);
-      if (!template) {
-        setFlash(req, 'error', 'Assessment template not found.');
-        return res.redirect(`${basePath}/assessments`);
-      }
-
-      const scopeBranchId = getScopeBranchId(req);
-      const allowedStudents = await getStudentsMatchingAssessmentTemplate(template, scopeBranchId);
-      const allowedStudentIds = new Set(allowedStudents.map((student) => Number(student.student_id || student.id)).filter(Boolean));
-      const submittedIds = normalizeArray(req.body.assigned_student_ids || []).map((value) => Number(value)).filter(Boolean);
-      const assignedStudentIds = [...new Set(submittedIds.filter((id) => allowedStudentIds.has(id)))];
-
-      if (!assignedStudentIds.length) {
-        setFlash(req, 'error', 'Please select at least one matching student.');
-        return res.redirect(`${basePath}/assessments`);
-      }
-
-      const firstStudent = allowedStudents.find((student) => Number(student.student_id || student.id) === assignedStudentIds[0]);
-      await assignAssessmentTemplateToStudents(req.params.templateId, null, assignedStudentIds, firstStudent?.branch_id || scopeBranchId || null);
-      setFlash(req, 'success', 'Assessment sent to the selected students successfully.');
-      res.redirect(`${basePath}/assessments`);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-
-
-  // Route handler: POST request
-
-
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-
-
-  router.post('/assessments/:id/done', async (req, res, next) => {
-    try {
-      const assessment = await getAssessmentById(req.params.id);
-      if (!assessment || !assessment.result) {
-        setFlash(req, 'error', 'Only completed assessments can be marked done.');
-        return res.redirect(`${basePath}/assessments`);
-      }
-      await markAssessmentDone(req.params.id);
-      setFlash(req, 'success', 'Assessment moved to history.');
-      res.redirect(`${basePath}/assessments?history=1`);
-    } catch (error) { next(error); }
-  });
-
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-  router.post('/assessments/:id/recover', async (req, res, next) => {
-    try {
-      await recoverAssessment(req.params.id);
-      setFlash(req, 'success', 'Assessment recovered.');
-      res.redirect(`${basePath}/assessments`);
-    } catch (error) { next(error); }
-  });
-
-  // Route handler: POST request
-
-  // Purpose: Processes this endpoint and returns the correct view or action result.
-
-  router.post('/assessments/:id/delete', async (req, res, next) => {
-    try {
-      await deleteAssessmentPermanently(req.params.id);
-      setFlash(req, 'success', 'Assessment deleted permanently.');
-      res.redirect(`${basePath}/assessments`);
-    } catch (error) { next(error); }
-  });
+  /*
+   * The old "Assessments" page — assessment templates the admin wrote and sent
+   * to students — is retired. Nothing links to it any more (it left the sidebar
+   * when modules took over), students had no page that listed what it sent
+   * them, and its table is empty. Assessments are written on each module now
+   * (Modules & Assessments) and their results are read in Assessment
+   * Monitoring, so every old address lands there instead of on a form whose
+   * output no student could ever open. Its delete and recover actions also had
+   * no branch check, so an assistant could remove another branch's records.
+   */
+  function retiredAssessments(req, res) {
+    setFlash(req, 'info', 'The old Assessments page was retired. Assessments are set on each module, and their results are here in Assessment Monitoring.');
+    res.redirect(`${basePath}/assessment-monitoring`);
+  }
+  router.get('/assessments', retiredAssessments);
+  router.get('/assessments/:id', retiredAssessments);
+  router.post('/assessments/create', retiredAssessments);
+  router.post('/assessments/templates/:templateId/assign', retiredAssessments);
+  router.post('/assessments/:id/done', retiredAssessments);
+  router.post('/assessments/:id/recover', retiredAssessments);
+  router.post('/assessments/:id/delete', retiredAssessments);
 
 
   /**
@@ -2789,51 +2642,12 @@ function createAdminRouter(role) {
     }
   });
 
-  // Admin-only: Database cleanup for old assessment/module records
-  router.post('/cleanup-records', async (req, res, next) => {
-    try {
-      if (req.session.user.role !== 'admin') {
-        setFlash(req, 'error', 'Only the main admin can perform database cleanup.');
-        return res.redirect(`${basePath}`);
-      }
-
-      const { query: dbQuery } = require('../config/db');
-      const fs = require('fs');
-      const path = require('path');
-
-      // Delete in order respecting foreign keys
-      await dbQuery('DELETE FROM assessment_results');
-      await dbQuery('DELETE FROM ai_generation_logs');
-      await dbQuery('DELETE FROM student_learning_cycles');
-      await dbQuery('DELETE FROM module_reads');
-      await dbQuery('DELETE FROM assessment_requests');
-      await dbQuery('DELETE FROM assessments');
-
-      // Get AI-generated file paths before deleting records
-      const aiModules = await dbQuery("SELECT file_path FROM subject_resources WHERE module_origin = 'ai_generated' AND file_path IS NOT NULL");
-      await dbQuery("DELETE FROM subject_resources WHERE module_origin = 'ai_generated'");
-
-      // Delete AI-generated files from storage
-      let filesDeleted = 0;
-      for (const mod of aiModules) {
-        if (mod.file_path) {
-          try {
-            // deleteFile is a no-op for an object that is already gone, so the
-            // count reflects rows processed, not disk hits.
-            await deleteFile(mod.file_path);
-            filesDeleted++;
-          } catch (e) {
-            console.error('[Cleanup] Failed to delete file:', mod.file_path, e.message);
-          }
-        }
-      }
-
-      console.log(`[Admin Cleanup] Records cleaned. ${filesDeleted} AI files removed from storage.`);
-      setFlash(req, 'success', `Database cleanup complete! All old assessments, AI modules, and learning records have been removed. ${filesDeleted} generated files deleted from storage.`);
-      res.redirect(`${basePath}`);
-    } catch (error) {
-      next(error);
-    }
+  // "Database cleanup" deleted every old assessment, AI log and learning record
+  // in one press. Its button was taken off the dashboard; the address stays only
+  // to say so, rather than still running for anyone who posts to it.
+  router.post('/cleanup-records', (req, res) => {
+    setFlash(req, 'error', 'Database cleanup was removed and no longer runs.');
+    res.redirect(basePath);
   });
 
   // ==========================================================================
@@ -2853,7 +2667,8 @@ function createAdminRouter(role) {
     try {
       const [assessments, results] = await Promise.all([
         getAllTutorAssessmentsAdmin(),
-        getStudentResultsAdmin()
+        // An assistant sees their own branch's students' results only.
+        getStudentResultsAdmin({ branchId: billingScopeBranchId(req) })
       ]);
       const shell = await buildShellData(req, {
         pageTitle: 'Assessment Monitoring',
@@ -2873,6 +2688,10 @@ function createAdminRouter(role) {
       const submission = await getSubmissionWithAnswers(Number(req.params.submissionId));
       if (!submission) {
         setFlash(req, 'error', 'Result not found.');
+        return res.redirect(`${basePath}/assessment-monitoring`);
+      }
+      if (!canActOnBranch(req.session.user, submission.student_branch_id)) {
+        setFlash(req, 'error', 'That result belongs to a student in another branch.');
         return res.redirect(`${basePath}/assessment-monitoring`);
       }
       const weakAreas = await getWeakAreasForSubmission(submission.id);

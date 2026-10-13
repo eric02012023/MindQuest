@@ -14,17 +14,9 @@ const {
   getStudentAssignments,
   getStudentSubjectsOverview,
   createSubjectEnrollmentRequest,
-  getAllowedContacts,
-  getConversation,
-  saveMessage,
-  getMessageById,
-  updateMessageBody,
-  unsendMessage,
   getUserById,
   getSubjectResources,
   updateUser,
-  getAssessmentById,
-  submitAssessment,
   getAttendanceBySubject,
   getTutorAvailabilityForSubject,
   getTutorChoicesForStudent,
@@ -38,8 +30,6 @@ const {
   // Phase 2: AI system imports
   getModulesForStudent,
   getStudentAnalytics,
-  logAntiCheatEvent,
-  getAntiCheatViolationCount,
   createOnlinePayment,
   completeOnlinePayment,
   reconcilePayMongoPayments,
@@ -115,9 +105,19 @@ const { buildSlipModel, renderSlipPdf, slipFilename, slipCode, formatSlipDate } 
 
 const router = express.Router();
 const profileUploader = createUploader('profiles');
-const messageUploader = createUploader('messages');
 
 router.use(authorize(['student']));
+
+/**
+ * A refused or failed action goes back to the page it came from with the reason
+ * as a message. These actions used to hand the error to the error page, so a
+ * plain "not allowed" — marking an unpaid bill paid, an email already in use,
+ * a student from another branch — showed "Server Error" instead.
+ */
+function failBack(req, res, error, fallback) {
+  setFlash(req, 'error', (error && error.message) || 'That could not be done. Please try again.');
+  return res.redirect(req.get('Referer') || fallback);
+}
 
 // Function: buildShell
 
@@ -442,8 +442,8 @@ router.post('/notifications/:id/read', async (req, res, next) => {
     await markStudentScheduleNotificationRead(Number(req.params.id), req.session.user.id);
     if (isBackgroundRequest(req)) return res.status(204).end();
     setFlash(req, 'success', 'Notification marked as read.');
-    res.redirect('back');
-  } catch (error) { next(error); }
+    res.redirect(req.get('Referer') || '/student');
+  } catch (error) { failBack(req, res, error, '/student/notifications'); }
 });
 
 // A payment reminder (or any alert addressed to this student) dismissed from
@@ -453,8 +453,8 @@ router.post('/alerts/:id/read', async (req, res, next) => {
     await markOwnAppNotificationRead(Number(req.params.id), req.session.user);
     if (isBackgroundRequest(req)) return res.status(204).end();
     setFlash(req, 'success', 'Notification marked as read.');
-    res.redirect('back');
-  } catch (error) { next(error); }
+    res.redirect(req.get('Referer') || '/student');
+  } catch (error) { failBack(req, res, error, '/student/notifications'); }
 });
 
 // ---------------------------------------------------------------------------
@@ -488,7 +488,7 @@ router.post('/notifications/mark-all-read', async (req, res, next) => {
     ]);
     setFlash(req, 'success', 'All notifications marked as read.');
     res.redirect(req.get('Referer') || '/student/notifications');
-  } catch (error) { next(error); }
+  } catch (error) { failBack(req, res, error, '/student/notifications'); }
 });
 
 router.get('/notifications/archive', async (req, res, next) => {
@@ -527,7 +527,7 @@ router.post('/alerts/:id/archive', async (req, res, next) => {
     await archiveAppNotification(Number(req.params.id), req.session.user);
     setFlash(req, 'success', 'Notification archived.');
     res.redirect('/student/notifications');
-  } catch (error) { next(error); }
+  } catch (error) { failBack(req, res, error, '/student/notifications'); }
 });
 
 router.post('/alerts/:id/recover', async (req, res, next) => {
@@ -535,7 +535,7 @@ router.post('/alerts/:id/recover', async (req, res, next) => {
     await recoverAppNotification(Number(req.params.id), req.session.user);
     setFlash(req, 'success', 'Notification recovered.');
     res.redirect('/student/notifications/archive');
-  } catch (error) { next(error); }
+  } catch (error) { failBack(req, res, error, '/student/notifications'); }
 });
 
 // Route handler: GET request
@@ -755,92 +755,18 @@ router.post('/billing/slip', issuePaymentSlip);
  */
 router.post('/billing/pay-request', issuePaymentSlip);
 
-// Route handler: GET request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.get('/messages', async (req, res, next) => {
-  try {
-    const search = String(req.query.search || '').trim();
-    const contacts = await getAllowedContacts(req.session.user, search);
-    const activeContactId = req.query.contact ? Number(req.query.contact) : (search ? null : contacts[0]?.id || null);
-    const activeContact = activeContactId ? await getUserById(activeContactId) : null;
-    const conversation = activeContactId ? await getConversation(req.session.user.id, activeContactId) : [];
-    const shell = await buildShell(req, {
-      pageTitle: 'Message',
-      section: 'messages',
-      contentView: '../content/student-messages',
-      contacts,
-      activeContact,
-      conversation,
-      search
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/messages/send', messageUploader.single('attachment'), async (req, res, next) => {
-  try {
-    const body = String(req.body.body || '').trim();
-    if (!body && !req.file) {
-      setFlash(req, 'error', 'Type a message or attach a file.');
-      return res.redirect(`/student/messages?contact=${req.body.receiver_id}`);
-    }
-    await saveMessage({
-      sender_id: req.session.user.id,
-      receiver_id: req.body.receiver_id,
-      body,
-      file_path: req.file ? `/uploads/messages/${req.file.filename}` : null,
-      file_original_name: req.file ? req.file.originalname : null,
-      file_type: req.file ? req.file.mimetype : ''
-    });
-    res.redirect(`/student/messages?contact=${req.body.receiver_id}`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/messages/:id/edit', async (req, res, next) => {
-  try {
-    const message = await getMessageById(req.params.id);
-    if (!message || Number(message.sender_id) !== Number(req.session.user.id)) {
-      setFlash(req, 'error', 'You can only edit your own message.');
-      return res.redirect(`/student/messages?contact=${req.body.contact_id || req.query.contact || ''}`);
-    }
-    await updateMessageBody(message.id, req.body.body);
-    res.redirect(`/student/messages?contact=${message.receiver_id === req.session.user.id ? message.sender_id : message.receiver_id}`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/messages/:id/unsend', async (req, res, next) => {
-  try {
-    const message = await getMessageById(req.params.id);
-    if (!message || Number(message.sender_id) !== Number(req.session.user.id)) {
-      setFlash(req, 'error', 'You can only unsend your own message.');
-      return res.redirect(`/student/messages?contact=${req.body.contact_id || req.query.contact || ''}`);
-    }
-    await unsendMessage(message.id);
-    res.redirect(`/student/messages?contact=${message.receiver_id === req.session.user.id ? message.sender_id : message.receiver_id}`);
-  } catch (error) {
-    next(error);
-  }
-});
+// Messages were removed from the system (their sidebar link first, now the
+// pages and the actions behind them). An old link or bookmark lands on the
+// dashboard with a word of explanation instead of a working chat nobody is
+// meant to use.
+function retiredMessages(req, res) {
+  setFlash(req, 'info', 'Messages are no longer part of MindQuest.');
+  res.redirect('/student');
+}
+router.get('/messages', retiredMessages);
+router.post('/messages/send', retiredMessages);
+router.post('/messages/:id/edit', retiredMessages);
+router.post('/messages/:id/unsend', retiredMessages);
 
 
 // Route handler: GET request
@@ -858,69 +784,20 @@ router.get('/assessments', (req, res) => {
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
 
-router.get('/assessments/:id', async (req, res, next) => {
-  try {
-    const assessment = await getAssessmentById(req.params.id, req.session.user.id);
-    if (!assessment || Number(assessment.assigned_student_id) !== Number(req.session.user.id)) {
-      setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/student/subjects');
-    }
-    const shell = await buildShell(req, {
-      pageTitle: 'Take Assessment',
-      section: 'assessments',
-      contentView: '../content/student-assessment-take',
-      assessment
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/assessments/:id/submit', async (req, res, next) => {
-  try {
-    const assessment = await getAssessmentById(req.params.id, req.session.user.id);
-    if (!assessment || Number(assessment.assigned_student_id) !== Number(req.session.user.id) || !Number(assessment.is_published)) {
-      setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/student/assessments');
-    }
-
-    // Prevent retake: check if already has a result
-    if (assessment.result && assessment.result.taken_at) {
-      setFlash(req, 'info', 'You have already completed this assessment. Your previous result is shown.');
-      return res.redirect(`/student/assessments/${req.params.id}`);
-    }
-
-    const result = await submitAssessment(req.params.id, req.session.user.id, req.body || {});
-
-    // The Gen 1 follow-up generator lived here (Phase 9). On every submit it built
-    // an AI "review module", wrote it to public/uploads/ai-modules as a standalone
-    // HTML page that pulled a markdown parser from a CDN, filed it back into
-    // subject_resources, and advanced a student_learning_cycles row. None of that is
-    // in the current spec, and the CDN script made those pages the only part of the
-    // system that depended on an outside host at view time.
-    setFlash(req, 'success', `Assessment submitted. Score: ${result.score}/${result.total_questions} (${result.percentage.toFixed(1)}%) — Level: ${result.level}.`);
-
-    res.redirect(`/student/assessments/${req.params.id}`);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Route handler: POST request
-
-// Purpose: Processes this endpoint and returns the correct view or action result.
-
-router.post('/assessments/:id/reset', async (req, res, next) => {
-  // Assessment retake is disabled — each assessment can only be taken once
-  setFlash(req, 'error', 'Assessment retake is not allowed. Each assessment can only be taken once.');
-  return res.redirect(`/student/assessments/${req.params.id}`);
-});
-
+/*
+ * The old assessment page (/student/assessments/:id) belonged to the admin's
+ * retired "Assessments" templates. No page lists those any more and their table
+ * is empty; every assessment a student sits now opens inside its subject. An
+ * old link lands there instead of on a page that warned "Leave site?" with the
+ * browser's own dialog.
+ */
+function retiredAssessment(req, res) {
+  setFlash(req, 'info', 'That old assessment link no longer works. Your assessments are inside each subject in My Subjects.');
+  res.redirect('/student/subjects');
+}
+router.get('/assessments/:id', retiredAssessment);
+router.post('/assessments/:id/submit', retiredAssessment);
+router.post('/assessments/:id/reset', retiredAssessment);
 
 // Route handler: GET request
 
@@ -958,8 +835,19 @@ router.post('/profile', profileUploader.single('image'), async (req, res, next) 
     // they are. They used to be re-read from the raw JSON and split on commas,
     // which turned ["ENGLISH"] into '["ENGLISH"]' — no such subject — and
     // saving a profile unenrolled the student from everything.
+    //
+    // Nor do the year level, grade level or login email change here. The grade
+    // decides which modules and which Pre-Assessment a student gets, and it was
+    // a free-text box on this form: a student could type "Grade 12" and open
+    // that grade's modules, or mistype "Grade6" and lose every module they had.
+    // The office sets all three (User Management); whatever the form posts for
+    // them is ignored.
+    const { year_level: _y, grade_level: _g, email: _e, ...editable } = req.body || {};
     await updateUser(req.session.user.id, {
-      ...req.body,
+      ...editable,
+      year_level: current.year_level,
+      grade_level: current.grade_level,
+      email: current.email,
       branch_id: current.branch_id,
       subjects: current.subjects || [],
       supports: current.supports || [],
@@ -996,19 +884,9 @@ router.post('/profile', profileUploader.single('image'), async (req, res, next) 
 //
 // The tables are untouched, so existing records still read.
 // ============================================================================
-// Anti-cheat event logging (receives beacon/XHR from client)
-router.post('/assessments/:id/anti-cheat', express.json(), async (req, res) => {
-  try {
-    const result = await logAntiCheatEvent(
-      req.params.id,
-      req.session.user.id,
-      req.body.event_type || 'unknown',
-      req.body.event_detail || null
-    );
-    res.json({ ok: true, violationCount: result.violationCount });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
-  }
+// The retired assessment page's anti-cheat log. The live one is /violation below.
+router.post('/assessments/:id/anti-cheat', (req, res) => {
+  res.status(410).json({ ok: false, error: 'This assessment page was retired.' });
 });
 
 /**
@@ -1600,7 +1478,18 @@ async function requireModuleAssessment(req, assessmentId) {
 
   const student = await getUserById(req.session.user.id);
   const mod = assessment.module_id ? await getModuleById(assessment.module_id) : null;
-  if (!mod || !moduleTargetsStudent(mod, student)) {
+  if (!mod) {
+    // getModuleById returns live modules only. A module the office removed
+    // takes its assessments with it — say so, rather than "another grade".
+    const [gone] = assessment.module_id
+      ? await query('SELECT is_archived FROM modules WHERE id = ?', [assessment.module_id])
+      : [];
+    setFlash(req, 'error', gone && Number(gone.is_archived)
+      ? 'That module was removed, so its assessments are closed.'
+      : 'Assessment not found.');
+    return { redirectTo: `/student/subjects/${assessment.subject_id}` };
+  }
+  if (!moduleTargetsStudent(mod, student)) {
     setFlash(req, 'error', 'This assessment belongs to a module for another grade level.');
     return { redirectTo: `/student/subjects/${assessment.subject_id}` };
   }

@@ -95,10 +95,12 @@
       <section class="mq-card">
         <div class="mq-card-head">
           <span class="mq-card-icon"><%- icon('phone', 18) %></span>
-          <div><h3>Contact</h3><p>How students and the office reach you.</p></div>
+          <div><h3>Contact</h3><p>How students and the office reach you. Your login email is changed by the office.</p></div>
         </div>
         <div class="mq-card-body mq-fields">
-          <label>Email<input type="email" name="email" value="<%= profileUser.email || '' %>" required /></label>
+          <%# The login email: your sign-in code goes there, so only the office
+              changes it (a typo here used to lock a tutor out). %>
+          <label>Login email<input type="email" value="<%= profileUser.email || '' %>" readonly /></label>
           <label>Contact number<input type="text" name="contact_number" value="<%= profileUser.contact_number || '' %>" /></label>
           <label>Facebook account<input type="text" name="facebook_account" value="<%= profileUser.facebook_account || '' %>" /></label>
         </div>

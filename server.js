@@ -12,7 +12,6 @@ const os = require('os');
 const express = require('express');
 const session = require('express-session');
 const methodOverride = require('method-override');
-const { Server } = require('socket.io');
 const { setUserLocals } = require('./middleware/auth');
 const { bootstrapDatabase } = require('./lib/bootstrap');
 
@@ -33,7 +32,6 @@ const { resolveOnlinePaymentMethods, repairShortSubjectCycles } = require('./lib
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -161,9 +159,8 @@ function serveUploadFolder(folder, { decorate, cacheControl } = {}) {
   };
 }
 
-// Public upload folders stay mounted here, ahead of the session middleware, so
-// avatars and chat attachments are served without a session lookup or a DB round
-// trip per file. Study-material folders are NOT served here — they are mounted
+// The public upload folder stays mounted here, ahead of the session middleware,
+// so avatars are served without a session lookup or a DB round trip per file. Study-material folders are NOT served here — they are mounted
 // behind an access check below app.use(setUserLocals).
 //
 // Uploaded names carry a uuid and are never rewritten, so an avatar can be cached
@@ -173,25 +170,8 @@ app.use('/uploads/profiles', serveUploadFolder('profiles', {
   cacheControl: 'public, max-age=31536000, immutable'
 }));
 
-// Chat attachments are the one public folder that accepts arbitrary file types,
-// and they are served from this app's own origin — so anything the browser will
-// execute becomes stored XSS against whoever opens it. The upload filter blocks
-// those extensions (lib/uploads.js), and this is the second layer for anything
-// already on disk from before that filter existed:
-//
-//   nosniff             stops the browser guessing a dangerous type from content
-//   Content-Disposition forces a download for anything that is not a plain image,
-//                       so it can never render in this origin
-app.use('/uploads/messages', serveUploadFolder('messages', {
-  cacheControl: 'private, max-age=86400',
-  decorate(res, ext) {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    const inlineSafe = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'];
-    if (!inlineSafe.includes(ext)) {
-      res.setHeader('Content-Disposition', 'attachment');
-    }
-  }
-}));
+// Chat attachments (/uploads/messages) were served here with no login. Messages
+// are gone from the system, so the folder is no longer served at all.
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use(express.urlencoded({ extended: true }));
 // Middleware/route mount: attaches shared behavior or a route group to the application.
@@ -233,44 +213,15 @@ function requireLogin(req, res, next) {
 
 /**
  * Students may only open a handout when they are enrolled in its subject, have
- * completed that subject's Pre-Assessment, and the module targets their year
- * level. Staff (admin, assistant, tutor) are not gated.
+ * completed that subject's Pre-Assessment, and the module is for their grade.
+ * Staff (admin, assistant, tutor) are not gated. The rule is lib/handoutAccess.js,
+ * shared with /download so the file cannot be fetched round it.
  */
 async function guardHandoutAccess(req, res, next) {
-  const user = req.session.user;
-  if (user.role !== 'student') return next();
-
   try {
-    const {
-      getModuleHandoutByPath, getStudentAssignments,
-      hasCompletedPreAssessment, moduleTargetsStudent, getUserById
-    } = require('./lib/data');
-
-    const handout = await getModuleHandoutByPath(`/uploads/handouts${req.path}`);
-    if (!handout) {
-      // Not a handout we know about — nothing to authorise against.
-      return res.status(404).type('text/plain').send('Handout not found.');
-    }
-
-    const assignments = await getStudentAssignments(user.id);
-    if (!assignments.some((a) => Number(a.subject_id) === Number(handout.subject_id))) {
-      return res.status(403).type('text/plain').send('You are not enrolled in this subject.');
-    }
-
-    const preDone = await hasCompletedPreAssessment(user.id, handout.subject_id);
-    if (!preDone) {
-      return res.status(403).type('text/plain')
-        .send('Complete the Pre-Assessment for this subject before opening its handouts.');
-    }
-
-    // Load the student from the DB rather than the session: neither the login
-    // query nor setUserLocals selects year_level/grade_level, so the session copy
-    // has neither and this check would reject every student.
-    const studentRecord = await getUserById(user.id);
-    if (!moduleTargetsStudent(handout, studentRecord)) {
-      return res.status(403).type('text/plain').send('This module is not assigned to your year level.');
-    }
-
+    const { checkHandoutAccess } = require('./lib/handoutAccess');
+    const verdict = await checkHandoutAccess(req.session.user, `/uploads/handouts${req.path}`);
+    if (!verdict.ok) return res.status(verdict.status).type('text/plain').send(verdict.message);
     return next();
   } catch (error) {
     console.error('[guardHandoutAccess]', error.message);
@@ -338,57 +289,9 @@ app.use((error, req, res, _next) => {
   });
 });
 
-const onlineUsers = new Map();
-
-// Make io accessible to routes for real-time notifications
-app.set('io', io);
-app.set('onlineUsers', onlineUsers);
-
-// Socket.IO event registration: enables real-time communication features.
-
-io.on('connection', (socket) => {
-  socket.on('register-user', (userId) => {
-    if (!userId) return;
-    onlineUsers.set(String(userId), socket.id);
-    socket.join(`user:${userId}`);
-    io.emit('online-users', Array.from(onlineUsers.keys()));
-  });
-
-  socket.on('call-offer', ({ toUserId, fromUserId, offer, callType }) => {
-    const targetSocketId = onlineUsers.get(String(toUserId));
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call-offer', { fromUserId, offer, callType });
-    }
-  });
-
-  socket.on('call-answer', ({ toUserId, answer }) => {
-    const targetSocketId = onlineUsers.get(String(toUserId));
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call-answer', { answer });
-    }
-  });
-
-  socket.on('ice-candidate', ({ toUserId, candidate }) => {
-    const targetSocketId = onlineUsers.get(String(toUserId));
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('ice-candidate', { candidate });
-    }
-  });
-
-  socket.on('end-call', ({ toUserId }) => {
-    const targetSocketId = onlineUsers.get(String(toUserId));
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('end-call');
-    }
-  });
-
-  socket.on('disconnect', () => {
-    for (const [userId, socketId] of onlineUsers.entries()) {
-      if (socketId === socket.id) onlineUsers.delete(userId);
-    }
-    io.emit('online-users', Array.from(onlineUsers.keys()));
-  });
-});
+// Messages and voice/video calls were removed from the system: the sidebar
+// links went first, and the Socket.IO server that relayed the calls — on every
+// dashboard page, to anyone who connected — has gone with them.
 
 const port = Number(process.env.PORT || 3000);
 
@@ -461,8 +364,11 @@ async function start() {
           : `AI: NOT CONFIGURED (provider="${ai.provider}") — set AI_PROVIDER=openai and `
             + 'OPENAI_API_KEY in this environment, or generated questions will be placeholders'
       );
-      console.log('Default admin email: admin@mindquest.local');
-      console.log('Default admin password: Admin@12345');
+      // No password is printed here. This used to print a fixed "Default admin
+      // password" on every boot — into logs anyone with dashboard access reads —
+      // and since the admin's own password is kept now (lib/bootstrap.js), it
+      // would not even have been the right one.
+      console.log(`Admin login: ${process.env.DEFAULT_ADMIN_EMAIL || 'admin@mindquest.local'}`);
       console.log('SMTP Configuration Status:', {
         host: process.env.SMTP_HOST || 'NOT SET',
         port: process.env.SMTP_PORT || 'NOT SET',

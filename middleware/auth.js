@@ -65,6 +65,13 @@ async function setUserLocals(req, res, next) {
       );
       if (rows[0]) {
         req.session.user = { ...req.session.user, ...rows[0] };
+      } else {
+        // Archived (or removed) since logging in: the account is closed now,
+        // not when the 8-hour session runs out. It used to keep working — an
+        // archived student or assistant could go on acting until then.
+        delete req.session.user;
+        req.session.flash = { type: 'error', message: 'Your account is no longer active. Please contact the office.' };
+        return res.redirect('/login');
       }
     }
   } catch (error) {
