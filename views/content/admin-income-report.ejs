@@ -20,13 +20,17 @@
     Every row is one payment_entries record, so the report and a student's ledger
     can never disagree: they are the same rows.
 
-    WHAT WENT (this release)
-    The filter bar — search, From/To dates, branch, method, purpose, Apply,
-    Clear, Print — and the page numbers. Every transaction is listed in a table
-    that shows ten rows and scrolls; the search icon in its heading finds a
-    transaction by anything in its row (public/js/mq-tables.js).
+    THE FILTER BAR
+    Search, From/To dates, branch (main admin), method, purpose, Apply, Clear,
+    Print. Every transaction the filters return is listed in a table that shows
+    ten rows and scrolls; the search icon in its heading looks inside those
+    rows (public/js/mq-tables.js).
 
-    Locals: rows (every transaction in scope), summary %>
+    Locals: rows (every transaction the filters return), summary, filters,
+            paymentMethods, paymentPurposes, selectedBranch %>
+<%
+  const activeFilters = typeof filters === 'undefined' ? {} : filters;
+%>
 <section class="mq-page">
 
   <div class="mq-summary">
@@ -47,9 +51,64 @@
     </div>
   </div>
 
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/income-report">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= activeFilters.search || '' %>" placeholder="Student, ID or reference" />
+      </label>
+      <label class="mq-field">
+        <span>From</span>
+        <input type="date" name="from" value="<%= activeFilters.from || '' %>" />
+      </label>
+      <label class="mq-field">
+        <span>To</span>
+        <input type="date" name="to" value="<%= activeFilters.to || '' %>" />
+      </label>
+      <% if (currentUser.role === 'admin' && (branches || []).length) { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id">
+            <option value="all">All branches</option>
+            <% (branches || []).forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= String(selectedBranch) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <label class="mq-field">
+        <span>Method</span>
+        <select name="method">
+          <option value="all">All methods</option>
+          <% (paymentMethods || []).forEach((method) => { %>
+            <option value="<%= method.value %>" <%= activeFilters.method === method.value ? 'selected' : '' %>><%= method.value %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Purpose</span>
+        <select name="purpose">
+          <option value="all">All purposes</option>
+          <% (paymentPurposes || []).forEach((purpose) => { %>
+            <option value="<%= purpose %>" <%= activeFilters.purpose === purpose ? 'selected' : '' %>><%= purpose %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+      <a class="mq-btn" href="<%= basePath %>/income-report">Clear</a>
+    </div>
+
+    <div class="mq-toolbar-actions">
+      <button type="button" class="mq-btn" onclick="window.print()"><%- icon('print') %> Print</button>
+    </div>
+  </form>
+
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <h2>Transactions</h2>
+      <div>
+        <h2>Transactions</h2>
+        <p>One row per payment received. Figures come straight from the student ledgers.</p>
+      </div>
       <span class="mq-count"><%= summary.transactionCount %> record<%= summary.transactionCount === 1 ? '' : 's' %></span>
     </div>
 
@@ -66,8 +125,8 @@
 
       <% if (!rows.length) { %>
         <div class="mq-empty">
-          <strong>No transactions yet</strong>
-          Payments appear here as soon as they are recorded.
+          <strong>No transactions in this range</strong>
+          Widen the date range, or clear the filters above.
         </div>
       <% } %>
 

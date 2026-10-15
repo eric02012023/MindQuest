@@ -27,12 +27,18 @@
     A chart is drawn the first time its tab is shown (`mq:vtab-shown`): drawn in
     a hidden tab it would have no size. The open tab is kept in the address.
 
+    THE FILTER BAR (between the headline figures and the tabs)
+    Search (staff and tutors), subject, assessment, from/to and — main admin
+    only — branch. Every figure and tab below reads the filtered rows. Applying
+    or clearing keeps the tab that was open (the #tab in the address).
+
     The role differences that remain are about what is worth SHOWING:
       - a student has no "per-learner" table (there is one learner)
       - money is staff-only, and is not even queried for a tutor or student
       - violations are a supervision concern, so students do not see the list
 
-    Locals: analytics (from getAnalyticsDashboard), focusHandouts, viewerRole %>
+    Locals: analytics (from getAnalyticsDashboard, with .filters), focusHandouts,
+            branches (staff), viewerRole %>
 <%
   const a = analytics;
   const scope = a.scope;
@@ -40,9 +46,12 @@
   const isStudent = scope.isStudent;
   const isTutor = scope.isTutor;
   const showMoney = !!a.financials;
+  const activeFilters = a.filters || {};
+  const analyticsPath = `${basePath}/analytics`;
+  const datesPicked = !!(activeFilters.from || activeFilters.to);
 
   const scopeNote = scope.isAdmin
-    ? 'You are seeing every branch.'
+    ? 'You are seeing every branch. Narrow it with the branch filter.'
     : scope.isAssistant
       ? 'You are seeing your assigned branch only.'
       : 'You are seeing the learners assigned to you.';
@@ -71,6 +80,8 @@
     });
     (a.subjects || []).forEach((subject) => {
       const key = String(subject.id);
+      // A subject picked in the filter bar: only that subject's chart.
+      if (activeFilters.subjectId && String(activeFilters.subjectId) !== 'all' && String(activeFilters.subjectId) !== key) return;
       subjectTrends.push(bySubject.get(key) || { id: subject.id, name: subject.name, labels: [], kinds: [], values: [] });
     });
   }
@@ -112,7 +123,7 @@
     <div class="mq-kpi">
       <span>Assessments taken</span>
       <strong><%= kpis.attempts %></strong>
-      <small>all time</small>
+      <small><%= datesPicked ? 'in the selected period' : 'all time' %></small>
     </div>
     <div class="mq-kpi">
       <span>Average score</span>
@@ -144,6 +155,56 @@
       </div>
     <% } %>
   </div>
+
+  <%# --------------------------------------------------------------- filters %>
+  <form class="mq-toolbar" method="get" action="<%= analyticsPath %>" data-analytics-filters>
+    <div class="mq-filters">
+      <% if (!isStudent) { %>
+        <label class="mq-field mq-field-search">
+          <span>Search</span>
+          <input type="search" name="search" value="<%= activeFilters.search || '' %>" placeholder="Learner name, ID or subject" />
+        </label>
+      <% } %>
+
+      <label class="mq-field">
+        <span>Subject</span>
+        <select name="subject_id" data-autosubmit>
+          <option value="all">All subjects</option>
+          <% (a.subjects || []).forEach((subject) => { %>
+            <option value="<%= subject.id %>" <%= String(activeFilters.subjectId) === String(subject.id) ? 'selected' : '' %>><%= subject.name %></option>
+          <% }) %>
+        </select>
+      </label>
+
+      <label class="mq-field">
+        <span>Assessment</span>
+        <select name="kind" data-autosubmit>
+          <option value="all" <%= !activeFilters.kind || activeFilters.kind === 'all' ? 'selected' : '' %>>All</option>
+          <option value="pre_assessment" <%= activeFilters.kind === 'pre_assessment' ? 'selected' : '' %>>Pre-Assessment</option>
+          <option value="post_assessment" <%= activeFilters.kind === 'post_assessment' ? 'selected' : '' %>>Post-Assessment</option>
+          <option value="tutor_assessment" <%= activeFilters.kind === 'tutor_assessment' ? 'selected' : '' %>>Module assessment</option>
+        </select>
+      </label>
+
+      <label class="mq-field"><span>From</span><input type="date" name="from" value="<%= activeFilters.from || '' %>" /></label>
+      <label class="mq-field"><span>To</span><input type="date" name="to" value="<%= activeFilters.to || '' %>" /></label>
+
+      <% if (scope.canPickBranch && typeof branches !== 'undefined' && (branches || []).length) { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id" data-autosubmit>
+            <option value="all">All branches</option>
+            <% branches.forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= String(activeFilters.branchId) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+      <a class="mq-btn" href="<%= analyticsPath %>" data-filters-clear>Clear</a>
+    </div>
+  </form>
 
   <div class="mq-vtabs" data-vtabs data-vtab-default="score-trends">
     <nav class="mq-vtab-list" role="tablist" aria-orientation="vertical" aria-label="Analytics &amp; Reports">
@@ -556,6 +617,26 @@
     .mq-subject-trends { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 </style>
+
+<script>
+  // The filter bar comes back to the tab that was open: the tab lives in the
+  // address's #hash, which a submitted form would otherwise drop. A subject,
+  // assessment or branch picked applies at once, as the Apply button does.
+  (function () {
+    var form = document.querySelector('[data-analytics-filters]');
+    if (!form) return;
+    var keepTab = function (url) { return String(url).split('#')[0] + (window.location.hash || ''); };
+    form.addEventListener('submit', function () { form.action = keepTab(form.action); });
+    form.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
+      select.addEventListener('change', function () {
+        form.action = keepTab(form.action);
+        form.submit();
+      });
+    });
+    var clear = form.querySelector('[data-filters-clear]');
+    if (clear) clear.addEventListener('click', function () { clear.href = keepTab(clear.href); });
+  })();
+</script>
 
 <script src="/js/vendor/chart.umd.min.js"></script>
 <script src="/js/chart-zoom.js"></script>

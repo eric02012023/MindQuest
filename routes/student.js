@@ -985,9 +985,16 @@ router.post('/billing/pay-online', async (req, res, next) => {
  */
 router.get('/analytics', async (req, res, next) => {
   try {
-    // No filter bar: every subject, every assessment. The score trend is drawn
-    // per subject, one bar per assessment taken.
-    const filters = { search: '', subjectId: 'all', kind: 'all', from: '', to: '' };
+    // Subject, assessment and from/to filters (a student has no learner to
+    // search for). The score trend is drawn per subject, one bar per
+    // assessment taken.
+    const filters = {
+      search: '',
+      subjectId: req.query.subject_id || 'all',
+      kind: req.query.kind || 'all',
+      from: req.query.from || '',
+      to: req.query.to || ''
+    };
 
     const [data, focus] = await Promise.all([
       getAnalyticsDashboard(req.session.user, filters),

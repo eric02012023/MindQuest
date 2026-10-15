@@ -15,16 +15,17 @@
     "Edit billing" survives, but it now only edits the HEADER — the amount owed,
     the due date, the SOA type. Never the money received.
 
-    EVERY ACCOUNT, ONE TABLE
-    The search / status / branch filters and the page numbers are gone. Every
-    account is listed in a table that shows ten rows and scrolls; the search
-    icon in its Student heading finds an account by anything in its row
+    THE ACCOUNTS TABLE
+    The search / status / branch filters narrow the accounts. Every account
+    they return is listed in a table that shows ten rows and scrolls; the
+    search icon in its Student heading looks inside those rows
     (public/js/mq-tables.js). A row's three dialogs are fetched when one of
     its buttons is pressed (views/partials/billing-dialogs.ejs).
 
     Locals: billingRows (each with .entries and .totals), preloadRows,
-            billingTotals, paymentMethods, paymentPurposes, openPayStudentId,
-            openInfoStudentId, openEditStudentId %>
+            billingTotals, search, selectedStatus, paymentMethods,
+            paymentPurposes, openPayStudentId, openInfoStudentId,
+            openEditStudentId %>
 <%
   const totals = billingTotals || { billed: 0, paid: 0, remaining: 0, settled: 0, accounts: 0 };
   const nameOf = (row) => `${titleCaseName(row.first_name)} ${titleCaseName(row.middle_name || '')} ${titleCaseName(row.last_name)}`.replace(/\s+/g, ' ').trim();
@@ -46,13 +47,44 @@
     </div>
   </div>
 
-  <div class="mq-toolbar">
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/billing">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <%# Slip codes are accepted here too, so whoever is at the counter does
+            not have to know whether what the student handed them is a code, a
+            name or a student ID. %>
+        <input type="search" name="search" value="<%= search || '' %>" placeholder="Name, student ID, branch or SLIP-000042" />
+      </label>
+      <label class="mq-field">
+        <span>Status</span>
+        <select name="status" onchange="this.form.submit()">
+          <option value="all" <%= selectedStatus === 'all' ? 'selected' : '' %>>All</option>
+          <option value="unpaid" <%= selectedStatus === 'unpaid' ? 'selected' : '' %>>Unpaid</option>
+          <option value="partial" <%= selectedStatus === 'partial' ? 'selected' : '' %>>Partial</option>
+          <option value="paid" <%= selectedStatus === 'paid' ? 'selected' : '' %>>Paid</option>
+        </select>
+      </label>
+      <% if (currentUser.role === 'admin') { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id" onchange="this.form.submit()">
+            <option value="all">All branches</option>
+            <% branches.forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= Number(effectiveBranchId) === Number(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
+    </div>
+
     <div class="mq-toolbar-actions">
       <a class="mq-btn" href="<%= basePath %>/income-report"><%- icon('chart') %> Payment Collection</a>
       <a class="mq-btn" href="<%= basePath %>/payments/history"><%- icon('receipt') %> Payment history</a>
       <button type="button" class="mq-btn" data-modal-target="#reenroll-students-modal">Re-enroll</button>
     </div>
-  </div>
+  </form>
 
   <%# ================================================== the counter (POS)
       This was its own page. It is a section here now, because Student Bill
@@ -61,8 +93,9 @@
       know which one to open.
 
       What it adds that the rows below cannot: the queue of slips students are
-      holding, and taking payment against a slip CODE. A slip's pencil (or the
-      link in its staff alert) opens that slip's form right here.
+      holding, and taking payment against a slip CODE. Searching the toolbar
+      above for a slip code (SLIP-000042), a slip's pencil, or the link in its
+      staff alert opens that slip's form right here.
       ================================================================== %>
   <% const slips = openSlips || []; const sel = selectedSlip || null; %>
 
@@ -238,8 +271,13 @@
 
       <% if (!billingRows.length) { %>
         <div class="mq-empty">
-          <strong>No billing records yet</strong>
-          An account appears here once a student is enrolled in a subject.
+          <% if (search || (selectedStatus && selectedStatus !== 'all') || (currentUser.role === 'admin' && effectiveBranchId)) { %>
+            <strong>No billing records found</strong>
+            Try a different search term, or clear the filters above.
+          <% } else { %>
+            <strong>No billing records yet</strong>
+            An account appears here once a student is enrolled in a subject.
+          <% } %>
         </div>
       <% } %>
 

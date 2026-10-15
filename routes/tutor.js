@@ -712,12 +712,18 @@ router.get('/students/:studentId/analytics', async (req, res, next) => {
 router.get('/analytics', async (req, res, next) => {
   try {
     // The same report the admin reads, scoped to this tutor's own learners,
-    // without the filter bar; each table has its own search icon. A learner's
-    // row opens their per-subject score trend (/tutor/students/:id/analytics).
-    const filters = { search: '', subjectId: 'all', kind: 'all', from: '', to: '' };
+    // with the same filter bar (no branch). A learner's row opens their
+    // per-subject score trend (/tutor/students/:id/analytics).
+    const filters = {
+      search: String(req.query.search || '').trim(),
+      subjectId: req.query.subject_id || 'all',
+      kind: req.query.kind || 'all',
+      from: req.query.from || '',
+      to: req.query.to || ''
+    };
 
     const data = await getAnalyticsDashboard(req.session.user, filters);
-    const focus = await getFocusHandoutsForTutor(req.session.user.id, {}).catch(() => []);
+    const focus = await getFocusHandoutsForTutor(req.session.user.id, { search: filters.search }).catch(() => []);
 
     const shell = await buildShell(req, {
       pageTitle: 'Analytics & Reports',

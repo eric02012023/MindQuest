@@ -541,32 +541,33 @@ function createAdminRouter(role) {
 
   router.get('/users', async (req, res, next) => {
     try {
-      // An assistant still sees only their own branch; that is a scope, not a
-      // filter, and is enforced here rather than offered as a choice.
-      const scopeBranchId = req.session.user.role === 'admin_assistant'
-        ? Number(req.session.user.assistant_scope_branch_id)
-        : null;
+      // An assistant is always held to their own branch (getScopeBranchId);
+      // the main admin may narrow the list with the Branch filter.
+      const scopeBranchId = getScopeBranchId(req);
       // The "Needs a tutor" folder: students with a subject that has no tutor
       // yet, so the office can find everyone still waiting for one.
       const folder = req.query.folder === 'needs-tutor' ? 'needs-tutor' : 'all';
-      const selectedRole = folder === 'needs-tutor' ? 'student' : 'all';
+      const selectedRole = folder === 'needs-tutor' ? 'student' : (req.query.role || 'all');
+      const search = String(req.query.search || '').trim();
+      const status = req.query.status || 'all';
 
-      // Every user, on one page. The search, branch, role and status filters
-      // and the page numbers are gone: the list shows ten rows and scrolls, and
-      // the search icon beside "All users" finds anyone in it — by name, ID,
-      // email, branch, role or status — without a round trip.
-      // (public/js/mq-tables.js)
+      // The search / branch / role / status filters narrow the list on the
+      // server. What they return is listed in full: the table shows ten rows
+      // and scrolls, and its own search icon looks inside those rows
+      // (public/js/mq-tables.js).
       const isMainAdmin = req.session.user.role === 'admin';
       const [page, needsTutorCount, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts, assistantProfiles] = await Promise.all([
         getUsersPaged({
           scopeBranchId,
           role: selectedRole,
           archived: false,
+          search,
+          status,
           needsTutor: folder === 'needs-tutor',
           all: true
         }),
         countStudentsNeedingTutor(scopeBranchId),
-        getUsers({ scopeBranchId, role: 'all', archived: true }),
+        getUsers({ scopeBranchId, role: selectedRole, archived: true, search }),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, false) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAssistantAccounts(null, true) : Promise.resolve([]),
         req.session.user.role === 'admin' ? getAvailableAssistantBranches() : Promise.resolve([]),
@@ -591,6 +592,9 @@ function createAdminRouter(role) {
         assistantProfiles,
         folder,
         needsTutorCount,
+        selectedRole,
+        selectedStatus: status,
+        search,
         openModal: String(req.query.open || '')
       });
       res.render('shells/dashboard', shell);
@@ -602,13 +606,14 @@ function createAdminRouter(role) {
   /**
    * Student Profiles and Tutor Profiles used to be their own pages: the same
    * row list over the same query with the role pinned. User Management already
-   * lists every user, and its search finds a role as readily as a name.
+   * lists every user and already filters by role, so they were a second way to
+   * reach a page the admin was on anyway.
    *
-   * Kept as redirects so older links and bookmarks land on User Management
-   * rather than a 404.
+   * Kept as redirects so older links and bookmarks land on the right filtered
+   * list rather than a 404.
    */
-  router.get('/students', (req, res) => res.redirect(`${basePath}/users`));
-  router.get('/tutors', (req, res) => res.redirect(`${basePath}/users`));
+  router.get('/students', (req, res) => res.redirect(`${basePath}/users?role=student`));
+  router.get('/tutors', (req, res) => res.redirect(`${basePath}/users?role=tutor`));
 
   // Route handler: GET request
 
@@ -1270,11 +1275,13 @@ function createAdminRouter(role) {
 
   router.get('/billing', async (req, res, next) => {
     try {
-      // No search, status or branch filters any more, and no page numbers: every
-      // account is listed in a table that shows ten rows and scrolls, and the
-      // search icon in its heading finds a student by anything in their row.
-      const scopeBranchId = billingScopeBranchId(req);
-      const scope = resolveScope(req.session.user);
+      // The search / status / branch filters narrow the accounts on the server;
+      // what they return is listed in a table that shows ten rows and scrolls.
+      // An assistant is held to their own branch whatever branch_id says.
+      const scopeBranchId = getScopeBranchId(req);
+      const search = String(req.query.search || '').trim();
+      const status = req.query.status || 'all';
+      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
 
       // ---- the counter (was /pos) ------------------------------------------
       // Slips still waiting to be paid, oldest first: that is the queue at the
@@ -1283,10 +1290,11 @@ function createAdminRouter(role) {
         .slice()
         .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-      // `slip` opens that slip's counter form ("Record a different amount", and
-      // the link a slip's staff alert carries).
+      // A slip code in `slip` (or typed into the search box) opens that slip's
+      // counter form. Staff should not have to know whether what the student
+      // handed them is a slip code or a name.
       let selectedSlip = null;
-      const byCode = parseSlipCode(req.query.slip);
+      const byCode = parseSlipCode(req.query.slip || search);
       if (byCode) {
         const request = await getPaymentRequestById(byCode);
         if (request && request.status === 'pending' && canActOnBranch(req.session.user, request.branch_id)) {
@@ -1299,7 +1307,7 @@ function createAdminRouter(role) {
       // fetched when a row's button is pressed (GET /billing/:id/dialogs), so
       // the page does not carry six hundred hidden forms. The one a link asks
       // to open (?info=, ?pay=, ?edit=) is rendered with the page.
-      const billingRows = await attachPaymentLedgers(await getBillingRows(scopeBranchId, 'all', {}));
+      const billingRows = await attachPaymentLedgers(await getBillingRows(scopeBranchId, 'all', { search, status }));
       const paymentHistory = await getPaymentHistory(scopeBranchId);
 
       const billingStudentIds = new Set(billingRows.map((row) => String(row.student_id)));
@@ -1326,6 +1334,8 @@ function createAdminRouter(role) {
         billingTotals: totals,
         paymentMethods: PAYMENT_METHODS,
         paymentPurposes: PAYMENT_PURPOSES,
+        search,
+        selectedStatus: status,
         query: req.query,
         openEditStudentId,
         openInfoStudentId,
@@ -1427,17 +1437,25 @@ function createAdminRouter(role) {
    */
   router.get('/income-report', async (req, res, next) => {
     try {
-      // Every transaction in scope (an assistant: their branch). The search,
-      // date, branch, method and purpose filters, Print, and the page numbers
-      // are gone: the table shows ten rows and scrolls, and the search icon in
-      // its heading finds any transaction by what is in its row.
-      const scope = resolveScope(req.session.user);
-      const rows = await getPaymentLedger(scope, {});
+      // Every transaction in scope (an assistant: their branch), narrowed by the
+      // search, date, branch, method and purpose filters. The table shows ten
+      // rows and scrolls; the summary describes everything the filters return.
+      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+      const filters = {
+        search: String(req.query.search || '').trim(),
+        from: req.query.from || '',
+        to: req.query.to || '',
+        method: req.query.method || 'all',
+        purpose: req.query.purpose || 'all',
+        branchId: req.query.branch_id || 'all'
+      };
+
+      const rows = await getPaymentLedger(scope, filters);
       const summary = summarisePaymentLedger(rows);
 
       // Outstanding is a property of the accounts, not of the transactions, so it
       // is read from billing rather than derived from the rows above.
-      const outstandingRows = await getBillingRows(billingScopeBranchId(req), false);
+      const outstandingRows = await getBillingRows(getScopeBranchId(req), false);
       const outstanding = outstandingRows.reduce((sum, row) => sum + Number(row.for_settlement || 0), 0);
 
       const shell = await buildShellData(req, {
@@ -1450,7 +1468,11 @@ function createAdminRouter(role) {
         contentView: '../content/admin-income-report',
         rows,
         summary: { ...summary, outstanding: Math.round(outstanding * 100) / 100 },
-        query: req.query
+        query: req.query,
+        filters,
+        paymentMethods: PAYMENT_METHODS,
+        paymentPurposes: PAYMENT_PURPOSES,
+        selectedBranch: req.query.branch_id || 'all'
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -2557,13 +2579,20 @@ function createAdminRouter(role) {
    */
   router.get('/analytics', async (req, res, next) => {
     try {
-      // The filter bar (search, subject, assessment, dates, branch) is gone:
-      // the page reports the whole scope, and each table has its own search
-      // icon and scrolls after ten rows.
-      const filters = { search: '', subjectId: 'all', kind: 'all', from: '', to: '', branchId: 'all' };
+      // The filter bar: search, subject, assessment, from/to and (main admin)
+      // branch. Each table still shows ten rows and scrolls, with its own
+      // search icon.
+      const filters = {
+        search: String(req.query.search || '').trim(),
+        subjectId: req.query.subject_id || 'all',
+        kind: req.query.kind || 'all',
+        from: req.query.from || '',
+        to: req.query.to || '',
+        branchId: req.query.branch_id || 'all'
+      };
 
       const data = await getAnalyticsDashboard(req.session.user, filters);
-      const focus = await getFocusHandouts(data.scope, {}).catch(() => []);
+      const focus = await getFocusHandouts(data.scope, { search: filters.search }).catch(() => []);
 
       const shell = await buildShellData(req, {
         pageTitle: 'Analytics & Reports',
