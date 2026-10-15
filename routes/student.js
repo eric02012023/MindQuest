@@ -98,7 +98,7 @@ const { buildBellItems } = require('../lib/bell');
 const { resolveScope } = require('../lib/rbac');
 const { getProgressComparison } = require('../lib/analytics');
 const { progressCsv } = require('../lib/reportsCsv');
-const { cleanDate, cleanId } = require('../lib/listFilters');
+const { readAnalyticsFilters } = require('../lib/analyticsFilters');
 const { determineLevel } = require('../config/levelThresholds');
 const { normalizeArray, formatDateTime, todayDate } = require('../lib/utils');
 // Phase 3: cash is a POS transaction now. The student's side ends at a slip.
@@ -954,23 +954,18 @@ router.post('/billing/pay-online', async (req, res, next) => {
 });
 
 /**
- * The filter bar: subject, assessment and from/to (a student has no learner to
- * search for). A date is taken only as a plain YYYY-MM-DD.
+ * The filters of the tabs that have one (lib/analyticsFilters.js): a subject on
+ * Weak topics and My progress, and a subject, an assessment and dates on My
+ * assessment history. A student has no learner to search for and no branch.
  */
 function analyticsFilters(req) {
-  return {
-    search: '',
-    subjectId: cleanId(req.query.subject_id),
-    kind: req.query.kind || 'all',
-    from: cleanDate(req.query.from),
-    to: cleanDate(req.query.to)
-  };
+  return readAnalyticsFilters(req.query, { role: 'student' });
 }
 
 // My progress as a CSV file: the same rows as the tab, the student's own.
 router.get('/analytics/progress.csv', async (req, res, next) => {
   try {
-    const rows = await getProgressComparison(resolveScope(req.session.user), analyticsFilters(req));
+    const rows = await getProgressComparison(resolveScope(req.session.user), analyticsFilters(req).progress);
     res.set({
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="mindquest-my-progress-${todayDate()}.csv"`
@@ -992,10 +987,8 @@ router.get('/analytics/progress.csv', async (req, res, next) => {
 router.get('/analytics', async (req, res, next) => {
   try {
     // The score trend is drawn per subject, one bar per assessment taken.
-    const filters = analyticsFilters(req);
-
     const [data, focus] = await Promise.all([
-      getAnalyticsDashboard(req.session.user, filters),
+      getAnalyticsDashboard(req.session.user, analyticsFilters(req)),
       getFocusHandoutsForStudent(req.session.user.id).catch(() => [])
     ]);
 
@@ -1005,7 +998,6 @@ router.get('/analytics', async (req, res, next) => {
       contentView: '../content/analytics-dashboard',
       analytics: data,
       focusHandouts: focus,
-      filters,
       query: req.query,
       viewerRole: 'student'
     });

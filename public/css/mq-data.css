@@ -1043,8 +1043,12 @@ a.mq-row {
   max-height: 100%;
 }
 
-/* Bare-CSS bar meter — used where a full chart would be overkill. */
+/* Bare-CSS bar meter — used where a full chart would be overkill.
+   A block, the width of its cell. It is written as a <span>, and as an inline
+   span its track had no width and its bar no height: a table cell (Weak topics'
+   Mastery, Module completion) showed a sliver of border instead of a bar. */
 .mq-meter {
+  display: block;
   position: relative;
   height: 6px;
   border-radius: 999px;

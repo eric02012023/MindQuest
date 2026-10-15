@@ -78,8 +78,9 @@ const { resolveScope } = require('../lib/rbac');
 const { getProgressComparison } = require('../lib/analytics');
 const { progressCsv } = require('../lib/reportsCsv');
 const {
-  cleanDate, cleanId, matchesSearch, nameParts, withinDates
+  cleanDate, matchesSearch, nameParts, withinDates
 } = require('../lib/listFilters');
+const { readAnalyticsFilters, isSet } = require('../lib/analyticsFilters');
 
 const ATTENDANCE_STATUSES = ['present', 'late', 'absent', 'excused'];
 
@@ -736,17 +737,11 @@ router.get('/students/:studentId/analytics', async (req, res, next) => {
 });
 
 /**
- * The filter bar: search, subject, assessment and from/to (a tutor has no branch
- * to pick). A date is taken only as a plain YYYY-MM-DD.
+ * Every tab's own filters (lib/analyticsFilters.js): a tutor's have no branch to
+ * pick, and every one stays within the tutor's own learners.
  */
 function analyticsFilters(req) {
-  return {
-    search: String(req.query.search || '').trim(),
-    subjectId: cleanId(req.query.subject_id),
-    kind: req.query.kind || 'all',
-    from: cleanDate(req.query.from),
-    to: cleanDate(req.query.to)
-  };
+  return readAnalyticsFilters(req.query, { role: 'tutor' });
 }
 
 // Analytics & Reports used to be its own page. It listed the tutor's students
@@ -763,20 +758,22 @@ function analyticsFilters(req) {
 router.get('/analytics', async (req, res, next) => {
   try {
     // The same report the admin reads, scoped to this tutor's own learners,
-    // with the same filter bar (no branch). A learner's row opens their
+    // each tab with its own filters (no branch). A learner's row opens their
     // per-subject score trend (/tutor/students/:id/analytics).
     const filters = analyticsFilters(req);
+    const { search, subjectId } = filters.focus;
 
-    const data = await getAnalyticsDashboard(req.session.user, filters);
-    const focus = await getFocusHandoutsForTutor(req.session.user.id, { search: filters.search }).catch(() => []);
+    const [data, focus] = await Promise.all([
+      getAnalyticsDashboard(req.session.user, filters),
+      getFocusHandoutsForTutor(req.session.user.id, { search }).catch(() => [])
+    ]);
 
     const shell = await buildShell(req, {
       pageTitle: 'Analytics & Reports',
       section: 'analytics',
       contentView: '../content/analytics-dashboard',
       analytics: data,
-      focusHandouts: focus,
-      filters,
+      focusHandouts: focus.filter((handout) => !isSet(subjectId) || String(handout.subject_id) === subjectId),
       query: req.query,
       viewerRole: 'tutor'
     });
@@ -788,7 +785,7 @@ router.get('/analytics', async (req, res, next) => {
 // this tutor's own learners and the subjects they teach them.
 router.get('/analytics/progress.csv', async (req, res, next) => {
   try {
-    const rows = await getProgressComparison(resolveScope(req.session.user), analyticsFilters(req));
+    const rows = await getProgressComparison(resolveScope(req.session.user), analyticsFilters(req).progress);
     res.set({
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="mindquest-student-progress-${todayDate()}.csv"`

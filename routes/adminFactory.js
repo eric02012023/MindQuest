@@ -160,6 +160,7 @@ const {
 } = require('../lib/data');
 const { normalizeArray, todayDate } = require('../lib/utils');
 const { getUserRegistry, getProgressComparison } = require('../lib/analytics');
+const { readAnalyticsFilters, isSet } = require('../lib/analyticsFilters');
 const { registryCsv, progressCsv } = require('../lib/reportsCsv');
 const {
   matchesSearch, withinDates, nameParts, cleanDate, cleanId
@@ -1447,33 +1448,56 @@ function createAdminRouter(role) {
   });
 
   /**
+   * Payment Collection: every transaction in scope (an assistant: their branch)
+   * that the search, date, branch, method and purpose filters return, what they
+   * add up to, and what is still owed. The Payment Collection page shows it, and
+   * so does the Payment collection tab of Analytics & Reports — one report, so
+   * the two can never disagree.
+   *
+   * @param {object} user     req.session.user
+   * @param {object} filters  { search, from, to, branchId, method, purpose }, cleaned
+   */
+  async function paymentCollection(user, filters) {
+    const scope = resolveScope(user, { requestedBranchId: filters.branchId });
+    const [rows, owing] = await Promise.all([
+      getPaymentLedger(scope, filters),
+      // Outstanding is a property of the accounts, not of the transactions, so it
+      // is read from billing rather than derived from the rows.
+      getBillingRows(scope.branchId, false)
+    ]);
+    const outstanding = owing.reduce((sum, row) => sum + Number(row.for_settlement || 0), 0);
+    return {
+      rows,
+      summary: { ...summarisePaymentLedger(rows), outstanding: Math.round(outstanding * 100) / 100 }
+    };
+  }
+
+  /** The payment methods and purposes a filter may pick: anything else is "all". */
+  const paymentChoices = {
+    methods: PAYMENT_METHODS.map((method) => method.value),
+    purposes: PAYMENT_PURPOSES
+  };
+
+  /**
    * Payment Collection (was "Income Report") — one row per transaction, with search, date range, branch,
    * method and purpose filters, and a compact summary bar on top.
    */
   router.get('/income-report', async (req, res, next) => {
     try {
-      // Every transaction in scope (an assistant: their branch), narrowed by the
-      // search, date, branch, method and purpose filters. The table shows ten
-      // rows and scrolls; the summary describes everything the filters return.
-      const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
+      // The table shows ten rows and scrolls; the summary describes everything
+      // the filters return.
+      const pick = (value, options) => (options.includes(value) ? value : 'all');
       const filters = {
         search: String(req.query.search || '').trim(),
         // Only a real YYYY-MM-DD: anything else reached the query as an Invalid
         // Date and turned the page into a Server Error.
         from: cleanDate(req.query.from),
         to: cleanDate(req.query.to),
-        method: req.query.method || 'all',
-        purpose: req.query.purpose || 'all',
+        method: pick(req.query.method, paymentChoices.methods),
+        purpose: pick(req.query.purpose, paymentChoices.purposes),
         branchId: cleanId(req.query.branch_id)
       };
-
-      const rows = await getPaymentLedger(scope, filters);
-      const summary = summarisePaymentLedger(rows);
-
-      // Outstanding is a property of the accounts, not of the transactions, so it
-      // is read from billing rather than derived from the rows above.
-      const outstandingRows = await getBillingRows(getScopeBranchId(req), false);
-      const outstanding = outstandingRows.reduce((sum, row) => sum + Number(row.for_settlement || 0), 0);
+      const { rows, summary } = await paymentCollection(req.session.user, filters);
 
       const shell = await buildShellData(req, {
         // Phase 7.3: "Income Report" -> "Payment Collection". The page reports
@@ -1484,12 +1508,11 @@ function createAdminRouter(role) {
         section: 'income',
         contentView: '../content/admin-income-report',
         rows,
-        summary: { ...summary, outstanding: Math.round(outstanding * 100) / 100 },
+        summary,
         query: req.query,
         filters,
         paymentMethods: PAYMENT_METHODS,
-        paymentPurposes: PAYMENT_PURPOSES,
-        selectedBranch: req.query.branch_id || 'all'
+        paymentPurposes: PAYMENT_PURPOSES
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -2631,42 +2654,39 @@ function createAdminRouter(role) {
    * requirement — the rows for other branches are never fetched.
    */
   /**
-   * The filter bar: search, subject, assessment, from/to and (main admin)
-   * branch — and, for the User registry tab, the role and status of the accounts
-   * listed. The page and the CSV downloads read them the same way.
+   * Every tab's own filters (lib/analyticsFilters.js) — the main admin's tabs
+   * each have a branch; an assistant's are their branch, whatever the address
+   * says. The page and the CSV downloads read them the same way.
    */
   function analyticsFilters(req) {
-    return {
-      search: String(req.query.search || '').trim(),
-      subjectId: cleanId(req.query.subject_id),
-      kind: req.query.kind || 'all',
-      // Only a real YYYY-MM-DD: anything else would reach the query as an
-      // Invalid Date, which the driver refuses (a Server Error).
-      from: cleanDate(req.query.from),
-      to: cleanDate(req.query.to),
-      branchId: req.query.branch_id || 'all',
-      registryRole: ['Assistant Admin', 'Tutor', 'Student'].includes(req.query.reg_role) ? req.query.reg_role : 'all',
-      registryStatus: ['Approved', 'Pending', 'Rejected', 'Archived'].includes(req.query.reg_status) ? req.query.reg_status : 'all'
-    };
+    return readAnalyticsFilters(req.query, { role: req.session.user.role, ...paymentChoices });
   }
 
   router.get('/analytics', async (req, res, next) => {
     try {
       // Each table shows ten rows and scrolls.
       const filters = analyticsFilters(req);
+      const user = req.session.user;
 
-      const data = await getAnalyticsDashboard(req.session.user, filters);
-      const focus = await getFocusHandouts(data.scope, { search: filters.search }).catch(() => []);
+      const [data, focus, payments] = await Promise.all([
+        getAnalyticsDashboard(user, filters),
+        getFocusHandouts(resolveScope(user, { requestedBranchId: filters.focus.branchId }), { search: filters.focus.search })
+          .catch(() => []),
+        // The Payment collection tab is the Payment Collection report itself.
+        paymentCollection(user, filters.payments)
+      ]);
 
       const shell = await buildShellData(req, {
         pageTitle: 'Analytics & Reports',
         section: 'analytics',
         contentView: '../content/analytics-dashboard',
         analytics: data,
-        focusHandouts: focus,
-        filters,
+        focusHandouts: focus.filter((handout) => !isSet(filters.focus.subjectId) || String(handout.subject_id) === filters.focus.subjectId),
+        payments,
+        paymentMethods: PAYMENT_METHODS,
+        paymentPurposes: PAYMENT_PURPOSES,
         query: req.query,
-        viewerRole: req.session.user.role
+        viewerRole: user.role
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -2689,9 +2709,11 @@ function createAdminRouter(role) {
 
   router.get('/analytics/registry.csv', async (req, res, next) => {
     try {
-      const filters = analyticsFilters(req);
-      const scope = resolveScope(req.session.user, { requestedBranchId: filters.branchId });
-      const { rows } = await getUserRegistry(scope, filters);
+      const { registry } = analyticsFilters(req);
+      const scope = resolveScope(req.session.user, { requestedBranchId: registry.branchId });
+      const { rows } = await getUserRegistry(scope, {
+        search: registry.search, registryRole: registry.role, registryStatus: registry.status
+      });
       sendCsv(res, 'user-registry', registryCsv(rows));
     } catch (error) {
       next(error);
@@ -2700,9 +2722,9 @@ function createAdminRouter(role) {
 
   router.get('/analytics/progress.csv', async (req, res, next) => {
     try {
-      const filters = analyticsFilters(req);
-      const scope = resolveScope(req.session.user, { requestedBranchId: filters.branchId });
-      sendCsv(res, 'student-progress', progressCsv(await getProgressComparison(scope, filters)));
+      const { progress } = analyticsFilters(req);
+      const scope = resolveScope(req.session.user, { requestedBranchId: progress.branchId });
+      sendCsv(res, 'student-progress', progressCsv(await getProgressComparison(scope, progress)));
     } catch (error) {
       next(error);
     }

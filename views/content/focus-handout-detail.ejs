@@ -3,14 +3,19 @@
 
     The label at the top is the one the brief asks for, verbatim in substance:
     "This is the focus area for <student> — identified as a weak point from the
-    Pre-Assessment", followed by the pointer to Analytics & Reports for the
-    detailed results.
+    Pre-Assessment", followed by the pointer to the detailed results: the
+    learner's own Analytics page (their score trend and history, subject by
+    subject). It used to open Analytics & Reports searched for their name, a
+    search that page no longer has.
 
     Locals: handout, viewerRole, backUrl %>
 <%
   const studentName = `${titleCaseName(handout.first_name)} ${titleCaseName(handout.last_name || '')}`.trim();
   const topics = handout.weak_topics || [];
   const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
+  const resultsHref = viewerRole === 'tutor'
+    ? `/tutor/students/${handout.student_id}/analytics`
+    : `${basePath}/students/${handout.student_id}/analytics`;
 %>
 <section class="mq-page">
 
@@ -21,7 +26,7 @@
       </div>
       <div class="mq-panel-head-actions">
         <a class="mq-btn" href="<%= backUrl %>">Back</a>
-        <a class="mq-btn mq-btn-primary" href="<%= basePath %>/analytics?search=<%= encodeURIComponent(studentName) %>">
+        <a class="mq-btn mq-btn-primary" href="<%= resultsHref %>">
           <%- icon('chart') %> Detailed results
         </a>
       </div>

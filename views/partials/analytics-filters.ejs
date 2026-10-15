@@ -1,0 +1,109 @@
+<%# File: views/partials/analytics-filters.ejs
+    Purpose: One Analytics & Reports tab's own search and filters.
+
+    Every tab has its own bar with only the fields it needs, for the person
+    looking (lib/analyticsFilters.js, tabForms) — and a tab that needs none gets
+    no bar at all. Its fields carry the tab's prefix in the address
+    (weak_subject, att_from), so filtering one tab leaves the others as they
+    were: their filters ride along as hidden fields, and Clear clears this tab's
+    only. The form comes back to its own tab (#weak-topics).
+
+    A subject, an assessment, a status or a branch picked applies at once, as
+    Apply does (the page's script, data-autosubmit).
+
+    Locals: form (one entry of analytics.forms), action (the Analytics address),
+            subjects, placeholder (the search box's hint); branches (the main
+            admin's, from the shell) %>
+<%
+  const fields = form.fields || [];
+  const values = form.values || {};
+  const has = (field) => fields.includes(field);
+  const nameOf = (field) => `${form.prefix}_${field}`;
+  const kept = new URLSearchParams(form.others || []).toString();
+  const branchList = typeof branches === 'undefined' ? [] : (branches || []);
+%>
+<% if (fields.length) { %>
+  <form class="mq-toolbar" method="get" action="<%= action %>#<%= form.panel %>" data-analytics-filters>
+    <% (form.others || []).forEach((pair) => { %>
+      <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
+    <% }) %>
+    <div class="mq-filters">
+      <% if (has('search')) { %>
+        <label class="mq-field mq-field-search">
+          <span>Search</span>
+          <input type="search" name="<%= nameOf('search') %>" value="<%= values.search || '' %>" placeholder="<%= placeholder %>" />
+        </label>
+      <% } %>
+
+      <% if (has('subject')) { %>
+        <label class="mq-field">
+          <span>Subject</span>
+          <select name="<%= nameOf('subject') %>" data-autosubmit>
+            <option value="all">All subjects</option>
+            <% (subjects || []).forEach((subject) => { %>
+              <option value="<%= subject.id %>" <%= String(values.subjectId) === String(subject.id) ? 'selected' : '' %>><%= subject.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+
+      <% if (has('kind')) { %>
+        <label class="mq-field">
+          <span>Assessment</span>
+          <select name="<%= nameOf('kind') %>" data-autosubmit>
+            <option value="all">All</option>
+            <% form.choices.kind.forEach((choice) => { %>
+              <option value="<%= choice[0] %>" <%= values.kind === choice[0] ? 'selected' : '' %>><%= choice[1] %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+
+      <% if (has('role')) { %>
+        <label class="mq-field">
+          <span>Role</span>
+          <select name="<%= nameOf('role') %>" data-autosubmit>
+            <option value="all">All roles</option>
+            <% form.choices.role.forEach((role) => { %>
+              <option value="<%= role %>" <%= values.role === role ? 'selected' : '' %>><%= role %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+
+      <% if (has('status')) { %>
+        <label class="mq-field">
+          <span>Status</span>
+          <select name="<%= nameOf('status') %>" data-autosubmit>
+            <option value="all">All statuses</option>
+            <% form.choices.status.forEach((status) => { %>
+              <option value="<%= status %>" <%= values.status === status ? 'selected' : '' %>><%= status %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+
+      <% if (has('from')) { %>
+        <label class="mq-field"><span>From</span><input type="date" name="<%= nameOf('from') %>" value="<%= values.from || '' %>" /></label>
+      <% } %>
+      <% if (has('to')) { %>
+        <label class="mq-field"><span>To</span><input type="date" name="<%= nameOf('to') %>" value="<%= values.to || '' %>" /></label>
+      <% } %>
+
+      <% if (has('branch') && branchList.length) { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="<%= nameOf('branch') %>" data-autosubmit>
+            <option value="all">All branches</option>
+            <% branchList.forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= String(values.branchId) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+      <a class="mq-btn" href="<%= action %><%= kept ? `?${kept}` : '' %>#<%= form.panel %>">Clear</a>
+    </div>
+  </form>
+<% } %>

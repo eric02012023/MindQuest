@@ -34,24 +34,36 @@
     table, with a summary table above it that counts them by any two of their
     fields ("Accounts by Branch and Role"). Both download as CSV.
 
+    WEAK TOPICS: each topic says how many of the learners who answered it are
+    weak in it ("3 of 5"); clicking that lists who they are — their own score on
+    the topic, and a link to their analytics (#weak-topic-modal).
+
+    PAYMENT COLLECTION is the Payment Collection report itself — the same
+    summary, filters and transactions (views/partials/payment-collection.ejs).
+
     No explanatory sentences under the headings: the user asked for the page to
     show the reports, not describe them.
 
     A chart is drawn the first time its tab is shown (`mq:vtab-shown`): drawn in
     a hidden tab it would have no size. The open tab is kept in the address.
 
-    THE FILTER BAR (between the headline figures and the tabs)
-    Search (staff and tutors), subject, assessment, from/to and — main admin
-    only — branch. Every figure and tab below reads the filtered rows. Applying
-    or clearing keeps the tab that was open (the #tab in the address).
+    EACH TAB'S OWN FILTERS (views/partials/analytics-filters.ejs)
+    There is no filter bar for the whole page. Every tab that needs one has its
+    own, at its top, with only its fields (lib/analyticsFilters.js): Weak topics
+    a search, a subject and — main admin only — a branch; Recent attempts a
+    search, subject, assessment and dates; Enrollment & progress only the main
+    admin's branch… A tab that needs none (a student's Score trend) has none.
+    Filtering one tab leaves the others as they are, and comes back to that tab.
+    The headline figures at the top are the viewer's whole scope.
 
     The role differences that remain are about what is worth SHOWING:
       - a student has no "per-learner" table (there is one learner)
       - money is staff-only, and is not even queried for a tutor or student
       - violations are a supervision concern, so students do not see the list
 
-    Locals: analytics (from getAnalyticsDashboard, with .filters), focusHandouts,
-            branches (staff), viewerRole %>
+    Locals: analytics (from getAnalyticsDashboard, with .filters and .forms),
+            focusHandouts, payments (staff: rows and summary), paymentMethods,
+            paymentPurposes, branches (staff), viewerRole %>
 <%
   const a = analytics;
   const scope = a.scope;
@@ -59,9 +71,21 @@
   const isStudent = scope.isStudent;
   const isTutor = scope.isTutor;
   const showMoney = !!a.financials;
-  const activeFilters = a.filters || {};
+  const tabFilters = a.filters || {};
+  const forms = a.forms || {};
   const analyticsPath = `${basePath}/analytics`;
-  const datesPicked = !!(activeFilters.from || activeFilters.to);
+  const weakBelow = a.weakBelow || 60;
+  // One tab's own filter bar (none when that tab has no field for this viewer).
+  const filterBar = (tab, placeholder) => (forms[tab]
+    ? include('../partials/analytics-filters', { form: forms[tab], action: analyticsPath, subjects: a.subjects, placeholder: placeholder || '' })
+    : '');
+  const queryOf = (pairs) => {
+    const text = new URLSearchParams(pairs || []).toString();
+    return text ? `?${text}` : '';
+  };
+  const paymentReport = showMoney && typeof payments !== 'undefined' && payments ? payments : null;
+  // Has this tab been narrowed? Its empty list then says so, not "nothing yet".
+  const narrowed = (tab) => !!(forms[tab] && forms[tab].own.length);
 
   const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
   const nameOf = (row) => `${titleCaseName(row.first_name)} ${titleCaseName(row.last_name || '')}`.trim();
@@ -76,7 +100,7 @@
   const subjectTrends = [];
   if (isStudent) {
     const bySubject = new Map();
-    [...(a.submissions || [])].reverse().forEach((row) => {
+    [...(a.trendSubmissions || [])].reverse().forEach((row) => {
       if (row.percentage == null) return;
       const key = String(row.subject_id);
       if (!bySubject.has(key)) bySubject.set(key, { id: row.subject_id, name: row.subject_name, labels: [], kinds: [], values: [] });
@@ -87,8 +111,6 @@
     });
     (a.subjects || []).forEach((subject) => {
       const key = String(subject.id);
-      // A subject picked in the filter bar: only that subject's chart.
-      if (activeFilters.subjectId && String(activeFilters.subjectId) !== 'all' && String(activeFilters.subjectId) !== key) return;
       subjectTrends.push(bySubject.get(key) || { id: subject.id, name: subject.name, labels: [], kinds: [], values: [] });
     });
   }
@@ -103,8 +125,9 @@
   // The registry's summary table counts the accounts the Role and Status pickers
   // leave, and its title says which: "Accounts", "Learners", "Approved tutors"…
   const registryNoun = (() => {
-    const noun = { 'Assistant Admin': 'Assistant admins', Tutor: 'Tutors', Student: 'Learners' }[activeFilters.registryRole] || 'Accounts';
-    const status = activeFilters.registryStatus && activeFilters.registryStatus !== 'all' ? activeFilters.registryStatus : '';
+    const picked = tabFilters.registry || {};
+    const noun = { 'Assistant Admin': 'Assistant admins', Tutor: 'Tutors', Student: 'Learners' }[picked.role] || 'Accounts';
+    const status = picked.status && picked.status !== 'all' ? picked.status : '';
     return status ? `${status} ${noun.toLowerCase()}` : noun;
   })();
   const pct =(value) => (value === null || value === undefined ? '—' : `${value}%`);
@@ -116,21 +139,26 @@
     'Declined': 'mq-status-unpaid',
     'Awaiting Post-Assessment': 'mq-status-pending'
   }[status] || 'mq-status-none');
-  // The filters that are on screen, as [name, value] pairs: the page's own, and
-  // the User registry's role and status. The CSV links carry them all, so a file
-  // matches its tab; each filter form carries the other form's, so using one
-  // does not undo the other.
-  const pageFilters = [['search', activeFilters.search], ['subject_id', activeFilters.subjectId], ['kind', activeFilters.kind],
-    ['from', activeFilters.from], ['to', activeFilters.to], ['branch_id', activeFilters.branchId]]
-    .filter((pair) => pair[1] && pair[1] !== 'all');
-  const registryFilters = [['reg_role', activeFilters.registryRole], ['reg_status', activeFilters.registryStatus]]
-    .filter((pair) => pair[1] && pair[1] !== 'all');
-  const queryOf = (pairs) => {
-    const text = new URLSearchParams(pairs).toString();
-    return text ? `?${text}` : '';
-  };
-  const progressCsvHref = `${basePath}/analytics/progress.csv${queryOf(pageFilters)}`;
-  const registryCsvHref = `${basePath}/analytics/registry.csv${queryOf([...pageFilters, ...registryFilters])}`;
+  // A CSV carries its own tab's filters, so the file says what the tab says.
+  const progressCsvHref = `${basePath}/analytics/progress.csv${queryOf((forms.progress || {}).own)}`;
+  const registryCsvHref = `${basePath}/analytics/registry.csv${queryOf((forms.registry || {}).own)}`;
+
+  // Weak topics: who is weak in each, for the list a click on "3 of 5" opens.
+  // A student's are their own, so they get no list.
+  const weakLists = isStudent ? [] : (a.weakTopics || []).map((topic) => ({
+    topic: topic.topic,
+    subject: topic.subject_name,
+    answered: topic.student_count,
+    learners: (topic.weak_learners || []).map((learner) => ({
+      name: learner.name,
+      code: learner.student_code,
+      branch: learner.branch_name,
+      correct: learner.correct,
+      total: learner.total,
+      percentage: learner.percentage,
+      href: learnerHref(learner.student_id)
+    }))
+  }));
   // "Change per learner": the learners whose scores moved most, either way.
   const learnerChart = (() => {
     const moved = progressRows.filter((row) => row.change !== null)
@@ -158,7 +186,7 @@
     { key: 'attempts', label: isStudent ? 'My assessment history' : 'Recent attempts', icon: 'clipboard', count: (a.submissions || []).length },
     { key: 'enrollment', label: 'Enrollment & progress', icon: 'book' },
     { key: 'focus-areas', label: 'Auto-generated focus areas', icon: 'flag', count: focusList.length },
-    showMoney && { key: 'payments', label: 'Payment collection', icon: 'wallet' },
+    paymentReport && { key: 'payments', label: 'Payment collection', icon: 'wallet', count: paymentReport.rows.length },
     !isStudent && { key: 'integrity', label: 'Assessment integrity', icon: 'shield', count: (a.violations || []).length },
     showRegistry && { key: 'registry', label: 'User registry', icon: 'grid', count: registry.everyone.length }
   ].filter(Boolean);
@@ -184,7 +212,7 @@
     <div class="mq-kpi">
       <span>Assessments taken</span>
       <strong><%= kpis.attempts %></strong>
-      <small><%= datesPicked ? 'in the selected period' : 'all time' %></small>
+      <small>all time</small>
     </div>
     <div class="mq-kpi">
       <span>Average score</span>
@@ -194,7 +222,7 @@
     <div class="mq-kpi">
       <span>Weak topics</span>
       <strong><%= kpis.weakTopics %></strong>
-      <small>below 60%</small>
+      <small>below <%= weakBelow %>%</small>
     </div>
     <% if (!isStudent) { %>
       <div class="mq-kpi">
@@ -217,60 +245,6 @@
     <% } %>
   </div>
 
-  <%# --------------------------------------------------------------- filters %>
-  <form class="mq-toolbar" method="get" action="<%= analyticsPath %>" data-analytics-filters>
-    <%# The User registry's role and status travel with it, so a search does not undo them. %>
-    <% registryFilters.forEach((pair) => { %>
-      <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
-    <% }) %>
-    <div class="mq-filters">
-      <% if (!isStudent) { %>
-        <label class="mq-field mq-field-search">
-          <span>Search</span>
-          <input type="search" name="search" value="<%= activeFilters.search || '' %>" placeholder="Learner name, ID or subject" />
-        </label>
-      <% } %>
-
-      <label class="mq-field">
-        <span>Subject</span>
-        <select name="subject_id" data-autosubmit>
-          <option value="all">All subjects</option>
-          <% (a.subjects || []).forEach((subject) => { %>
-            <option value="<%= subject.id %>" <%= String(activeFilters.subjectId) === String(subject.id) ? 'selected' : '' %>><%= subject.name %></option>
-          <% }) %>
-        </select>
-      </label>
-
-      <label class="mq-field">
-        <span>Assessment</span>
-        <select name="kind" data-autosubmit>
-          <option value="all" <%= !activeFilters.kind || activeFilters.kind === 'all' ? 'selected' : '' %>>All</option>
-          <option value="pre_assessment" <%= activeFilters.kind === 'pre_assessment' ? 'selected' : '' %>>Pre-Assessment</option>
-          <option value="post_assessment" <%= activeFilters.kind === 'post_assessment' ? 'selected' : '' %>>Post-Assessment</option>
-          <option value="tutor_assessment" <%= activeFilters.kind === 'tutor_assessment' ? 'selected' : '' %>>Module assessment</option>
-        </select>
-      </label>
-
-      <label class="mq-field"><span>From</span><input type="date" name="from" value="<%= activeFilters.from || '' %>" /></label>
-      <label class="mq-field"><span>To</span><input type="date" name="to" value="<%= activeFilters.to || '' %>" /></label>
-
-      <% if (scope.canPickBranch && typeof branches !== 'undefined' && (branches || []).length) { %>
-        <label class="mq-field">
-          <span>Branch</span>
-          <select name="branch_id" data-autosubmit>
-            <option value="all">All branches</option>
-            <% branches.forEach((branch) => { %>
-              <option value="<%= branch.id %>" <%= String(activeFilters.branchId) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
-            <% }) %>
-          </select>
-        </label>
-      <% } %>
-
-      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
-      <a class="mq-btn" href="<%= analyticsPath %>" data-filters-clear>Clear</a>
-    </div>
-  </form>
-
   <%# A rail of icons: pointing at it (or tabbing into it) opens it over the
       report with every name and count; it folds back when the pointer leaves. %>
   <div class="mq-vtabs mq-vtabs-rail" data-vtabs data-vtab-default="score-trends">
@@ -290,6 +264,7 @@
 
       <%# ============================================================ Score trend %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-score-trends" data-vtab-panel="score-trends" aria-labelledby="vtab-score-trends">
+        <%- filterBar('trend') %>
         <% if (isStudent) { %>
           <%# One chart per subject — a bar for every assessment taken, the score
               in percent, so the student sees each subject's own trend. %>
@@ -323,7 +298,7 @@
               <span class="mq-count">average % per month</span>
             </div>
             <% if (!(a.trend || []).length) { %>
-              <div class="mq-empty">No assessments have been submitted yet.</div>
+              <div class="mq-empty"><%= narrowed('trend') ? 'No assessment matches these filters.' : 'No assessments have been submitted yet.' %></div>
             <% } else { %>
               <div class="mq-chart-box mq-chart-box-tall"><canvas id="trendChart"></canvas></div>
             <% } %>
@@ -333,6 +308,7 @@
 
       <%# =========================================================== Level spread %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-level-spread" data-vtab-panel="level-spread" aria-labelledby="vtab-level-spread" hidden>
+        <%- filterBar('levels') %>
         <section class="mq-panel">
           <div class="mq-panel-head">
             <div>
@@ -340,7 +316,7 @@
             </div>
           </div>
           <% if (!levelTotal) { %>
-            <div class="mq-empty">No level has been assigned yet.</div>
+            <div class="mq-empty"><%= narrowed('levels') ? 'No learner matches these filters.' : 'No level has been assigned yet.' %></div>
           <% } else { %>
             <div class="mq-chart-box mq-chart-box-tall"><canvas id="levelChart"></canvas></div>
           <% } %>
@@ -349,6 +325,7 @@
 
       <%# ============================================================ Weak topics %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-weak-topics" data-vtab-panel="weak-topics" aria-labelledby="vtab-weak-topics" hidden>
+        <%- filterBar('weak', 'Topic or subject') %>
         <section class="mq-panel">
           <div class="mq-panel-head">
             <div>
@@ -357,24 +334,32 @@
             <span class="mq-count"><%= countOf(a.weakTopics, 'topic') %></span>
           </div>
 
-          <div class="mq-table" style="--mq-cols: minmax(200px, 3fr) 1fr 90px 90px minmax(120px, 1fr);">
+          <%# "Weak learners" (staff and tutors): how many of the learners who answered
+              the topic scored below the line on it — "3 of 5". Clicking it lists
+              who they are (#weak-topic-modal). %>
+          <div class="mq-table" style="--mq-cols: minmax(200px, 3fr) 1fr 90px 90px minmax(120px, 1fr)<%= isStudent ? '' : ' 130px' %>;">
             <div class="mq-head">
               <span>Topic</span><span>Subject</span><span class="mq-num">Correct</span>
               <span class="mq-num">Score</span><span>Mastery</span>
+              <% if (!isStudent) { %><span>Weak learners</span><% } %>
             </div>
 
             <% if (!(a.weakTopics || []).length) { %>
               <div class="mq-empty">
-                <strong>Nothing to report yet</strong>
-                Weak topics appear once assessments have been submitted.
+                <% if (narrowed('weak')) { %>
+                  <strong>No topic matches</strong>
+                  Clear the filters to see every topic.
+                <% } else { %>
+                  <strong>Nothing to report yet</strong>
+                  Weak topics appear once assessments have been submitted.
+                <% } %>
               </div>
             <% } %>
 
-            <% (a.weakTopics || []).forEach((topic) => { %>
+            <% (a.weakTopics || []).forEach((topic, index) => { %>
               <div class="mq-row">
                 <span class="mq-cell mq-cell-primary" data-label="Topic">
                   <span class="mq-name"><%= topic.topic %></span>
-                  <% if (!isStudent) { %><span class="mq-sub"><%= topic.student_count %> learner<%= topic.student_count === 1 ? '' : 's' %></span><% } %>
                 </span>
                 <span class="mq-cell mq-sub" data-label="Subject"><%= topic.subject_name %></span>
                 <span class="mq-cell mq-num" data-label="Correct"><%= topic.correct %>/<%= topic.total %></span>
@@ -382,6 +367,18 @@
                 <span class="mq-cell" data-label="Mastery">
                   <span class="mq-meter <%= meterClass(topic.percentage) %>"><i style="width: <%= Math.max(2, Math.min(100, topic.percentage)) %>%"></i></span>
                 </span>
+                <% if (!isStudent) { %>
+                  <span class="mq-cell" data-label="Weak learners">
+                    <% if (topic.weak_count) { %>
+                      <button type="button" class="mq-btn mq-btn-sm" data-weak-topic="<%= index %>"
+                              aria-haspopup="dialog" title="See who is weak in this topic">
+                        <%- icon('users') %> <%= topic.weak_count %> of <%= topic.student_count %>
+                      </button>
+                    <% } else { %>
+                      <span class="mq-sub">0 of <%= topic.student_count %></span>
+                    <% } %>
+                  </span>
+                <% } %>
               </div>
             <% }) %>
           </div>
@@ -391,6 +388,7 @@
       <%# ==================================================== Learner performance %>
       <% if (!isStudent) { %>
         <section class="mq-vtab-panel" role="tabpanel" id="vpanel-learner-performance" data-vtab-panel="learner-performance" aria-labelledby="vtab-learner-performance" hidden>
+          <%- filterBar('perf', 'Learner name or ID') %>
           <section class="mq-panel">
             <div class="mq-panel-head">
               <div>
@@ -407,7 +405,11 @@
               </div>
 
               <% if (!(a.performance || []).length) { %>
-                <div class="mq-empty"><strong>No learners in scope</strong>Once learners are assigned to you they appear here.</div>
+                <% if (narrowed('perf')) { %>
+                  <div class="mq-empty"><strong>No learner matches</strong>Clear the filters to see every learner.</div>
+                <% } else { %>
+                  <div class="mq-empty"><strong>No learners in scope</strong>Once learners are assigned to you they appear here.</div>
+                <% } %>
               <% } %>
 
               <% (a.performance || []).forEach((row) => { %>
@@ -441,6 +443,7 @@
           every learner and subject in scope (lib/analytics.js getProgressComparison).
           A tutor sees the subjects they teach the learner; a student, their own. %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-progress" data-vtab-panel="progress" aria-labelledby="vtab-progress" hidden>
+        <%- filterBar('progress', 'Learner, ID, subject or branch') %>
         <section class="mq-panel">
           <div class="mq-panel-head">
             <div>
@@ -454,8 +457,13 @@
 
           <% if (!progressRows.length) { %>
             <div class="mq-empty">
-              <strong>Nothing to compare yet</strong>
-              <%= isStudent ? 'You are not enrolled in a subject yet.' : 'No learner in scope is enrolled in a subject that matches these filters.' %>
+              <% if (narrowed('progress')) { %>
+                <strong>Nothing matches</strong>
+                Clear the filters to see every <%= isStudent ? 'subject' : 'learner' %>.
+              <% } else { %>
+                <strong>Nothing to compare yet</strong>
+                <%= isStudent ? 'You are not enrolled in a subject yet.' : 'No learner in scope is enrolled in a subject yet.' %>
+              <% } %>
             </div>
           <% } else { %>
             <div class="mq-summary">
@@ -661,6 +669,7 @@
 
       <%# ======================================================== Attempt list %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-attempts" data-vtab-panel="attempts" aria-labelledby="vtab-attempts" hidden>
+        <%- filterBar('attempts', 'Learner, ID, subject or assessment') %>
         <section class="mq-panel">
           <div class="mq-panel-head">
             <div>
@@ -680,7 +689,11 @@
             </div>
 
             <% if (!(a.submissions || []).length) { %>
-              <div class="mq-empty"><strong>No attempts yet</strong>Submitted assessments appear here.</div>
+              <% if (narrowed('attempts')) { %>
+                <div class="mq-empty"><strong>No attempt matches</strong>Clear the filters to see every attempt.</div>
+              <% } else { %>
+                <div class="mq-empty"><strong>No attempts yet</strong>Submitted assessments appear here.</div>
+              <% } %>
             <% } %>
 
             <% (a.submissions || []).forEach((row) => { %>
@@ -715,6 +728,7 @@
 
       <%# ================================================ Enrollment & progress %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-enrollment" data-vtab-panel="enrollment" aria-labelledby="vtab-enrollment" hidden>
+        <%- filterBar('enrolment') %>
         <% if (showMoney) { %>
           <section class="mq-panel">
             <div class="mq-panel-head">
@@ -774,6 +788,7 @@
 
       <%# ======================================================== Focus areas %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-focus-areas" data-vtab-panel="focus-areas" aria-labelledby="vtab-focus-areas" hidden>
+        <%- filterBar('focus', 'Learner or subject') %>
         <section class="mq-panel">
           <div class="mq-panel-head">
             <div>
@@ -789,8 +804,13 @@
             </div>
             <% if (!focusList.length) { %>
               <div class="mq-empty">
-                <strong>No focus areas yet</strong>
-                They are written automatically when a Pre-Assessment is submitted.
+                <% if (narrowed('focus')) { %>
+                  <strong>No focus area matches</strong>
+                  Clear the filters to see every one.
+                <% } else { %>
+                  <strong>No focus areas yet</strong>
+                  They are written automatically when a Pre-Assessment is submitted.
+                <% } %>
               </div>
             <% } %>
             <% focusList.forEach((handout) => { %>
@@ -815,39 +835,35 @@
         </section>
       </section>
 
-      <%# ================================================= Payment collection %>
-      <% if (showMoney) { %>
+      <%# ================================================= Payment collection
+          The Payment Collection report itself: its summary, its search and
+          filters (pay_search, pay_from… — this tab's own) and every transaction
+          they return. %>
+      <% if (paymentReport) { %>
+        <% const payForm = forms.payments; %>
+        <% const payName = (field) => `${payForm.prefix}_${field}`; %>
         <section class="mq-vtab-panel" role="tabpanel" id="vpanel-payments" data-vtab-panel="payments" aria-labelledby="vtab-payments" hidden>
-          <section class="mq-panel">
-            <div class="mq-panel-head">
-              <div>
-                <h3>Payment collection</h3>
-              </div>
-              <a class="mq-btn mq-btn-sm" href="<%= basePath %>/income-report"><%- icon('receipt') %> Open Payment Collection</a>
-            </div>
-
-            <div class="mq-summary">
-              <div class="mq-summary-item is-positive">
-                <span>Collected</span><strong><%= money(a.financials.collected) %></strong>
-              </div>
-              <div class="mq-summary-item is-negative">
-                <span>Outstanding</span><strong><%= money(a.financials.outstanding) %></strong>
-              </div>
-              <div class="mq-summary-item">
-                <span>Transactions</span><strong><%= a.financials.transactions %></strong>
-              </div>
-              <div class="mq-summary-item">
-                <span>Settled accounts</span>
-                <strong><%= a.financials.settledAccounts %> / <%= a.financials.settledAccounts + a.financials.unsettledAccounts %></strong>
-              </div>
-            </div>
-          </section>
+          <%- include('../partials/payment-collection', {
+            rows: paymentReport.rows,
+            summary: paymentReport.summary,
+            values: payForm.values,
+            paymentMethods: typeof paymentMethods === 'undefined' ? [] : paymentMethods,
+            paymentPurposes: typeof paymentPurposes === 'undefined' ? [] : paymentPurposes,
+            action: `${analyticsPath}#${payForm.panel}`,
+            names: { search: payName('search'), from: payName('from'), to: payName('to'), branch: payName('branch'), method: payName('method'), purpose: payName('purpose') },
+            keep: payForm.others,
+            clearHref: `${analyticsPath}${queryOf(payForm.others)}#${payForm.panel}`,
+            analyticsTab: payForm.panel,
+            showPrint: false,
+            headingTag: 'h3'
+          }) %>
         </section>
       <% } %>
 
       <%# ================================================= Assessment integrity %>
       <% if (!isStudent) { %>
         <section class="mq-vtab-panel" role="tabpanel" id="vpanel-integrity" data-vtab-panel="integrity" aria-labelledby="vtab-integrity" hidden>
+          <%- filterBar('integrity', 'Learner, ID, assessment or event') %>
           <section class="mq-panel">
             <div class="mq-panel-head">
               <div>
@@ -862,8 +878,13 @@
               </div>
               <% if (!(a.violations || []).length) { %>
                 <div class="mq-empty">
-                  <strong>Nothing flagged</strong>
-                  No suspicious activity has been recorded.
+                  <% if (narrowed('integrity')) { %>
+                    <strong>No event matches</strong>
+                    Clear the filters to see every flagged event.
+                  <% } else { %>
+                    <strong>Nothing flagged</strong>
+                    No suspicious activity has been recorded.
+                  <% } %>
                 </div>
               <% } %>
               <% (a.violations || []).forEach((violation) => { %>
@@ -890,15 +911,17 @@
           branches in scope (lib/analytics.js getUserRegistry). Staff only: the
           main admin sees every branch, an assistant their own.
 
-          The Role and Status pickers narrow both tables below them. The first
-          counts those accounts by any two of their fields, chosen as its rows and
-          its columns; its title says what it shows ("Learners by Subject and
-          Branch"). It is worked out in the browser from the accounts already on
-          the page, so changing a field sends nothing. %>
+          Its own search and branch narrow everything in it; the Role and Status
+          pickers narrow the two tables. The first counts those accounts by any
+          two of their fields, chosen as its rows and its columns; its title says
+          what it shows ("Learners by Subject and Branch"). It is worked out in
+          the browser from the accounts already on the page, so changing a field
+          sends nothing. %>
       <% if (showRegistry) { %>
         <% const people = registry.everyone.filter((row) => row.role !== 'admin'); %>
         <% const fields = [['branch', 'Branch'], ['role', 'Role'], ['status', 'Status'], ['level', 'Year level'], ['gender', 'Gender'], ['subject', 'Subject']]; %>
         <section class="mq-vtab-panel" role="tabpanel" id="vpanel-registry" data-vtab-panel="registry" aria-labelledby="vtab-registry" hidden>
+          <%- filterBar('registry', 'Name, ID, email, contact, branch or subject') %>
           <section class="mq-panel">
             <div class="mq-panel-head">
               <div>
@@ -916,36 +939,6 @@
               <div class="mq-summary-item"><span>Learners</span><strong><%= people.filter((row) => row.role === 'student').length %></strong></div>
               <div class="mq-summary-item is-negative"><span>Archived</span><strong><%= people.filter((row) => row.status === 'Archived').length %></strong></div>
             </div>
-
-            <form class="mq-toolbar" method="get" action="<%= analyticsPath %>" data-analytics-filters>
-              <%# The page's own filters travel with it, so picking a role does not undo them. %>
-              <% pageFilters.forEach((pair) => { %>
-                <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
-              <% }) %>
-              <div class="mq-filters">
-                <label class="mq-field">
-                  <span>Role</span>
-                  <select name="reg_role" data-autosubmit>
-                    <option value="all">All roles</option>
-                    <% ['Assistant Admin', 'Tutor', 'Student'].forEach((role) => { %>
-                      <option value="<%= role %>" <%= activeFilters.registryRole === role ? 'selected' : '' %>><%= role %></option>
-                    <% }) %>
-                  </select>
-                </label>
-                <label class="mq-field">
-                  <span>Status</span>
-                  <select name="reg_status" data-autosubmit>
-                    <option value="all">All statuses</option>
-                    <% ['Approved', 'Pending', 'Rejected', 'Archived'].forEach((status) => { %>
-                      <option value="<%= status %>" <%= activeFilters.registryStatus === status ? 'selected' : '' %>><%= status %></option>
-                    <% }) %>
-                  </select>
-                </label>
-                <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
-                <%# Clears the role and status only; the page's filters stay. %>
-                <a class="mq-btn" href="<%= analyticsPath %><%= queryOf(pageFilters) %>" data-filters-clear>Clear</a>
-              </div>
-            </form>
           </section>
 
           <%# ------------------------------------------- accounts by any two fields %>
@@ -1037,6 +1030,30 @@
     </div>
   </div>
 
+  <%# ============================================ Who is weak in one topic
+      Opened by a topic's "3 of 5" (Weak topics). Each learner's own score on
+      the topic, weakest first, and a link to their analytics. Filled from the
+      list below when a topic is clicked. %>
+  <% if (!isStudent) { %>
+    <div class="global-modal" id="weak-topic-modal" role="dialog" aria-modal="true" aria-labelledby="weak-topic-title">
+      <div class="global-modal-card extra-wide">
+        <button type="button" class="modal-close" data-close-modal aria-label="Close">&times;</button>
+        <h3 id="weak-topic-title" data-weak-title>Weak learners</h3>
+        <p class="mq-sub" data-weak-meta></p>
+        <div class="mq-table" data-weak-list<%= scope.isAdmin ? ' data-show-branch' : '' %>
+             style="--mq-cols: minmax(190px, 2fr)<%= scope.isAdmin ? ' minmax(120px, 1fr)' : '' %> 90px 90px minmax(110px, 1fr);">
+          <div class="mq-head">
+            <span>Learner</span>
+            <% if (scope.isAdmin) { %><span>Branch</span><% } %>
+            <span class="mq-num">Correct</span><span class="mq-num">Score</span><span>Mastery</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <%# "<" escaped so a name can never close the tag. %>
+    <script type="application/json" id="weak-topic-data"><%- JSON.stringify({ below: weakBelow, topics: weakLists }).replace(/</g, '\\u003c') %></script>
+  <% } %>
+
 </section>
 
 <style>
@@ -1048,24 +1065,87 @@
 </style>
 
 <script>
-  // The filter bar comes back to the tab that was open: the tab lives in the
-  // address's #hash, which a submitted form would otherwise drop. A subject,
-  // assessment or branch picked applies at once, as the Apply button does.
+  // A subject, assessment, status, branch, method or purpose picked in a tab's
+  // own filter bar applies at once, as its Apply button does. Every bar's
+  // address ends in its own tab (#weak-topics), so the page comes back to it.
   (function () {
-    var keepTab = function (url) { return String(url).split('#')[0] + (window.location.hash || ''); };
-    document.querySelectorAll('form[data-analytics-filters]').forEach(function (form) {
-      form.addEventListener('submit', function () { form.action = keepTab(form.action); });
-      form.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
-        select.addEventListener('change', function () {
-          form.action = keepTab(form.action);
-          form.submit();
-        });
-      });
-      var clear = form.querySelector('[data-filters-clear]');
-      if (clear) clear.addEventListener('click', function () { clear.href = keepTab(clear.href); });
+    document.querySelectorAll('form[data-analytics-filters] select[data-autosubmit]').forEach(function (select) {
+      select.addEventListener('change', function () { select.form.submit(); });
     });
   })();
 </script>
+
+<% if (!isStudent) { %>
+<script>
+  // Weak topics -> "3 of 5" -> who those three are. Cells are filled with
+  // textContent, never innerHTML: a name is typed by a person.
+  (function () {
+    var modal = document.getElementById('weak-topic-modal');
+    var dataNode = document.getElementById('weak-topic-data');
+    if (!modal || !dataNode) return;
+    var data = { below: 60, topics: [] };
+    try { data = JSON.parse(dataNode.textContent || '{}'); } catch (_e) { /* keep the empty list */ }
+    var topics = data.topics || [];
+    var title = modal.querySelector('[data-weak-title]');
+    var meta = modal.querySelector('[data-weak-meta]');
+    var list = modal.querySelector('[data-weak-list]');
+    var showBranch = list.hasAttribute('data-show-branch');
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text != null) node.textContent = text;
+      return node;
+    }
+    function cell(className, label, text) {
+      var node = el('span', className, text);
+      node.setAttribute('data-label', label);
+      return node;
+    }
+    function meterClass(value) { return value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high'; }
+
+    document.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-weak-topic]');
+      if (!button) return;
+      var topic = topics[Number(button.getAttribute('data-weak-topic'))];
+      if (!topic) return;
+      var learners = topic.learners || [];
+      title.textContent = topic.topic;
+      meta.textContent = topic.subject + ' · ' + learners.length + ' of ' + topic.answered
+        + ' learner' + (topic.answered === 1 ? '' : 's') + ' below ' + data.below + '%';
+
+      Array.prototype.slice.call(list.querySelectorAll('.mq-row')).forEach(function (row) { row.remove(); });
+      learners.forEach(function (learner) {
+        var row = el('div', 'mq-row');
+        var who = cell('mq-cell mq-cell-primary', 'Learner');
+        var link = el('a', 'mq-name', learner.name);
+        link.href = learner.href;
+        who.appendChild(link);
+        who.appendChild(el('span', 'mq-sub', learner.code));
+        row.appendChild(who);
+        if (showBranch) row.appendChild(cell('mq-cell mq-sub', 'Branch', learner.branch));
+        row.appendChild(cell('mq-cell mq-num', 'Correct', learner.correct + '/' + learner.total));
+        row.appendChild(cell('mq-cell mq-num', 'Score', learner.percentage + '%'));
+        var mastery = cell('mq-cell', 'Mastery');
+        var meter = el('span', 'mq-meter ' + meterClass(learner.percentage));
+        var bar = el('i');
+        bar.style.width = Math.max(2, Math.min(100, learner.percentage)) + '%';
+        meter.appendChild(bar);
+        mastery.appendChild(meter);
+        row.appendChild(mastery);
+        list.appendChild(row);
+      });
+
+      if (typeof openModal === 'function') openModal(modal);
+      else modal.classList.add('is-open');
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && modal.classList.contains('is-open')) modal.classList.remove('is-open');
+    });
+  })();
+</script>
+<% } %>
 
 <script>
   // The registry's summary table: the accounts counted by any two of their

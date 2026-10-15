@@ -2,8 +2,10 @@
  * File: scripts/test-reports.js
  * Purpose: Pin down the Analytics & Reports additions — the User registry and the
  * fields its summary table counts by, the Student progress comparison and its
- * pivot of averages, the CSV files — and the in-memory list filters the
- * monitoring pages share (with the tutor's Attendance Logs filter bar, rendered).
+ * pivot of averages, the CSV files, every tab's own filters (and the bar each one
+ * renders), who is weak in each weak topic, the Payment Collection report the
+ * Payment collection tab shares with its page — and the in-memory list filters
+ * the monitoring pages share (with the tutor's Attendance Logs filter bar, rendered).
  *
  * Run:  node scripts/test-reports.js      (needs no database, no keys)
  *
@@ -29,6 +31,8 @@ function runSql(text, params = []) {
   if (/OUTER APPLY/i.test(sql) && /FROM user_subject_assignments usa/i.test(sql)) return script.progress;
   if (/FROM modules WHERE is_archived = 0 AND subject_id IN/i.test(sql)) return script.modules;
   if (/FROM student_module_reads/i.test(sql)) return script.reads;
+  if (/GROUP BY ta\.subject_id, q\.source_module_id, h\.file_original_name, sub\.student_id/i.test(sql)) return script.weakLearners || [];
+  if (/COUNT\(DISTINCT sub\.student_id\) AS student_count/i.test(sql)) return script.weakTopics || [];
   return [];
 }
 
@@ -44,8 +48,10 @@ require.cache[dbPath] = {
 };
 
 const {
-  buildAveragePivot, getUserRegistry, getProgressComparison, buildProgressSummary, PROGRESS_STATUS
+  buildAveragePivot, getUserRegistry, getProgressComparison, buildProgressSummary, PROGRESS_STATUS,
+  getWeakTopicLearners, getAnalyticsDashboard
 } = require('../lib/analytics');
+const af = require('../lib/analyticsFilters');
 const { csvCell, toCsv, registryCsv, progressCsv } = require('../lib/reportsCsv');
 const {
   matchesSearch, withinDates, cleanDate, cleanId
@@ -193,6 +199,9 @@ const user = (over) => ({
   ok('nobody found is an empty report', (await getProgressComparison(staff(), { search: 'nobody-here' })).length === 0);
   ok('…and the modules are not even asked for', !calls.some((call) => /FROM modules/.test(call.sql)));
   script.progress = everyLine;
+  const declined = await getProgressComparison(staff(), { status: 'Declined' });
+  ok('the tab\'s status narrows it to that status', declined.length === 1 && declined[0].student_id === 13, declined.map((x) => x.student_code).join());
+  ok('…and "all" is every line', (await getProgressComparison(staff(), { status: 'all' })).length === 5);
   script.progress = [];
   ok('nobody enrolled is an empty report, not an error', (await getProgressComparison(staff(), {})).length === 0);
 
@@ -207,6 +216,143 @@ const user = (over) => ({
   ok('branch by subject is a pivot of average change', summary.branchSubjectChange.rows[0].label === 'Main Branch' && summary.branchSubjectChange.grand === 3.3);
   const none = buildProgressSummary([]);
   ok('an empty report has no averages, not zeros', none.averagePre === null && none.averageChange === null && none.learners === 0);
+
+  console.log('\n== every Analytics tab reads its own filters ==');
+  const lists = { methods: ['Cash', 'GCash'], purposes: ['Tuition'] };
+  const adminF = af.readAnalyticsFilters({
+    weak_search: '  nouns  ', weak_subject: '4', weak_kind: 'pre_assessment', att_from: '2026-10-01', att_to: '2026-13-45',
+    att_kind: 'post_assessment', pay_method: 'Cash', pay_purpose: 'Bribes', reg_role: 'Tutor', reg_status: 'Archived',
+    reg_branch: 'x', prog_status: 'Improved', trend_subject: "4'--", int_search: 'x'.repeat(150)
+  }, { role: 'admin', ...lists });
+  ok('a tab reads its own fields, trimmed', adminF.weak.search === 'nouns' && adminF.weak.subjectId === '4');
+  ok('…and not another tab\'s (Weak topics has no assessment picker)', adminF.weak.kind === undefined && adminF.attempts.kind === 'post_assessment');
+  ok('a date must be a real day', adminF.attempts.from === '2026-10-01' && adminF.attempts.to === '');
+  ok('a choice must be one of its options', adminF.payments.method === 'Cash' && adminF.payments.purpose === 'all'
+    && adminF.registry.role === 'Tutor' && adminF.registry.status === 'Archived' && adminF.progress.status === 'Improved');
+  const swapped = af.readAnalyticsFilters({ reg_status: 'Improved', prog_status: 'Archived' }, { role: 'admin' });
+  ok('the registry\'s statuses are not the progress table\'s', swapped.registry.status === 'all' && swapped.progress.status === 'all');
+  ok('an id must be a whole number', adminF.registry.branchId === 'all' && adminF.trend.subjectId === 'all');
+  ok('a search is cut at 100 characters', adminF.integrity.search.length === 100);
+  const assistantF = af.readAnalyticsFilters({ weak_branch: '2', weak_subject: '4' }, { role: 'admin_assistant' });
+  ok('an assistant has no branch to pick: one in the address is not read', assistantF.weak.branchId === 'all' && assistantF.weak.subjectId === '4');
+  const tutorF = af.readAnalyticsFilters({ perf_branch: '1', perf_search: 'maria' }, { role: 'tutor' });
+  ok('…nor has a tutor', tutorF.perf.branchId === 'all' && tutorF.perf.search === 'maria');
+  const studentF = af.readAnalyticsFilters({
+    weak_search: 'nouns', weak_subject: '4', trend_subject: '4', prog_status: 'Improved', prog_subject: '6', att_kind: 'pre_assessment'
+  }, { role: 'student' });
+  ok('a student\'s page reads only a student\'s fields', studentF.weak.search === '' && studentF.weak.subjectId === '4'
+    && studentF.trend.subjectId === 'all' && studentF.progress.status === 'all' && studentF.progress.subjectId === '6' && studentF.attempts.kind === 'pre_assessment');
+  ok('a tab\'s filters, as the address writes them', JSON.stringify(af.paramsOfTab(adminF, 'attempts')) === '[["att_kind","post_assessment"],["att_from","2026-10-01"]]',
+    JSON.stringify(af.paramsOfTab(adminF, 'attempts')));
+  const carried = af.paramsExcept(adminF, 'weak');
+  ok('every other tab\'s, for a form to carry along', carried.every(([name]) => !name.startsWith('weak_')) && carried.some(([name]) => name === 'att_kind'));
+  ok('"all" and empty are not filters', JSON.stringify(af.setOnly({ a: 'all', b: '', c: '4', d: undefined })) === '{"c":"4"}');
+  const forms = af.tabForms(adminF, 'admin');
+  ok('each bar knows its tab on the page and its own fields', forms.weak.panel === 'weak-topics' && forms.weak.fields.join() === 'search,subject,branch'
+    && forms.enrolment.fields.join() === 'branch' && forms.payments.fields.join() === 'search,from,to,branch,method,purpose');
+  ok('…a tab with nothing to filter for this viewer has no fields', af.tabForms(adminF, 'admin_assistant').enrolment.fields.length === 0
+    && af.tabForms(adminF, 'student').trend.fields.length === 0 && af.tabForms(adminF, 'student').attempts.fields.join() === 'subject,kind,from,to');
+  ok('…and carries the others, never its own', forms.attempts.others.every(([name]) => !name.startsWith('att_')) && forms.attempts.own.length === 2);
+  ok('the Assessment picker lists Pre, Post and Module', forms.attempts.choices.kind.map((choice) => choice[1]).join() === 'Pre-Assessment,Post-Assessment,Module assessment');
+  ok('the Status picker is the tab\'s own', forms.progress.choices.status.includes('Improved') && forms.registry.choices.status.includes('Archived') && !forms.registry.choices.status.includes('Improved'));
+
+  console.log('\n== weak topics: who is weak in each ==');
+  const answer = (moduleId, handout, id, code, first, last, branch, correct, total) => ({
+    subject_id: 2, source_module_id: moduleId, handout_name: handout, student_id: id, student_code: code,
+    first_name: first, middle_name: null, last_name: last, branch_name: branch, total, correct
+  });
+  script.weakTopics = [
+    { subject_id: 2, subject_name: 'ENGLISH', source_module_id: 7, module_title: 'Module 1: Nouns', order_number: 1, handout_name: null, total: 6, correct: 2, student_count: 3 },
+    { subject_id: 2, subject_name: 'ENGLISH', source_module_id: 8, module_title: 'Module 2: Verbs', order_number: 2, handout_name: 'verbs.pdf', total: 4, correct: 4, student_count: 2 }
+  ];
+  script.weakLearners = [
+    answer(7, null, 12, 'STD-12', 'jose', 'reyes', null, 1, 2),
+    answer(7, null, 11, 'STD-11', 'maria', 'santos', 'Main Branch', 0, 2),
+    answer(7, null, 13, 'STD-13', 'lea', 'cruz', 'Fatima Branch', 2, 2),
+    answer(8, 'verbs.pdf', 11, 'STD-11', 'maria', 'santos', 'Main Branch', 2, 2),
+    answer(8, 'verbs.pdf', 12, 'STD-12', 'jose', 'reyes', null, 2, 2)
+  ];
+  const weakMap = await getWeakTopicLearners(staff(), {});
+  const nouns = weakMap.get('2|7|');
+  ok('a topic lists the learners below 60% on it, weakest first', nouns && nouns.weak.map((x) => x.student_code).join() === 'STD-11,STD-12', nouns && nouns.weak.map((x) => x.student_code).join());
+  ok('…out of everyone who answered it', nouns.answered === 3);
+  ok('…each with their own score on it', nouns.weak[1].correct === 1 && nouns.weak[1].total === 2 && nouns.weak[1].percentage === 50);
+  ok('…their name in title case, and a branch even when the record has none', nouns.weak[0].name === 'Maria Santos' && nouns.weak[1].branch_name === '—');
+  ok('a topic nobody is weak in has an empty list', weakMap.get('2|8|verbs.pdf').weak.length === 0 && weakMap.get('2|8|verbs.pdf').answered === 2);
+  calls.length = 0;
+  await getWeakTopicLearners(tutor(), { subjectId: '2' });
+  let weakSql = calls.find((call) => /sub\.student_id, u\.user_id AS student_code/.test(call.sql));
+  ok('a tutor\'s list is their own learners, in their subjects, with the subject picked bound last', /mq_scope_student/.test(weakSql.sql)
+    && /mq_scope_subject/.test(weakSql.sql) && weakSql.params[weakSql.params.length - 1] === 2);
+  calls.length = 0;
+  await getWeakTopicLearners(assistant(), {});
+  weakSql = calls.find((call) => /sub\.student_id, u\.user_id AS student_code/.test(call.sql));
+  ok('an assistant\'s is their branch\'s', /u\.branch_id = \?/.test(weakSql.sql) && weakSql.params.includes(2));
+
+  console.log('\n== the dashboard: every tab its own filters, the headline figures the whole scope ==');
+  const submissionCalls = () => calls.filter((call) => /sub\.is_auto_submitted, sub\.violation_count/.test(call.sql));
+  const weakCalls = () => calls.filter((call) => /COUNT\(DISTINCT sub\.student_id\) AS student_count/.test(call.sql));
+  const adminUser = { id: 1, role: 'admin' };
+  calls.length = 0;
+  let dash = await getAnalyticsDashboard(adminUser, af.readAnalyticsFilters({}, { role: 'admin' }));
+  ok('with no filter, the attempts are asked for once (the tabs and the figures share them)', submissionCalls().length === 1, String(submissionCalls().length));
+  ok('…and the weak topics once', weakCalls().length === 1, String(weakCalls().length));
+  ok('each weak topic carries who is weak in it', dash.weakTopics[0].weak_count === 2 && dash.weakTopics[0].weak_learners[0].student_code === 'STD-11' && dash.weakTopics[1].weak_count === 0);
+  ok('the headline counts the topics below 60%', dash.kpis.weakTopics === 1 && dash.weakBelow === 60);
+  ok('every tab has its own filter bar', Object.keys(dash.forms).length === 11 && dash.forms.weak.fields.join() === 'search,subject,branch');
+  calls.length = 0;
+  dash = await getAnalyticsDashboard(adminUser, af.readAnalyticsFilters({ att_kind: 'post_assessment', weak_subject: '2', weak_search: 'verbs', weak_branch: '3' }, { role: 'admin' }));
+  ok('a tab\'s filter is asked for apart from the headline figures', submissionCalls().length === 2
+    && submissionCalls().some((call) => call.params.includes('post_assessment')) && submissionCalls().some((call) => !call.params.includes('post_assessment')));
+  ok('Weak topics asks with its own subject and branch; the headline figure without', weakCalls().length === 2
+    && weakCalls().some((call) => call.params.join() === '3,2') && weakCalls().some((call) => call.params.length === 0), weakCalls().map((call) => call.params.join('/')).join(' | '));
+  ok('…and its search reads the topic', dash.weakTopics.length === 1 && dash.weakTopics[0].module_title === 'Module 2: Verbs');
+  ok('…while the headline still counts every weak topic', dash.kpis.weakTopics === 1);
+  calls.length = 0;
+  dash = await getAnalyticsDashboard({ id: 11, role: 'student', branch_id: 1 }, af.readAnalyticsFilters({ weak_search: 'nouns', weak_subject: '2' }, { role: 'student' }));
+  ok('a student\'s page never asks who else is weak', !calls.some((call) => /sub\.student_id, u\.user_id AS student_code/.test(call.sql)) && dash.weakTopics.every((topic) => topic.weak_count === 0));
+  ok('…and a search a student is not shown is not applied', dash.weakTopics.length === 2);
+  script.weakTopics = [];
+  script.weakLearners = [];
+
+  console.log('\n== a tab\'s filter bar, and the Payment Collection report (the views) ==');
+  const viewsDir = require('path').join(__dirname, '..', 'views', 'partials');
+  const viewUtils = require('../lib/utils');
+  const { icon: viewIcon } = require('../lib/icons');
+  const barForm = af.tabForms(af.readAnalyticsFilters({ weak_search: '"><script>x()</script>', weak_subject: '4', att_from: '2026-10-01', reg_role: 'Tutor' }, { role: 'admin' }), 'admin').weak;
+  const bar = await require('ejs').renderFile(require('path').join(viewsDir, 'analytics-filters.ejs'), {
+    icon: viewIcon, form: barForm, action: '/admin/analytics', subjects: [{ id: 4, name: 'ENGLISH' }], placeholder: 'Topic or subject', branches: [{ id: 3, name: 'BAWING' }]
+  });
+  ok('the bar has its tab\'s fields only, named for the tab', /name="weak_search"/.test(bar) && /name="weak_subject"/.test(bar) && /name="weak_branch"/.test(bar)
+    && !/type="date"/.test(bar) && !/name="search"/.test(bar) && !/name="subject_id"/.test(bar));
+  ok('…comes back to its tab', /action="\/admin\/analytics#weak-topics"/.test(bar));
+  ok('…carries the other tabs\' filters, hidden', /type="hidden" name="att_from" value="2026-10-01"/.test(bar) && /type="hidden" name="reg_role" value="Tutor"/.test(bar) && !/type="hidden" name="weak_/.test(bar));
+  ok('…and Clear clears its own only', /href="\/admin\/analytics\?att_from=2026-10-01&amp;reg_role=Tutor#weak-topics">Clear/.test(bar), (bar.match(/href="[^"]*">Clear/) || [''])[0]);
+  ok('…with the picked subject selected and a typed search escaped', /<option value="4" selected>ENGLISH/.test(bar) && !bar.includes('<script>x()</script>'));
+  const noBar = await require('ejs').renderFile(require('path').join(viewsDir, 'analytics-filters.ejs'), {
+    icon: viewIcon, form: af.tabForms(af.readAnalyticsFilters({}, { role: 'tutor' }), 'tutor').enrolment, action: '/tutor/analytics', subjects: [], placeholder: ''
+  });
+  ok('a tab with no field for this viewer has no bar at all', noBar.trim() === '');
+  const report = (extra) => require('ejs').renderFile(require('path').join(viewsDir, 'payment-collection.ejs'), {
+    icon: viewIcon, money: viewUtils.money, formatDateTime: viewUtils.formatDateTime, titleCaseName: viewUtils.titleCaseName, basePath: '/admin',
+    currentUser: { role: 'admin' }, branches: [{ id: 1, name: 'MAIN' }],
+    rows: [{ id: 1, amount: 500, paid_at: new Date('2026-10-14T09:00:00Z'), payment_method: 'Cash', purpose: 'Tuition', student_id: 4, user_id: 'STD-4', first_name: 'maria', last_name: 'santos', branch_name: 'MAIN' }],
+    summary: { totalIncome: 500, transactionCount: 1, monthIncome: 500, payingStudents: 1, outstanding: 1000 },
+    paymentMethods: [{ value: 'Cash' }, { value: 'GCash' }], paymentPurposes: ['Tuition'], ...extra
+  });
+  const inTab = await report({
+    values: { search: '', from: '', to: '', branchId: '1', method: 'GCash', purpose: 'all' }, action: '/admin/analytics#payments',
+    names: { search: 'pay_search', from: 'pay_from', to: 'pay_to', branch: 'pay_branch', method: 'pay_method', purpose: 'pay_purpose' },
+    keep: [['reg_role', 'Tutor']], clearHref: '/admin/analytics?reg_role=Tutor#payments', analyticsTab: 'payments', showPrint: false, headingTag: 'h3'
+  });
+  ok('in Analytics the report\'s fields carry the tab\'s prefix, and keep the other tabs\'', /name="pay_method" data-autosubmit/.test(inTab) && /<option value="GCash" selected>/.test(inTab) && /type="hidden" name="reg_role" value="Tutor"/.test(inTab));
+  ok('…with no Print, and its figures and transactions', !/Print/.test(inTab) && /Total collected/.test(inTab) && /<h3>Transactions<\/h3>/.test(inTab) && /Maria/.test(inTab));
+  const onPage = await report({
+    values: { search: 'ma', from: '', to: '', branchId: 'all', method: 'all', purpose: 'all' }, action: '/admin/income-report',
+    names: { search: 'search', from: 'from', to: 'to', branch: 'branch_id', method: 'method', purpose: 'purpose' },
+    keep: [], clearHref: '/admin/income-report', analyticsTab: null, showPrint: true, headingTag: 'h2'
+  });
+  ok('on its own page it keeps its plain names, its Print and no auto-apply', /name="branch_id"/.test(onPage) && /Print/.test(onPage) && !/data-autosubmit/.test(onPage) && /<h2>Transactions<\/h2>/.test(onPage));
 
   console.log('\n== CSV files are safe to open in a spreadsheet ==');
   ok('a plain cell is left alone', csvCell('Maria') === 'Maria');

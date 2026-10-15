@@ -1,0 +1,147 @@
+<%# File: views/partials/payment-collection.ejs
+    Purpose: The Payment Collection report — its summary, its search and filters,
+    and every transaction they return.
+
+    It has two homes: the Payment Collection page (/income-report) and the
+    Payment collection tab of Analytics & Reports. Both are built from the same
+    rows (routes/adminFactory.js, paymentCollection), so they can never disagree.
+    What differs is only where the form goes: the page's fields are search, from,
+    to…; the tab's carry its prefix (pay_search, pay_from…) and keep the other
+    tabs' filters, and come back to #payments.
+
+    Every row is one payment_entries record, so the report and a student's ledger
+    are the same rows. The table shows ten rows and scrolls (public/js/mq-tables.js).
+
+    Locals: rows, summary, values ({ search, from, to, branchId, method, purpose }),
+            paymentMethods, paymentPurposes,
+            action (where the form goes), names (each field's name in the address),
+            keep ([name, value] pairs the form carries along), clearHref,
+            analyticsTab (the tab it sits in — its picks then apply at once —
+            or null on the page), showPrint, headingTag ('h2' on the page, 'h3'
+            in a tab); branches and currentUser (from the shell) %>
+<%
+  const auto = analyticsTab ? 'data-autosubmit' : '';
+  const branchList = typeof branches === 'undefined' ? [] : (branches || []);
+%>
+<div class="mq-summary">
+  <div class="mq-summary-item is-positive">
+    <span>Total collected</span><strong><%= money(summary.totalIncome) %></strong>
+  </div>
+  <div class="mq-summary-item">
+    <span>Transactions</span><strong><%= summary.transactionCount %></strong>
+  </div>
+  <div class="mq-summary-item is-accent">
+    <span>This month</span><strong><%= money(summary.monthIncome) %></strong>
+  </div>
+  <div class="mq-summary-item">
+    <span>Paying students</span><strong><%= summary.payingStudents %></strong>
+  </div>
+  <div class="mq-summary-item is-negative">
+    <span>Outstanding</span><strong><%= money(summary.outstanding) %></strong>
+  </div>
+</div>
+
+<form class="mq-toolbar" method="get" action="<%= action %>" <%- analyticsTab ? 'data-analytics-filters' : '' %>>
+  <% (keep || []).forEach((pair) => { %>
+    <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
+  <% }) %>
+  <div class="mq-filters">
+    <label class="mq-field mq-field-search">
+      <span>Search</span>
+      <input type="search" name="<%= names.search %>" value="<%= values.search || '' %>" placeholder="Student, ID or reference" />
+    </label>
+    <label class="mq-field">
+      <span>From</span>
+      <input type="date" name="<%= names.from %>" value="<%= values.from || '' %>" />
+    </label>
+    <label class="mq-field">
+      <span>To</span>
+      <input type="date" name="<%= names.to %>" value="<%= values.to || '' %>" />
+    </label>
+    <% if (currentUser.role === 'admin' && branchList.length) { %>
+      <label class="mq-field">
+        <span>Branch</span>
+        <select name="<%= names.branch %>" <%= auto %>>
+          <option value="all">All branches</option>
+          <% branchList.forEach((branch) => { %>
+            <option value="<%= branch.id %>" <%= String(values.branchId) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+          <% }) %>
+        </select>
+      </label>
+    <% } %>
+    <label class="mq-field">
+      <span>Method</span>
+      <select name="<%= names.method %>" <%= auto %>>
+        <option value="all">All methods</option>
+        <% (paymentMethods || []).forEach((method) => { %>
+          <option value="<%= method.value %>" <%= values.method === method.value ? 'selected' : '' %>><%= method.value %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label class="mq-field">
+      <span>Purpose</span>
+      <select name="<%= names.purpose %>" <%= auto %>>
+        <option value="all">All purposes</option>
+        <% (paymentPurposes || []).forEach((purpose) => { %>
+          <option value="<%= purpose %>" <%= values.purpose === purpose ? 'selected' : '' %>><%= purpose %></option>
+        <% }) %>
+      </select>
+    </label>
+    <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+    <a class="mq-btn" href="<%= clearHref %>">Clear</a>
+  </div>
+
+  <% if (showPrint) { %>
+    <div class="mq-toolbar-actions">
+      <button type="button" class="mq-btn" onclick="window.print()"><%- icon('print') %> Print</button>
+    </div>
+  <% } %>
+</form>
+
+<section class="mq-panel">
+  <div class="mq-panel-head">
+    <div>
+      <% if (headingTag === 'h3') { %><h3>Transactions</h3><% } else { %><h2>Transactions</h2><% } %>
+    </div>
+    <span class="mq-count"><%= summary.transactionCount %> record<%= summary.transactionCount === 1 ? '' : 's' %></span>
+  </div>
+
+  <div class="mq-table" style="--mq-min-width: 890px; --mq-cols: 140px minmax(150px, 2fr) minmax(90px, 1fr) 100px 90px 100px minmax(110px, 1fr);">
+    <div class="mq-head">
+      <span>Date &amp; time</span>
+      <span>Student</span>
+      <span>Branch</span>
+      <span class="mq-num">Amount</span>
+      <span>Method</span>
+      <span>Purpose</span>
+      <span>Recorded by</span>
+    </div>
+
+    <% if (!rows.length) { %>
+      <div class="mq-empty">
+        <strong>No transactions in this range</strong>
+        Widen the date range, or clear the filters above.
+      </div>
+    <% } %>
+
+    <% rows.forEach((row) => { %>
+      <div class="mq-row">
+        <span class="mq-cell mq-sub" data-label="Date"><%= formatDateTime(row.paid_at) %></span>
+
+        <span class="mq-cell mq-cell-primary" data-label="Student">
+          <a class="mq-name" href="<%= basePath %>/billing?info=<%= row.student_id %>"><%= titleCaseName(row.first_name) %> <%= titleCaseName(row.last_name) %></a>
+          <span class="mq-sub"><%= row.user_id %><%= row.reference_no ? ` · ${row.reference_no}` : '' %></span>
+        </span>
+
+        <span class="mq-cell" data-label="Branch"><%= row.branch_name || '—' %></span>
+        <span class="mq-cell mq-money mq-money-paid" data-label="Amount"><%= money(row.amount) %></span>
+        <span class="mq-cell" data-label="Method"><span class="mq-chip"><%= row.payment_method || 'Cash' %></span></span>
+        <span class="mq-cell mq-sub" data-label="Purpose"><%= row.purpose || 'Tuition' %></span>
+        <span class="mq-cell mq-sub" data-label="Recorded by">
+          <%= row.recorded_by_name
+              || (row.recorder_first_name ? `${row.recorder_first_name} ${row.recorder_last_name || ''}` : 'System') %>
+        </span>
+      </div>
+    <% }) %>
+  </div>
+</section>

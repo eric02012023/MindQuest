@@ -1,6 +1,5 @@
 <%# File: views/content/admin-income-report.ejs
-    Purpose: Payment Collection — one row per transaction, plus the alerts that
-    go with it.
+    Purpose: Payment Collection — one row per transaction.
 
     RENAMED FROM "INCOME REPORT" (Phase 7.3)
     This page reports money COLLECTED from students. It says nothing about what
@@ -11,153 +10,29 @@
     The "Monthly income" and "Income per branch" charts, and the whole Chart.js
     bundle they needed. Both drew numbers that the summary bar and the rows
     already carry — filterable by date and branch, and to the peso rather than
-    to the nearest pixel.
+    to the nearest pixel. The notification section at the foot went too:
+    notifications have one home, the bell in the topbar.
 
-    WHAT WENT (this release, too)
-    The notification section at the foot. Notifications have one home: the
-    bell in the topbar and the Notifications page it opens.
-
-    Every row is one payment_entries record, so the report and a student's ledger
-    can never disagree: they are the same rows.
-
-    THE FILTER BAR
-    Search, From/To dates, branch (main admin), method, purpose, Apply, Clear,
-    Print. Every transaction the filters return is listed in a table that shows
-    ten rows and scrolls (public/js/mq-tables.js).
+    THE REPORT ITSELF is views/partials/payment-collection.ejs — the summary,
+    the filter bar (search, From/To, branch for the main admin, method, purpose,
+    Apply, Clear, Print) and the transactions — because the Payment collection
+    tab of Analytics & Reports shows the very same report.
 
     Locals: rows (every transaction the filters return), summary, filters,
-            paymentMethods, paymentPurposes, selectedBranch %>
-<%
-  const activeFilters = typeof filters === 'undefined' ? {} : filters;
-%>
+            paymentMethods, paymentPurposes %>
 <section class="mq-page">
-
-  <div class="mq-summary">
-    <div class="mq-summary-item is-positive">
-      <span>Total collected</span><strong><%= money(summary.totalIncome) %></strong>
-    </div>
-    <div class="mq-summary-item">
-      <span>Transactions</span><strong><%= summary.transactionCount %></strong>
-    </div>
-    <div class="mq-summary-item is-accent">
-      <span>This month</span><strong><%= money(summary.monthIncome) %></strong>
-    </div>
-    <div class="mq-summary-item">
-      <span>Paying students</span><strong><%= summary.payingStudents %></strong>
-    </div>
-    <div class="mq-summary-item is-negative">
-      <span>Outstanding</span><strong><%= money(summary.outstanding) %></strong>
-    </div>
-  </div>
-
-  <form class="mq-toolbar" method="get" action="<%= basePath %>/income-report">
-    <div class="mq-filters">
-      <label class="mq-field mq-field-search">
-        <span>Search</span>
-        <input type="search" name="search" value="<%= activeFilters.search || '' %>" placeholder="Student, ID or reference" />
-      </label>
-      <label class="mq-field">
-        <span>From</span>
-        <input type="date" name="from" value="<%= activeFilters.from || '' %>" />
-      </label>
-      <label class="mq-field">
-        <span>To</span>
-        <input type="date" name="to" value="<%= activeFilters.to || '' %>" />
-      </label>
-      <% if (currentUser.role === 'admin' && (branches || []).length) { %>
-        <label class="mq-field">
-          <span>Branch</span>
-          <select name="branch_id">
-            <option value="all">All branches</option>
-            <% (branches || []).forEach((branch) => { %>
-              <option value="<%= branch.id %>" <%= String(selectedBranch) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
-            <% }) %>
-          </select>
-        </label>
-      <% } %>
-      <label class="mq-field">
-        <span>Method</span>
-        <select name="method">
-          <option value="all">All methods</option>
-          <% (paymentMethods || []).forEach((method) => { %>
-            <option value="<%= method.value %>" <%= activeFilters.method === method.value ? 'selected' : '' %>><%= method.value %></option>
-          <% }) %>
-        </select>
-      </label>
-      <label class="mq-field">
-        <span>Purpose</span>
-        <select name="purpose">
-          <option value="all">All purposes</option>
-          <% (paymentPurposes || []).forEach((purpose) => { %>
-            <option value="<%= purpose %>" <%= activeFilters.purpose === purpose ? 'selected' : '' %>><%= purpose %></option>
-          <% }) %>
-        </select>
-      </label>
-      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
-      <a class="mq-btn" href="<%= basePath %>/income-report">Clear</a>
-    </div>
-
-    <div class="mq-toolbar-actions">
-      <button type="button" class="mq-btn" onclick="window.print()"><%- icon('print') %> Print</button>
-    </div>
-  </form>
-
-  <section class="mq-panel">
-    <div class="mq-panel-head">
-      <div>
-        <h2>Transactions</h2>
-      </div>
-      <span class="mq-count"><%= summary.transactionCount %> record<%= summary.transactionCount === 1 ? '' : 's' %></span>
-    </div>
-
-    <div class="mq-table" style="--mq-min-width: 890px; --mq-cols: 140px minmax(150px, 2fr) minmax(90px, 1fr) 100px 90px 100px minmax(110px, 1fr);">
-      <div class="mq-head">
-        <span>Date &amp; time</span>
-        <span>Student</span>
-        <span>Branch</span>
-        <span class="mq-num">Amount</span>
-        <span>Method</span>
-        <span>Purpose</span>
-        <span>Recorded by</span>
-      </div>
-
-      <% if (!rows.length) { %>
-        <div class="mq-empty">
-          <strong>No transactions in this range</strong>
-          Widen the date range, or clear the filters above.
-        </div>
-      <% } %>
-
-      <% rows.forEach((row) => { %>
-        <div class="mq-row">
-          <span class="mq-cell mq-sub" data-label="Date"><%= formatDateTime(row.paid_at) %></span>
-
-          <span class="mq-cell mq-cell-primary" data-label="Student">
-            <a class="mq-name" href="<%= basePath %>/billing?info=<%= row.student_id %>"><%= titleCaseName(row.first_name) %> <%= titleCaseName(row.last_name) %></a>
-            <span class="mq-sub"><%= row.user_id %><%= row.reference_no ? ` · ${row.reference_no}` : '' %></span>
-          </span>
-
-          <span class="mq-cell" data-label="Branch"><%= row.branch_name || '—' %></span>
-          <span class="mq-cell mq-money mq-money-paid" data-label="Amount"><%= money(row.amount) %></span>
-          <span class="mq-cell" data-label="Method"><span class="mq-chip"><%= row.payment_method || 'Cash' %></span></span>
-          <span class="mq-cell mq-sub" data-label="Purpose"><%= row.purpose || 'Tuition' %></span>
-          <span class="mq-cell mq-sub" data-label="Recorded by">
-            <%= row.recorded_by_name
-                || (row.recorder_first_name ? `${row.recorder_first_name} ${row.recorder_last_name || ''}` : 'System') %>
-          </span>
-        </div>
-      <% }) %>
-    </div>
-  </section>
-
-  <%# Phase 7.3: the "Monthly income" and "Income per branch" charts were here.
-      Both are gone. Every figure they drew is already in the summary bar at the
-      top and in the rows above, filterable by date and branch — the charts were
-      a second, less precise rendering of the same numbers, and "income" was the
-      wrong word for money collected from students in the first place. %>
-
+  <%- include('../partials/payment-collection', {
+    rows,
+    summary,
+    values: typeof filters === 'undefined' ? {} : filters,
+    paymentMethods,
+    paymentPurposes,
+    action: `${basePath}/income-report`,
+    names: { search: 'search', from: 'from', to: 'to', branch: 'branch_id', method: 'method', purpose: 'purpose' },
+    keep: [],
+    clearHref: `${basePath}/income-report`,
+    analyticsTab: null,
+    showPrint: true,
+    headingTag: 'h2'
+  }) %>
 </section>
-
-<%# The Chart.js bundle and the two chart builders that lived here were removed
-    with the charts themselves (Phase 7.3). This page draws nothing now, so it no
-    longer pulls a charting library it does not use. %>

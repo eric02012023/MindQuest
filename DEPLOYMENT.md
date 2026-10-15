@@ -629,3 +629,52 @@ Code only — no migration, no new environment variable.
 - One of the removed sentences was wrong since the one-subject rule: the tutor's
   Student Requests said accepting made them the tutor "for every subject of
   theirs you teach".
+
+### This release: every Analytics tab its own filters, and who is weak in a topic
+
+Code only — no migration, no new environment variable.
+
+**No filter bar for the whole page** (Analytics & Reports, all four roles)
+- The bar between the headline figures and the tabs (Search, Subject,
+  Assessment, From, To, Branch) is gone. Every tab that needs a filter has its
+  own at its top, with only its fields; a tab that needs none has none:
+
+  | Tab | Its filters |
+  |---|---|
+  | Score trend, Level spread | subject, branch |
+  | Weak topics | search (topic or subject), subject, branch |
+  | Learner performance | search (name or ID), subject, branch |
+  | Student progress | search, subject, status (Improved, Declined…), branch |
+  | Recent attempts | search, subject, assessment, from/to, branch |
+  | Enrollment & progress | branch |
+  | Auto-generated focus areas | search, subject, branch |
+  | Payment collection | search, from/to, branch, method, purpose |
+  | Assessment integrity | search, from/to, branch |
+  | User registry | search, role, status, branch |
+
+  Branch is the main admin's only (an assistant's is their branch; a tutor's,
+  their learners). A student filters Weak topics and My progress by subject, and
+  My assessment history by subject, assessment and dates — nothing else.
+- Filtering one tab leaves the others as they were and comes back to that tab;
+  Clear clears that tab only. A tab's fields carry its name in the address
+  (`weak_subject`, `att_from`, `reg_role`…), so an old link with `subject_id=`
+  or `branch_id=` simply opens the page unfiltered.
+- The headline figures at the top are always the viewer's whole scope.
+- Download CSV (Student progress, User registry) follows its own tab's filters.
+
+**Payment collection** (admin and assistant)
+- The tab is now the whole Payment Collection report — its five figures, its
+  search, dates, branch, method and purpose, and every transaction — built from
+  the same rows as the Payment Collection page, which is unchanged (and keeps
+  its Print).
+
+**Weak topics: who is weak** (admin, assistant, tutor)
+- A new column, Weak learners, says how many of the learners who answered a
+  topic scored below 60% on it ("3 of 5"). Clicking it lists who they are, each
+  with their own score on the topic and a link to their analytics. An assistant
+  sees their branch's learners, a tutor their own. A student has no list.
+- The Mastery and completion bars now show. In a table cell (Weak topics, Module
+  completion, Modules opened) they had only ever drawn a sliver of border.
+- A focus area's **Detailed results** opens the learner's own Analytics page
+  (the tutor's: their page of the learner). It used to open Analytics & Reports
+  searched for the learner's name — a search that page no longer has.
