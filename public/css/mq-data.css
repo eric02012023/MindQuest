@@ -1467,6 +1467,96 @@ a.mq-row {
   .mq-vtab-count { margin-left: var(--mq-1); }
 }
 
+/* -------------------------------------------------------------------------
+   12d. Side tabs as a rail (.mq-vtabs-rail) — Analytics & Reports
+   The list folds to a narrow column of icons. Pointing at it (or moving into
+   it with the keyboard) opens it over the report beside it, with every name
+   and count, and it folds back when the pointer leaves — the report never
+   moves. On a phone the icons sit in a row and the open report shows its name.
+   ---------------------------------------------------------------------- */
+
+.mq-vtabs.mq-vtabs-rail {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.mq-vtabs-rail .mq-vtab-list {
+  z-index: 30;
+  width: 64px;
+  overflow: hidden;
+  transition: width .18s ease, box-shadow .18s ease;
+}
+
+/* The icon sits where it will stay when the rail opens: nothing jumps. */
+.mq-vtabs-rail .mq-vtab {
+  padding: 0 13px;
+  gap: 14px;
+  white-space: nowrap;
+}
+
+.mq-vtabs-rail .mq-vtab-label,
+.mq-vtabs-rail .mq-vtab-count {
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+
+/* One line per tab: a name too long for the open rail ends in "…" rather than
+   running under its count. */
+.mq-vtabs-rail .mq-vtab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 861px) {
+  /* Kept as separate rules: a browser that does not know :has() drops only
+     the keyboard rule, not the pointer one. A short delay keeps a pointer that
+     merely crosses the rail from flicking it open. */
+  .mq-vtabs-rail .mq-vtab-list:hover {
+    width: 340px;
+    box-shadow: 0 14px 36px rgba(16, 32, 51, .16);
+    transition-delay: .08s;
+  }
+  .mq-vtabs-rail .mq-vtab-list:hover .mq-vtab-label,
+  .mq-vtabs-rail .mq-vtab-list:hover .mq-vtab-count {
+    opacity: 1;
+    transition-delay: .1s;
+  }
+  .mq-vtabs-rail .mq-vtab-list:has(.mq-vtab:focus-visible) {
+    width: 340px;
+    box-shadow: 0 14px 36px rgba(16, 32, 51, .16);
+  }
+  .mq-vtabs-rail .mq-vtab-list:has(.mq-vtab:focus-visible) .mq-vtab-label,
+  .mq-vtabs-rail .mq-vtab-list:has(.mq-vtab:focus-visible) .mq-vtab-count {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 860px) {
+  .mq-vtabs.mq-vtabs-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mq-vtabs-rail .mq-vtab-list {
+    width: auto;
+    overflow: visible;
+  }
+
+  .mq-vtabs-rail .mq-vtab {
+    flex: 0 0 auto;
+    padding: 0 12px;
+    gap: var(--mq-2);
+  }
+
+  .mq-vtabs-rail .mq-vtab-label,
+  .mq-vtabs-rail .mq-vtab-count {
+    display: none;
+    opacity: 1;
+  }
+
+  .mq-vtabs-rail .mq-vtab.is-active .mq-vtab-label {
+    display: inline;
+  }
+}
+
 /* The confirmation dialog's second line ("You have 3 unanswered questions"). */
 .confirm-extra {
   margin: -4px 0 12px;
@@ -1562,8 +1652,9 @@ a.mq-row {
 
 /* -------------------------------------------------------------------------
    13b. Pivot tables and the progress report
-   Used by Analytics & Reports: the User registry's pivots, and the Student
-   progress comparison. A pivot is an ordinary .mq-table with a totals row.
+   Used by Analytics & Reports: the User registry's summary table ("Accounts by
+   Branch and Role"), and the Student progress comparison's tables. A pivot is an
+   ordinary .mq-table with a totals row.
    ---------------------------------------------------------------------- */
 
 .mq-pivot .mq-pivot-total {

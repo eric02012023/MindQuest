@@ -15,7 +15,7 @@
   <div class="mq-hero-text">
     <span class="mq-hero-kicker"><%= greeting %> · <%= todayLabel %></span>
     <h2>Welcome back, <%= titleCaseName(currentUser.first_name) %>!</h2>
-    <p>Unlocking minds, one quest at a time. Here is <%= heroBranch ? titleCaseName(heroBranch.name) : 'every branch' %> at a glance.</p>
+    <p>Unlocking minds, one quest at a time.</p>
     <div class="mq-hero-actions">
       <a class="mq-btn mq-btn-light" href="<%= basePath %>/users"><%- icon('user') %> User Management</a>
       <a class="mq-btn mq-btn-light" href="<%= basePath %>/billing"><%- icon('money') %> Student Bill</a>
@@ -53,7 +53,6 @@
   <section class="panel-card scroll-panel medium-scroll">
     <div class="panel-card-head">
       <h2>Recent Registrations</h2>
-      <p>Only the last 3 days stay in this list.</p>
     </div>
     <div class="table-wrap">
       <table>

@@ -1,9 +1,9 @@
 /**
  * File: scripts/test-reports.js
- * Purpose: Pin down the Analytics & Reports additions — the User registry, the
- * Student progress comparison, the pivot tables they use, the CSV files — and the
- * in-memory list filters the monitoring pages share (with the tutor's Attendance
- * Logs filter bar, rendered).
+ * Purpose: Pin down the Analytics & Reports additions — the User registry and the
+ * fields its summary table counts by, the Student progress comparison and its
+ * pivot of averages, the CSV files — and the in-memory list filters the
+ * monitoring pages share (with the tutor's Attendance Logs filter bar, rendered).
  *
  * Run:  node scripts/test-reports.js      (needs no database, no keys)
  *
@@ -19,7 +19,7 @@ const ok = (label, condition, extra = '') => {
 
 // ---------------------------------------------------------------- scripted database
 const calls = [];
-let script = { users: [], enrolments: [], progress: [], modules: [], reads: [], pivot: [] };
+let script = { users: [], enrolments: [], progress: [], modules: [], reads: [] };
 
 function runSql(text, params = []) {
   const sql = String(text).replace(/\s+/g, ' ').trim();
@@ -29,7 +29,6 @@ function runSql(text, params = []) {
   if (/OUTER APPLY/i.test(sql) && /FROM user_subject_assignments usa/i.test(sql)) return script.progress;
   if (/FROM modules WHERE is_archived = 0 AND subject_id IN/i.test(sql)) return script.modules;
   if (/FROM student_module_reads/i.test(sql)) return script.reads;
-  if (/COUNT\(DISTINCT usa\.student_id\) AS students/i.test(sql)) return script.pivot;
   return [];
 }
 
@@ -45,8 +44,7 @@ require.cache[dbPath] = {
 };
 
 const {
-  buildPivot, buildAveragePivot, buildRegistryPivots, getUserRegistry, getEnrolmentPivot,
-  getProgressComparison, buildProgressSummary, PROGRESS_STATUS
+  buildAveragePivot, getUserRegistry, getProgressComparison, buildProgressSummary, PROGRESS_STATUS
 } = require('../lib/analytics');
 const { csvCell, toCsv, registryCsv, progressCsv } = require('../lib/reportsCsv');
 const {
@@ -65,25 +63,6 @@ const user = (over) => ({
 });
 
 (async () => {
-  console.log('\n== a pivot counts where rows and columns meet ==');
-  const items = [
-    { b: 'Main', r: 'Tutor' }, { b: 'Main', r: 'Student' }, { b: 'Main', r: 'Student' },
-    { b: 'Fatima', r: 'Student' }, { b: 'Fatima', r: 'Admin Aide' }
-  ];
-  const pivot = buildPivot(items, { rowOf: (x) => x.b, colOf: (x) => x.r, columns: ['Assistant Admin', 'Tutor', 'Student'] });
-  ok('the fixed columns come first, in order, even with nothing in them', pivot.columns.slice(0, 3).join('|') === 'Assistant Admin|Tutor|Student');
-  ok('a column found only in the data is added after them', pivot.columns[3] === 'Admin Aide');
-  ok('rows are alphabetical', pivot.rows.map((row) => row.label).join('|') === 'Fatima|Main');
-  const main = pivot.rows.find((row) => row.label === 'Main');
-  ok('a branch with no assistant shows a zero', main.counts[0] === 0 && main.counts[1] === 1 && main.counts[2] === 2);
-  ok('every row has its total', main.total === 3 && pivot.rows.find((row) => row.label === 'Fatima').total === 2);
-  ok('every column has its total, and the grand total adds up', pivot.totals.join(',') === '0,1,3,1' && pivot.grand === 5);
-  const weighted = buildPivot([{ s: 'ENGLISH', b: 'Main', n: 4 }, { s: 'ENGLISH', b: 'Main', n: 3 }], { rowOf: (x) => x.s, colOf: (x) => x.b, weightOf: (x) => x.n });
-  ok('it can sum a weight instead of counting rows', weighted.rows[0].counts[0] === 7);
-  ok('an empty list still gives its columns', buildPivot([], { rowOf: () => 1, colOf: () => 1, columns: ['A', 'B'] }).columns.join() === 'A,B');
-  const hasOwnWeight = buildPivot([{ a: 1, b: 2 }], { rowOf: (x) => x.a, colOf: (x) => x.b });
-  ok('counting works when no weight is given (Object.prototype.valueOf must not be picked up)', hasOwnWeight.grand === 1);
-
   console.log('\n== a pivot of averages keeps "no change" apart from "nothing" ==');
   const rows = [
     { branch: 'Main', subject: 'ENGLISH', change: 30 }, { branch: 'Main', subject: 'ENGLISH', change: 0 },
@@ -138,22 +117,22 @@ const user = (over) => ({
   registry = await getUserRegistry(staff(), { search: 'filipino english' });
   ok('search reads the subjects, in any order', registry.rows.map((row) => row.user_id).join() === 'TTR-3,STD-4');
   registry = await getUserRegistry(staff(), { registryRole: 'Student' });
-  ok('the role picked narrows the table …', registry.rows.every((row) => row.role === 'student') && registry.rows.length === 3);
-  ok('… but not the people the pivots count', registry.everyone.length === 6);
+  ok('the role picked narrows the rows (the summary table and the list) …', registry.rows.every((row) => row.role === 'student') && registry.rows.length === 3);
+  ok('… but not the headline counts', registry.everyone.length === 6);
   registry = await getUserRegistry(staff(), { registryStatus: 'Archived' });
   ok('the status picked narrows it too', registry.rows.length === 1 && registry.rows[0].user_id === 'STD-5');
+  registry = await getUserRegistry(staff(), { registryRole: 'Student', registryStatus: 'Pending' });
+  ok('both together', registry.rows.length === 1 && registry.rows[0].user_id === 'STD-6');
 
-  console.log('\n== the registry pivots add up to the table ==');
-  const pivots = buildRegistryPivots((await getUserRegistry(staff(), {})).everyone);
-  const mainRow = pivots.branchRole.rows.find((row) => row.label === 'Main Branch');
-  ok('active accounts by branch and role', mainRow.counts.join() === '0,1,2', mainRow.counts.join());
-  ok('an archived learner is not counted as active', pivots.branchRole.rows.find((row) => row.label === 'Fatima Branch').counts.join() === '1,0,0');
-  ok('the admin account is not in the pivots', pivots.branchRole.grand === 4, String(pivots.branchRole.grand));
-  const grades = pivots.branchLevel.rows.find((row) => row.label === 'Main Branch');
-  ok('learners by year level group', grades.counts[pivots.branchLevel.columns.indexOf('Primary Level')] === 1);
-  ok('a learner with no grade is under "Not set", not lost', pivots.branchLevel.columns.includes('Not set') && grades.counts[pivots.branchLevel.columns.indexOf('Not set')] === 1);
-  ok('role by status keeps archived as its own column', pivots.roleStatus.columns.includes('Archived') && pivots.roleStatus.rows.length === 3);
-  ok('role rows come in the order Assistant Admin, Tutor, Student', pivots.roleStatus.rows.map((row) => row.label).join('|') === 'Assistant Admin|Tutor|Student');
+  console.log('\n== the fields the summary table counts by ==');
+  const everyAccount = (await getUserRegistry(staff(), {})).everyone;
+  const account = (code) => everyAccount.find((row) => row.user_id === code);
+  ok('a learner\'s year level is the group of their grade', account('STD-4').level_group === 'Primary Level' && account('STD-5').level_group === 'Junior High Level');
+  ok('a learner with no grade is "Not set", not lost', account('STD-6').level_group === 'Not set');
+  ok('a tutor or an assistant has no year-level group', account('TTR-3').level_group === '' && account('AST-2').level_group === '');
+  ok('roles read the way people say them', ['Admin', 'Assistant Admin', 'Tutor', 'Student'].every((label) => everyAccount.some((row) => row.role_label === label)));
+  ok('a status is Approved, Pending, Rejected or Archived', everyAccount.every((row) => ['Approved', 'Pending', 'Rejected', 'Archived'].includes(row.status)));
+  ok('an assistant admin has no subjects; a learner and a tutor do', account('AST-2').subjects.length === 0 && account('STD-4').subjects.length === 2 && account('TTR-3').subjects.length === 2);
 
   console.log('\n== a tutor\'s subjects are the ones they still teach ==');
   const everyoneBefore = script.users;
@@ -162,15 +141,6 @@ const user = (over) => ({
   ok('a subject the office archived for a tutor is not listed', carla.subjects.join() === 'ENGLISH', carla.subjects.join());
   ok('nor found by a search for it', (await getUserRegistry(staff(), { search: 'math' })).rows.length === 0);
   script.users = everyoneBefore;
-
-  console.log('\n== subjects by branch ==');
-  script.pivot = [
-    { subject_name: 'ENGLISH', branch_name: 'Main Branch', students: 4 }, { subject_name: 'ENGLISH', branch_name: 'Fatima Branch', students: 2 },
-    { subject_name: 'FILIPINO', branch_name: 'Main Branch', students: 3 }
-  ];
-  const enrolment = await getEnrolmentPivot(staff());
-  ok('learners enrolled, subject by branch', enrolment.rows.find((row) => row.label === 'ENGLISH').total === 6 && enrolment.grand === 9);
-  ok('staff only', (await getEnrolmentPivot(tutor())) === null);
 
   console.log('\n== progress: Pre, module activities and Post side by side ==');
   const row = (over) => ({

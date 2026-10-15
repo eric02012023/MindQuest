@@ -12,7 +12,6 @@
     <div class="panel-card-head">
       <div>
         <h2>Student Results</h2>
-        <p>How your students are doing, and every assessment they have handed in.</p>
       </div>
       <form class="search-form tr-search" method="get" action="/tutor/student-results">
         <input type="text" name="search" value="<%= search || '' %>" placeholder="Search student…" aria-label="Search student" />
@@ -116,10 +115,6 @@
       <h3>Submissions</h3>
       <span class="badge badge-info"><%= (results || []).length %></span>
     </div>
-    <p class="table-note">
-      Every attempt your students have handed in. Open one to check their answers
-      question by question, with the topics they struggled with.
-    </p>
 
     <% if (!(results || []).length) { %>
       <p class="empty-state">No student submission yet.</p>

@@ -589,3 +589,43 @@ rewritten for the new rule).
 - An assistant marking, archiving or recovering another branch's registration
   is told "Notification not found." — nothing was changed, and the page used to
   say it had been.
+
+### This release: Analytics & Reports tidied, and no explanations under headings
+
+Code only — no migration, no new environment variable.
+
+**User registry** (admin and assistant)
+- The four ready-made pivot tables are gone (accounts by branch and role,
+  learners by branch and year level, accounts by role and status, learners
+  enrolled by subject and branch): the one summary table shows all of them.
+- That table is no longer called "Build a pivot". Its title says what it shows
+  and follows what is chosen: "Accounts by Branch and Role", "Accounts by
+  Subject and Role"…
+- The Role and Status pickers now sit at the top of the tab and narrow both the
+  summary table and the list, and the title says so: Role = Student gives
+  "Learners by Subject and Branch" (what the removed enrolment pivot showed),
+  Status = Approved gives "Approved accounts by …". The figures at the top still
+  count everyone.
+- The Print button is gone; Download CSV stays.
+- Student progress's tables are titled for what they show too: "Average score by
+  subject", "Average score by branch", "Average change by branch and subject".
+
+**Side tabs** (Analytics & Reports, all four roles)
+- The list of reports is a narrow rail of icons. Pointing at it opens it over
+  the report with every name and count; it folds back when the pointer leaves,
+  and the report never moves. Moving into it with the keyboard opens it too.
+- On a phone the icons sit in a row, with the open report's name beside its
+  icon. The Billing tabs of the student's page are unchanged.
+
+**No explanations under headings**
+- The sentences under page and section headings that described the page
+  ("Every account in the system… pick a role or a status below", "How learners
+  are scoring over time", "Read-only until you press Edit"…) are gone from every
+  dashboard page, for all four roles.
+- Kept on purpose: the data itself, the messages of an empty list, the notices
+  that say why something is locked (a down payment before the Pre-Assessment,
+  when the Post-Assessment opens), hints inside forms (password rules, file
+  types), and the warnings at the moment of a payment or a removal.
+- One of the removed sentences was wrong since the one-subject rule: the tutor's
+  Student Requests said accepting made them the tutor "for every subject of
+  theirs you teach".

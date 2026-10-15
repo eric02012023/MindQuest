@@ -75,7 +75,6 @@
     <div class="mq-panel-head">
       <div>
         <h3>Where this score sits</h3>
-        <% if (!isStudent) { %><p>The band this result falls in, from config/levelThresholds.js.</p><% } %>
       </div>
     </div>
     <div class="mq-table" style="--mq-cols: minmax(140px, 1fr) 140px 110px;">
@@ -107,7 +106,6 @@
     <div class="mq-panel-head">
       <div>
         <h3>Topic breakdown</h3>
-        <% if (!isStudent) { %><p>Which module and handout each item came from. Worst first — teach from the top.</p><% } %>
       </div>
       <span class="mq-count"><%= topics.length %> source<%= topics.length === 1 ? '' : 's' %></span>
     </div>
@@ -162,7 +160,6 @@
     <div class="mq-panel-head">
       <div>
         <h3>Item by item</h3>
-        <% if (!isStudent) { %><p>Every question in order, with what was answered and what was expected.</p><% } %>
       </div>
       <span class="mq-count"><%= answers.length %> item<%= answers.length === 1 ? '' : 's' %></span>
     </div>

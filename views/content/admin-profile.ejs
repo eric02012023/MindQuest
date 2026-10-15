@@ -131,7 +131,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
     <section class="mq-card">
       <div class="mq-card-head">
         <span class="mq-card-icon"><%- icon('user', 18) %></span>
-        <div><h3>Personal information</h3><p>Read-only until you press Edit.</p></div>
+        <div><h3>Personal information</h3></div>
         <div class="mq-card-head-actions">
           <button type="button" class="mq-btn mq-btn-sm" data-profile-edit-toggle="#profile-form"><%- icon('edit') %> Edit</button>
         </div>
@@ -150,7 +150,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
     <section class="mq-card">
       <div class="mq-card-head">
         <span class="mq-card-icon"><%- icon('phone', 18) %></span>
-        <div><h3>Contact</h3><p><%= isStudent ? 'The student and their parent or guardian.' : 'How the office reaches them.' %></p></div>
+        <div><h3>Contact</h3></div>
       </div>
       <div class="mq-card-body mq-fields">
         <label>Login email<input type="text" value="<%= profileUser.email || '' %>" readonly /></label>
@@ -169,7 +169,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
     <section class="mq-card<%= isLearnerRecord ? '' : ' is-full' %>">
       <div class="mq-card-head">
         <span class="mq-card-icon"><%- icon('building', 18) %></span>
-        <div><h3>Placement</h3><p><%= isLearnerRecord ? 'Branch, level and address.' : 'Branch and address.' %></p></div>
+        <div><h3>Placement</h3></div>
       </div>
       <div class="mq-card-body mq-fields">
         <label>Branch
@@ -224,7 +224,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
       <section class="mq-card">
         <div class="mq-card-head">
           <span class="mq-card-icon"><%- icon('book', 18) %></span>
-          <div><h3>Subjects</h3><p><%= isTutor ? 'What this tutor teaches.' : 'Change these with Manage subjects.' %></p></div>
+          <div><h3>Subjects</h3></div>
         </div>
         <div class="mq-card-body mq-fields">
           <% if (isTutor) { %>
@@ -254,7 +254,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
     <% if (!isTutor) { %><input type="hidden" name="subjects" value="<%= userSubjects.join(',') %>" /><% } %>
 
     <div class="mq-profile-savebar is-full">
-      <span class="mq-card-foot-note" data-avatar-note>Press Edit, change what you need, then save.</span>
+      <span class="mq-card-foot-note" data-avatar-note></span>
       <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Save changes</button>
     </div>
   </form>
@@ -266,7 +266,6 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
       <span class="mq-card-icon"><%- icon(isStudent ? 'award' : 'users', 18) %></span>
       <div>
         <h3><%= isStudent ? 'Tutors' : 'Learners' %></h3>
-        <p><%= isStudent ? 'Who teaches this student, by subject.' : 'Who this tutor teaches, by subject.' %></p>
       </div>
       <span class="mq-count"><%= assignments.length %></span>
     </div>
@@ -351,7 +350,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
         <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
         <div>
           <h3>Tutors &amp; time schedule</h3>
-          <p>Each subject has its own tutor and its own one-hour slot.<%= openCount ? ` ${openCount} subject${openCount === 1 ? ' needs' : 's need'} a tutor.` : '' %></p>
+          <% if (openCount) { %><p><%= openCount %> subject<%= openCount === 1 ? ' needs' : 's need' %> a tutor.</p><% } %>
         </div>
       </div>
 
@@ -480,7 +479,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
     <section class="mq-card" id="change-password">
       <div class="mq-card-head">
         <span class="mq-card-icon"><%- icon('lock', 18) %></span>
-        <div><h3>Change password</h3><p>Applies to your own account only.</p></div>
+        <div><h3>Change password</h3></div>
       </div>
       <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/password">
         <div class="mq-card-body mq-fields">

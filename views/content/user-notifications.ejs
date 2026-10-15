@@ -24,7 +24,6 @@
         <h2>Student Requests</h2>
         <span class="badge badge-warning"><%= requests.length %> waiting</span>
       </div>
-      <p class="table-note">A student is asking you to be their tutor at the days and time they chose. Accepting makes you their tutor for every subject of theirs you teach.</p>
       <div class="un-list">
         <% if (!requests.length) { %><p class="empty-state">No student is waiting for your answer.</p><% } %>
         <% requests.forEach((item) => { %>

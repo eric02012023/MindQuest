@@ -50,7 +50,6 @@
       <h3>Modules</h3>
       <span class="badge badge-info"><%= modules.length %> module<%= modules.length === 1 ? '' : 's' %></span>
     </div>
-    <p class="table-note">Set up by Admin. Each module is for one grade level; a student sees only their own grade's. You can build assessments on top of these modules.</p>
 
     <% if (!modules.length) { %>
       <p class="empty-state">Admin has not added a module to this subject yet.</p>
@@ -102,7 +101,6 @@
       <h3>Pre-Assessment Results</h3>
       <span class="badge badge-info"><%= preResults.length %> submission<%= preResults.length === 1 ? '' : 's' %></span>
     </div>
-    <p class="table-note">How each student scored on the Pre-Assessment generated from their grade's handouts in this subject. Open a row to see which module and handout the missed items came from.</p>
 
     <% if (!preResults.length) { %>
       <p class="empty-state">No student has taken the Pre-Assessment for this subject yet.</p>
@@ -159,10 +157,6 @@
       <span class="badge badge-info"><%= readiness.readyCount %> of <%= readiness.total %> open now</span>
     </div>
 
-    <p class="table-note">
-      Opens automatically for each student at 12:01 AM on the last day of their enrollment (enrolled
-      January 1, it opens February 1), and repeats the Pre-Assessment they took.
-    </p>
 
     <% if (readiness.students.length) { %>
       <div class="table-wrap">
