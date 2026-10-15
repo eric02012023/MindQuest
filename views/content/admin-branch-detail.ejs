@@ -5,8 +5,7 @@
     "Student since" / "Tutor since" is the day the office accepted their
     registration (accepted_at), or the day the account was made when there was
     no registration behind it. "Assistant admin since" is the day the account
-    was created. The tables show ten rows and scroll, with a search icon in the
-    Name heading (public/js/mq-tables.js). %>
+    was created. The tables show ten rows and scroll (public/js/mq-tables.js). %>
 <%
   const branchAssistants = typeof assistants === 'undefined' ? [] : (assistants || []);
   const currentAssistants = branchAssistants.filter((a) => !Number(a.is_archived));
@@ -21,6 +20,18 @@
     </div>
     <p>Click a name to view the full profile and registration data.</p>
   </section>
+
+  <%# Search the students and the tutors below: name, ID, year or grade level. %>
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/branches/<%= branch.id %>">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= typeof search === 'undefined' ? '' : search %>" placeholder="Name, ID, year or grade level" />
+      </label>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Search</button>
+      <a class="mq-btn" href="<%= basePath %>/branches/<%= branch.id %>">Clear</a>
+    </div>
+  </form>
 
   <section class="panel-card">
     <div class="panel-card-head">
@@ -50,13 +61,13 @@
   <section class="panel-card">
     <div class="panel-card-head">
       <h3>Students in this branch</h3>
-      <span class="badge badge-info"><%= students.length %> student<%= students.length === 1 ? '' : 's' %></span>
+      <span class="badge badge-info"><%= students.length %><%= search && everyone ? ` of ${everyone.students}` : '' %> student<%= (search && everyone ? everyone.students : students.length) === 1 ? '' : 's' %></span>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Grade Level</th><th>Student Since</th></tr></thead>
+        <thead><tr><th>User ID</th><th>Name</th><th>Year Level</th><th>Grade Level</th><th>Student Since</th></tr></thead>
         <tbody>
-          <% if (!students.length) { %><tr><td colspan="5">No students in this branch.</td></tr><% } %>
+          <% if (!students.length) { %><tr><td colspan="5"><%= search ? 'No student matches your search.' : 'No students in this branch.' %></td></tr><% } %>
           <% students.forEach((user) => { %>
             <tr>
               <td><%= user.user_id %></td>
@@ -74,13 +85,13 @@
   <section class="panel-card">
     <div class="panel-card-head">
       <h3>Tutors in this branch</h3>
-      <span class="badge badge-info"><%= tutors.length %> tutor<%= tutors.length === 1 ? '' : 's' %></span>
+      <span class="badge badge-info"><%= tutors.length %><%= search && everyone ? ` of ${everyone.tutors}` : '' %> tutor<%= (search && everyone ? everyone.tutors : tutors.length) === 1 ? '' : 's' %></span>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>User ID</th><th data-search-col>Name</th><th>Year Level</th><th>Subjects</th><th>Tutor Since</th></tr></thead>
+        <thead><tr><th>User ID</th><th>Name</th><th>Year Level</th><th>Subjects</th><th>Tutor Since</th></tr></thead>
         <tbody>
-          <% if (!tutors.length) { %><tr><td colspan="5">No tutors in this branch.</td></tr><% } %>
+          <% if (!tutors.length) { %><tr><td colspan="5"><%= search ? 'No tutor matches your search.' : 'No tutors in this branch.' %></td></tr><% } %>
           <% tutors.forEach((user) => { %>
             <tr>
               <td><%= user.user_id %></td>

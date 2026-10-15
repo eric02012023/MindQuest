@@ -1,11 +1,14 @@
 <%# File: views/content/student-subjects.ejs
     Purpose: The student's subjects, who teaches each, and picking a tutor.
 
-    PICKING A TUTOR (one dialog per subject that has no tutor yet)
-      0. If one of the student's current tutors also teaches this subject, the
-         dialog first offers to keep them — the subject joins the sessions the
-         student already has with that tutor. "Choose another tutor" goes on.
-      1. The student picks the days (Weekdays or Weekend) and the time.
+    PICKING A TUTOR — one subject at a time (one dialog per subject that has no
+    tutor yet). Nothing is chosen for the student: each subject gets its own
+    days, its own hour and its own tutor.
+      1. The student picks the days (Weekdays or Weekend), then the time. The
+         times offered are only those still free on those days: an hour the
+         student already spends on another subject (or has asked for) on the
+         same days is not shown — one subject, one hour. The same hour on the
+         other days is still there.
       2. Only then are tutors listed: the ones in the student's branch who teach
          this subject, teach the student's year level, and are free on those
          days at that time. Each has "View profile" before they are chosen —
@@ -13,24 +16,19 @@
          can "Select this tutor" or go "Back to tutors". Coming back
          (?pick=<subject>&days=&slot=) reopens this dialog on the same list.
 
-    The chosen tutor takes every open subject they teach once they accept; a
-    subject they do not teach stays open for another tutor.
+    The chosen tutor takes that one subject when they accept. The student's
+    other subjects are chosen the same way, one by one.
 
     Locals: assignments (enrolled, with tutor_*), allSubjects,
-            tutorChoices { subjects: [{ subject_id, subject_name, tutors, currentTutors }],
-                           timeSlots, preferredDays },
+            tutorChoices { subjects: [{ subject_id, subject_name, tutors }],
+                           held (the hours already spent), timeSlots, preferredDays },
             pendingRequests (the student's requests still waiting on a tutor) %>
 <%
-  const choices = (typeof tutorChoices !== 'undefined' && tutorChoices) || { subjects: [], timeSlots: [], preferredDays: [] };
+  const choices = (typeof tutorChoices !== 'undefined' && tutorChoices) || { subjects: [], held: [], timeSlots: [], preferredDays: [] };
   const waiting = typeof pendingRequests === 'undefined' ? [] : (pendingRequests || []);
   const choiceFor = (subjectId) => choices.subjects.find((s) => Number(s.subject_id) === Number(subjectId)) || null;
-  // A waiting request covers the subject it named and every other open subject
-  // its tutor teaches.
-  const requestFor = (subjectId) => {
-    const choice = choiceFor(subjectId);
-    return waiting.find((r) => Number(r.subject_id) === Number(subjectId)
-      || (choice && choice.tutors.some((t) => Number(t.id) === Number(r.tutor_id)))) || null;
-  };
+  // A waiting request belongs to the one subject it names.
+  const requestFor = (subjectId) => waiting.find((r) => Number(r.subject_id) === Number(subjectId)) || null;
   const scheduleText = (days, slot) => [days, slot].filter(Boolean).join(', ');
 %>
 <section class="page-stack">
@@ -77,41 +75,11 @@
       <button type="button" class="modal-close" data-close-modal>&times;</button>
       <h3>Select a tutor for <%= subject.subject_name %></h3>
 
-      <% if (subject.currentTutors.length) { %>
-        <%# Step 0 — keep a tutor the student already has. %>
-        <div class="st-step" data-step="keep">
-          <p class="st-lead">Your current tutor also teaches <strong><%= subject.subject_name %></strong>. Do you want to keep them for this subject, or choose a different tutor?</p>
-          <div class="st-tutor-list">
-            <% subject.currentTutors.forEach((kept) => { %>
-              <article class="st-tutor-card">
-                <%- include('../partials/avatar', { avatarSrc: kept.image_path, avatarName: kept.name, avatarSize: 'md' }) %>
-                <div class="st-tutor-info">
-                  <strong><%= kept.name %></strong>
-                  <span>Teaches you <%= kept.subjects.join(', ') %></span>
-                  <span>Your sessions: <%= scheduleText(kept.preferred_days, kept.time_slot) || 'not scheduled yet' %></span>
-                </div>
-                <div class="st-tutor-actions">
-                  <a class="btn btn-secondary btn-sm" href="/student/tutors/<%= kept.tutor_id %>?subject=<%= subject.subject_id %>&amp;from=keep">View profile</a>
-                  <form method="post" action="/student/subjects/<%= subject.subject_id %>/keep-tutor"
-                        data-confirm-message="Keep <%= kept.name %> as your <%= subject.subject_name %> tutor<%= kept.time_slot ? `, in your ${scheduleText(kept.preferred_days, kept.time_slot)} sessions` : '' %>?">
-                    <input type="hidden" name="tutor_id" value="<%= kept.tutor_id %>" />
-                    <button class="btn btn-primary btn-sm" type="submit">Keep this tutor</button>
-                  </form>
-                </div>
-              </article>
-            <% }) %>
-          </div>
-          <div class="st-step-foot">
-            <button type="button" class="btn btn-secondary" data-picker-go="when">Choose another tutor</button>
-          </div>
-        </div>
-      <% } %>
-
       <%# Step 1 — the days and the time, before any tutor is shown. Not a
           <form>: nothing is sent yet, and the shell treats any form submit as
           a page load (its loading overlay). %>
-      <div class="st-step" data-step="when" <%= subject.currentTutors.length ? 'hidden' : '' %> data-picker-when>
-        <p class="st-lead"><strong>Step 1.</strong> When do you want your sessions?</p>
+      <div class="st-step" data-step="when" data-picker-when>
+        <p class="st-lead"><strong>Step 1.</strong> When do you want your <%= subject.subject_name %> sessions? Each subject has its own hour.</p>
         <fieldset class="st-days">
           <legend>Preferred days</legend>
           <% choices.preferredDays.forEach((day) => { %>
@@ -125,18 +93,14 @@
           <% }) %>
         </fieldset>
         <label class="st-time">Preferred time
-          <select data-picker-slot>
-            <option value="">Select a time</option>
-            <% choices.timeSlots.forEach((slot) => { %>
-              <option value="<%= slot %>"><%= slot %></option>
-            <% }) %>
+          <select data-picker-slot disabled>
+            <option value="">Choose your days first</option>
           </select>
         </label>
+        <%# Which hours are not offered, and why. Filled in by the script. %>
+        <p class="st-hint" data-picker-held hidden></p>
         <p class="st-error" data-picker-error hidden role="alert"></p>
         <div class="st-step-foot">
-          <% if (subject.currentTutors.length) { %>
-            <button type="button" class="btn btn-secondary" data-picker-go="keep">Back</button>
-          <% } %>
           <button type="button" class="btn btn-primary" data-picker-find>Show available tutors</button>
         </div>
       </div>
@@ -199,16 +163,68 @@
   </section>
 </section>
 
-<%# The tutors per subject, read by the dialog script. JSON in a script tag is
-    data, never run; "<" is escaped so a name cannot close the tag. %>
-<script type="application/json" id="tutor-choices-data"><%- JSON.stringify(choices.subjects.map((s) => ({ subject_id: s.subject_id, subject_name: s.subject_name, tutors: s.tutors }))).replace(/</g, '\\u003c') %></script>
+<%# The tutors per subject, read by the dialog script — only for the subjects
+    that have a dialog (one waiting for a tutor's answer has none). JSON in a
+    script tag is data, never run; "<" is escaped so a name cannot close the tag. %>
+<script type="application/json" id="tutor-choices-data"><%- JSON.stringify({
+  subjects: choices.subjects.filter((s) => !requestFor(s.subject_id))
+    .map((s) => ({ subject_id: s.subject_id, subject_name: s.subject_name, tutors: s.tutors })),
+  held: choices.held || [],
+  timeSlots: choices.timeSlots || []
+}).replace(/</g, '\\u003c') %></script>
 
 <script>
 (function () {
   var dataNode = document.getElementById('tutor-choices-data');
   if (!dataNode) return;
-  var subjects = [];
-  try { subjects = JSON.parse(dataNode.textContent || '[]'); } catch (_e) { subjects = []; }
+  var parsed = { subjects: [], held: [], timeSlots: [] };
+  try { parsed = JSON.parse(dataNode.textContent || '{}'); } catch (_e) { /* keep the empty shape */ }
+  var subjects = parsed.subjects || [];
+  var held = parsed.held || [];
+  var timeSlots = parsed.timeSlots || [];
+
+  // The hours this student already spends on other subjects, on these days. An
+  // enrolment from before days were chosen has none ('') and holds both.
+  function heldOn(days) {
+    return held.filter(function (session) { return !session.days || session.days === days; });
+  }
+
+  // One subject, one hour: the times still free on these days. An hour already
+  // spent on another subject (on the same days) is left out; the same hour on
+  // the other days is still offered.
+  function fillTimes(picker, days, keep) {
+    var select = picker.querySelector('[data-picker-slot]');
+    var note = picker.querySelector('[data-picker-held]');
+    var error = picker.querySelector('[data-picker-error]');
+    select.innerHTML = '';
+    if (!days) {
+      select.disabled = true;
+      select.appendChild(new Option('Choose your days first', ''));
+      note.hidden = true;
+      return;
+    }
+    var taken = heldOn(days);
+    var takenSlots = taken.map(function (session) { return session.time_slot; });
+    var free = timeSlots.filter(function (slot) { return takenSlots.indexOf(slot) === -1; });
+    select.disabled = !free.length;
+    select.appendChild(new Option(free.length ? 'Select a time' : 'No time left on ' + days.toLowerCase(), ''));
+    free.forEach(function (slot) { select.appendChild(new Option(slot, slot)); });
+    if (keep && free.indexOf(keep) !== -1) select.value = keep;
+    if (taken.length) {
+      note.textContent = 'Not shown — already your ' + taken.map(function (session) {
+        return session.subject_name + ' hour' + (session.waiting ? ' (waiting for a tutor)' : '') + ': ' + session.time_slot;
+      }).join('; ') + ' on ' + days.toLowerCase() + '.';
+      note.hidden = false;
+    } else {
+      note.hidden = true;
+    }
+    if (!free.length) {
+      error.textContent = 'Every time on ' + days.toLowerCase() + ' is already used by your other subjects. Try the other days.';
+      error.hidden = false;
+    } else {
+      error.hidden = true;
+    }
+  }
 
   function el(tag, className, text) {
     var node = document.createElement(tag);
@@ -268,8 +284,8 @@
       var info = el('div', 'st-tutor-info');
       info.appendChild(el('strong', '', tutor.name));
       info.appendChild(el('span', '', 'Year levels: ' + ((tutor.year_levels || []).join(', ') || 'All levels')));
-      if ((tutor.also_teaches || []).length) {
-        info.appendChild(el('span', 'st-also', 'Also teaches your ' + tutor.also_teaches.join(', ') + ' — they would take it too.'));
+      if ((tutor.also_yours || []).length) {
+        info.appendChild(el('span', 'st-also', 'Already your tutor for ' + tutor.also_yours.join(', ') + '.'));
       }
       card.appendChild(info);
 
@@ -314,6 +330,11 @@
     var when = picker.querySelector('[data-picker-when]');
     var error = when.querySelector('[data-picker-error]');
 
+    // Choosing the days decides which times are still free.
+    picker.addEventListener('change', function (event) {
+      if (event.target.matches('input[type="radio"]')) fillTimes(picker, event.target.value, '');
+    });
+
     picker.addEventListener('click', function (event) {
       var go = event.target.closest('[data-picker-go]');
       if (go) show(picker, go.getAttribute('data-picker-go'));
@@ -337,10 +358,12 @@
     var slot = back.get('slot') || '';
     var radio = Array.prototype.find.call(when.querySelectorAll('input[type="radio"]'), function (r) { return r.value === days; });
     var select = when.querySelector('[data-picker-slot]');
-    if (radio) radio.checked = true;
-    if (select && Array.prototype.some.call(select.options, function (o) { return o.value === slot; })) select.value = slot;
+    if (radio) {
+      radio.checked = true;
+      fillTimes(picker, days, slot);
+    }
     if (radio && select && select.value) renderTutors(picker, subject, days, slot);
-    else if (!picker.querySelector('[data-step="keep"]') || days || slot) show(picker, 'when');
+    else show(picker, 'when');
     // openModal lives in /js/main.js, which loads after this page's markup.
     var modal = picker.closest('.global-modal');
     var openIt = function () {
@@ -374,6 +397,8 @@
   .st-day-option small { color: var(--text-soft, #5f7084); font-weight: 500; }
   .st-time { display: grid; gap: 6px; font-weight: 700; font-size: 14px; max-width: 320px; }
   .st-error { margin: 0; color: #d54c4c; font-size: 13px; font-weight: 600; }
+  .st-hint { margin: 0; color: var(--text-soft, #5f7084); font-size: 13px; line-height: 1.5; }
+  .st-hint[hidden], .st-error[hidden] { display: none; }
   .st-step-foot { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
   .st-tutor-list { display: grid; gap: 10px; }
   .st-tutor-card {

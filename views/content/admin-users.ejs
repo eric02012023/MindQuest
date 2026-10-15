@@ -3,8 +3,7 @@
 
     One line per user, key facts only, icon actions on the right. The search /
     branch / role / status filters above the table narrow the list; the table
-    shows ten rows and scrolls, and the search icon beside the "All users"
-    heading looks inside those rows (public/js/mq-tables.js).
+    shows ten rows and scrolls (public/js/mq-tables.js).
 
     The heavy detail (full profile, subjects, guardian, documents) is one click
     away on the profile page rather than crammed into the row. %>
@@ -102,19 +101,11 @@
 
   <section class="mq-panel">
     <div class="mq-panel-head">
-      <div class="mq-heading-search">
-        <%# The search icon sits on the left, beside the heading, inside the
-            table's own frame. It opens a box that searches every row. %>
-        <h2><%= inNeedsTutor ? 'Students who need a tutor' : 'All users' %></h2>
-        <button type="button" class="mq-th-search" data-table-search-for="users-table"
-                title="Search this table" aria-label="Search <%= inNeedsTutor ? 'students who need a tutor' : 'all users' %>">
-          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M20 20l-3.6-3.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-        </button>
-      </div>
+      <h2><%= inNeedsTutor ? 'Students who need a tutor' : 'All users' %></h2>
       <span class="mq-count"><%= users.length %> total</span>
     </div>
 
-    <div class="mq-table" id="users-table" data-search-anchor="external"
+    <div class="mq-table" id="users-table"
          style="--mq-min-width: 930px; --mq-cols: 120px minmax(180px, 2fr) 1fr 110px 110px 110px 96px;">
       <div class="mq-head">
         <span>User ID</span>
@@ -236,7 +227,7 @@
 
       <div class="mq-table" style="--mq-min-width: 900px; --mq-cols: minmax(170px, 2fr) 130px 120px 70px minmax(180px, 2fr) minmax(150px, 1.2fr);">
         <div class="mq-head">
-          <span data-search-col>Name</span>
+          <span>Name</span>
           <span>Contact Number</span>
           <span>Birthdate</span>
           <span>Age</span>

@@ -1,6 +1,63 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/content/admin-payment-history.ejs | Purpose: UI template/view used by the system. %>
+<%# File: views/content/admin-payment-history.ejs
+    Purpose: Payment History — every payment ever recorded, newest first.
+
+    The filter bar narrows it: search (student, student ID or reference number),
+    method, from/to dates and — for the main admin — branch. The table shows ten
+    rows and scrolls (public/js/mq-tables.js).
+
+    Locals: paymentHistory (the rows the filters return), recordCount (all of
+            them), filters, paymentMethods, selectedBranch %>
+<%
+  const activeFilters = typeof filters === 'undefined' ? {} : filters;
+  const narrowed = !!(activeFilters.search || activeFilters.from || activeFilters.to
+    || (activeFilters.method && activeFilters.method !== 'all')
+    || (currentUser.role === 'admin' && effectiveBranchId));
+%>
 <section class="panel-card">
-  <div class="panel-card-head"><h2>Payment History</h2></div>
+  <div class="panel-card-head">
+    <h2>Payment History</h2>
+    <span class="mq-count"><%= paymentHistory.length %><%= narrowed ? ` of ${recordCount}` : '' %> payment<%= recordCount === 1 ? '' : 's' %></span>
+  </div>
+
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/payments/history">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= activeFilters.search || '' %>" placeholder="Student, student ID or reference no." />
+      </label>
+      <label class="mq-field">
+        <span>From</span>
+        <input type="date" name="from" value="<%= activeFilters.from || '' %>" />
+      </label>
+      <label class="mq-field">
+        <span>To</span>
+        <input type="date" name="to" value="<%= activeFilters.to || '' %>" />
+      </label>
+      <% if (currentUser.role === 'admin' && (branches || []).length) { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id" onchange="this.form.submit()">
+            <option value="all">All branches</option>
+            <% (branches || []).forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= String(selectedBranch) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <label class="mq-field">
+        <span>Method</span>
+        <select name="method" onchange="this.form.submit()">
+          <option value="all">All methods</option>
+          <% (paymentMethods || []).forEach((method) => { %>
+            <option value="<%= method.value %>" <%= activeFilters.method === method.value ? 'selected' : '' %>><%= method.value %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+      <a class="mq-btn" href="<%= basePath %>/payments/history">Clear</a>
+    </div>
+  </form>
+
   <div class="table-wrap">
     <table>
       <%# Phase 2.2: the gateway's reference number is shown here, not just kept
@@ -15,7 +72,7 @@
         </tr>
       </thead>
       <tbody>
-  <% if (!paymentHistory.length) { %><tr><td colspan="7">No payment history yet.</td></tr><% } %>
+  <% if (!paymentHistory.length) { %><tr><td colspan="7"><%= narrowed ? 'No payment matches these filters.' : 'No payment history yet.' %></td></tr><% } %>
   <% paymentHistory.forEach((item) => { %>
     <tr>
       <td><%= item.first_name %> <%= item.middle_name || '' %> <%= item.last_name %></td>

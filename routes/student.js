@@ -18,13 +18,10 @@ const {
   getSubjectResources,
   updateUser,
   getAttendanceBySubject,
-  getTutorAvailabilityForSubject,
   getTutorChoicesForStudent,
-  keepCurrentTutorForSubject,
   normalizePreferredDays,
   slotKey,
-  createTutorScheduleApplication,
-  createTutorScheduleApplicationForAllSubjects,
+  createTutorScheduleRequest,
   getStudentScheduleNotifications,
   markStudentScheduleNotificationRead,
   // Phase 2: AI system imports
@@ -98,8 +95,12 @@ const {
   getScheduleRequestHistory
 } = require('../lib/data');
 const { buildBellItems } = require('../lib/bell');
+const { resolveScope } = require('../lib/rbac');
+const { getProgressComparison } = require('../lib/analytics');
+const { progressCsv } = require('../lib/reportsCsv');
+const { cleanDate, cleanId } = require('../lib/listFilters');
 const { determineLevel } = require('../config/levelThresholds');
-const { normalizeArray, formatDateTime } = require('../lib/utils');
+const { normalizeArray, formatDateTime, todayDate } = require('../lib/utils');
 // Phase 3: cash is a POS transaction now. The student's side ends at a slip.
 const { buildSlipModel, renderSlipPdf, slipFilename, slipCode, formatSlipDate } = require('../lib/paymentSlip');
 
@@ -252,15 +253,14 @@ router.get('/tutors/:id', async (req, res, next) => {
       const subject = choices.subjects.find((s) => Number(s.subject_id) === subjectId) || null;
       if (subject) {
         const listed = subject.tutors.find((t) => Number(t.id) === Number(tutor.id)) || null;
-        const kept = subject.currentTutors.find((t) => Number(t.tutor_id) === Number(tutor.id)) || null;
         // A request already waiting for this subject (the same rule as the
         // Subjects page): nothing more to choose until the tutor answers.
         const pendingRows = await query(
-          `SELECT tutor_id, subject_id FROM tutor_schedule_applications WHERE student_id = ? AND status = 'pending'`,
+          `SELECT subject_id FROM tutor_schedule_applications WHERE student_id = ? AND status = 'pending'`,
           [req.session.user.id]
         );
-        const waiting = pendingRows.some((row) => Number(row.subject_id) === subjectId
-          || subject.tutors.some((t) => Number(t.id) === Number(row.tutor_id)));
+        const waiting = pendingRows.some((row) => Number(row.subject_id) === subjectId);
+        // `blocked` already holds the hours this student spends on other subjects.
         const free = !waiting && listed && days && choices.timeSlots.includes(slot)
           && !(listed.blocked || []).includes(slotKey(days, slot));
         const back = new URLSearchParams({ pick: String(subjectId) });
@@ -273,11 +273,8 @@ router.get('/tutors/:id', async (req, res, next) => {
           slot,
           // Picked from the list at these days and time, and still free then.
           canSelect: !!free,
-          // One of the student's own tutors, offered as "keep this tutor".
-          canKeep: !waiting && req.query.from === 'keep' && !!kept,
           waiting,
-          keptSchedule: kept ? [kept.preferred_days, kept.time_slot].filter(Boolean).join(', ') : '',
-          alsoTeaches: listed ? (listed.also_teaches || []) : [],
+          alsoYours: listed ? (listed.also_yours || []) : [],
           backUrl: `/student/subjects?${back.toString()}`
         };
       }
@@ -365,31 +362,30 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
 });
 
 
-// Single select-tutor route — applies to all enrolled subjects (Fix C)
+// Select a tutor for ONE subject — its days, its hour, its tutor. The next
+// subject is chosen the same way, on its own.
 // Route handler: POST request
 // Purpose: Processes this endpoint and returns the correct view or action result.
 router.post('/apply-tutor', async (req, res, next) => {
   try {
-    // Days and time come first in the dialog, so a request without them is a
-    // stale form rather than a choice.
-    const preferredDays = normalizePreferredDays(req.body.preferred_days);
-    if (!preferredDays) {
-      setFlash(req, 'error', 'Choose Weekdays or Weekend first.');
+    // Days and time come first in the dialog, and the subject is the one the
+    // dialog was opened for, so a request without them is a stale form rather
+    // than a choice.
+    const subjectId = Number(req.body.subject_id) || 0;
+    if (!subjectId) {
+      setFlash(req, 'error', 'Choose the subject you are picking a tutor for.');
       return res.redirect('/student/subjects');
     }
-    // A tutor takes only the subjects they teach, and only ones with no tutor
-    // yet. The request says which; any other subject is picked separately.
-    const subjectId = Number(req.body.subject_id) || null;
-    const result = await createTutorScheduleApplicationForAllSubjects(
+    const result = await createTutorScheduleRequest(
       req.session.user.id,
+      subjectId,
       Number(req.body.tutor_id),
       String(req.body.time_slot || '').trim(),
-      { preferredDays, subjectIds: subjectId ? [subjectId] : [] }
+      req.body.preferred_days
     );
-    const covered = (result && result.subjects) || [];
-    setFlash(req, 'success', covered.length
-      ? `Your request was sent to the tutor for ${covered.join(', ')} (${preferredDays}, ${String(req.body.time_slot || '').trim()}). You will be notified once they accept.`
-      : 'Your request was sent to the tutor.');
+    setFlash(req, 'success',
+      `Your request was sent to ${result.tutorName} for ${result.subjectName} (${result.preferredDays}, ${result.timeSlot}). `
+      + 'You will be notified once they accept.');
     res.redirect('/student/subjects');
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not send your request to the tutor.');
@@ -397,33 +393,17 @@ router.post('/apply-tutor', async (req, res, next) => {
   }
 });
 
-// A newly enrolled subject that one of the student's current tutors teaches:
-// "keep my tutor" adds it to the sessions they already have together.
-router.post('/subjects/:subjectId/keep-tutor', async (req, res) => {
-  try {
-    const result = await keepCurrentTutorForSubject(
-      req.session.user.id,
-      Number(req.params.subjectId),
-      Number(req.body.tutor_id)
-    );
-    const when = [result.preferredDays, result.timeSlot].filter(Boolean).join(', ');
-    setFlash(req, 'success', `${result.tutorName} is now your ${result.subjectName} tutor too${when ? ` (${when})` : ''}.`);
-  } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not keep that tutor for this subject.');
-  }
-  res.redirect('/student/subjects');
-});
-
-// Keep per-subject apply route for backwards compatibility (subject-detail page)
+// The same request made from the subject's own page.
 // Route handler: POST request
 // Purpose: Processes this endpoint and returns the correct view or action result.
 router.post('/subjects/:subjectId/apply', async (req, res, next) => {
   try {
-    const preferredDays = normalizePreferredDays(req.body.preferred_days);
-    if (!preferredDays) throw new Error('Choose Weekdays or Weekend first.');
-    await createTutorScheduleApplicationForAllSubjects(
-      req.session.user.id, Number(req.body.tutor_id), String(req.body.time_slot || '').trim(),
-      { subjectIds: [Number(req.params.subjectId)], preferredDays }
+    await createTutorScheduleRequest(
+      req.session.user.id,
+      Number(req.params.subjectId),
+      Number(req.body.tutor_id),
+      String(req.body.time_slot || '').trim(),
+      req.body.preferred_days
     );
     setFlash(req, 'success', 'Your request was sent to the tutor.');
     res.redirect(`/student/subjects/${req.params.subjectId}`);
@@ -974,6 +954,32 @@ router.post('/billing/pay-online', async (req, res, next) => {
 });
 
 /**
+ * The filter bar: subject, assessment and from/to (a student has no learner to
+ * search for). A date is taken only as a plain YYYY-MM-DD.
+ */
+function analyticsFilters(req) {
+  return {
+    search: '',
+    subjectId: cleanId(req.query.subject_id),
+    kind: req.query.kind || 'all',
+    from: cleanDate(req.query.from),
+    to: cleanDate(req.query.to)
+  };
+}
+
+// My progress as a CSV file: the same rows as the tab, the student's own.
+router.get('/analytics/progress.csv', async (req, res, next) => {
+  try {
+    const rows = await getProgressComparison(resolveScope(req.session.user), analyticsFilters(req));
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="mindquest-my-progress-${todayDate()}.csv"`
+    });
+    res.send(progressCsv(rows));
+  } catch (error) { next(error); }
+});
+
+/**
  * Analytics & Reports for a student.
  *
  * Required for all four roles, scoped per role. For a student the scope is
@@ -985,16 +991,8 @@ router.post('/billing/pay-online', async (req, res, next) => {
  */
 router.get('/analytics', async (req, res, next) => {
   try {
-    // Subject, assessment and from/to filters (a student has no learner to
-    // search for). The score trend is drawn per subject, one bar per
-    // assessment taken.
-    const filters = {
-      search: '',
-      subjectId: req.query.subject_id || 'all',
-      kind: req.query.kind || 'all',
-      from: req.query.from || '',
-      to: req.query.to || ''
-    };
+    // The score trend is drawn per subject, one bar per assessment taken.
+    const filters = analyticsFilters(req);
 
     const [data, focus] = await Promise.all([
       getAnalyticsDashboard(req.session.user, filters),

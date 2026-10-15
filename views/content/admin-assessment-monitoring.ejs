@@ -8,10 +8,23 @@
     question — how it went, and what was set — so they are two sections of one
     page. Results first: that is what this page is opened for.
 
-    Locals: results (submissions, newest first), assessments (tutor-created) %>
+    THE FILTER BAR narrows both sections: search (student, ID, assessment,
+    subject), subject, assessment type, from/to dates and — for the main admin —
+    branch (an assistant is held to their own). Level narrows the results only:
+    it is how a learner did, and an assessment has none. Each table shows ten
+    rows and scrolls (public/js/mq-tables.js).
+
+    Locals: results (submissions, newest first), assessments (tutor-created),
+            filters, subjectOptions, selectedBranch, everything { results, assessments } %>
 <%
   const rows = results || [];
   const sets = assessments || [];
+  const activeFilters = typeof filters === 'undefined' ? {} : filters;
+  const narrowed = !!(activeFilters.search || activeFilters.from || activeFilters.to
+    || (activeFilters.subjectId && activeFilters.subjectId !== 'all')
+    || (activeFilters.kind && activeFilters.kind !== 'all')
+    || (activeFilters.level && activeFilters.level !== 'all')
+    || (currentUser.role === 'admin' && effectiveBranchId));
   const levelStatus = (level) => level === 'Advance' ? 'paid' : level === 'Intermediate' ? 'partial' : 'unpaid';
   const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
   const purposeLabel = (p) => p === 'pre' ? 'Pre' : p === 'post' ? 'Post' : p === 'activity' ? 'Module' : (p || '—');
@@ -30,6 +43,58 @@
       </div>
     </div>
   </div>
+
+  <%# ---------------------------------------------------------------- filters %>
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/assessment-monitoring">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= activeFilters.search || '' %>" placeholder="Student, ID, assessment or subject" />
+      </label>
+      <label class="mq-field">
+        <span>Subject</span>
+        <select name="subject_id" onchange="this.form.submit()">
+          <option value="all">All subjects</option>
+          <% (subjectOptions || []).forEach((subject) => { %>
+            <option value="<%= subject.id %>" <%= String(activeFilters.subjectId) === String(subject.id) ? 'selected' : '' %>><%= subject.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Assessment</span>
+        <select name="kind" onchange="this.form.submit()">
+          <option value="all">All</option>
+          <option value="pre_assessment" <%= activeFilters.kind === 'pre_assessment' ? 'selected' : '' %>>Pre-Assessment</option>
+          <option value="tutor_assessment" <%= activeFilters.kind === 'tutor_assessment' ? 'selected' : '' %>>Module assessment</option>
+          <option value="post_assessment" <%= activeFilters.kind === 'post_assessment' ? 'selected' : '' %>>Post-Assessment</option>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Level</span>
+        <select name="level" onchange="this.form.submit()">
+          <option value="all">All levels</option>
+          <% ['Beginner', 'Intermediate', 'Advance'].forEach((level) => { %>
+            <option value="<%= level %>" <%= activeFilters.level === level ? 'selected' : '' %>><%= level %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label class="mq-field"><span>From</span><input type="date" name="from" value="<%= activeFilters.from || '' %>" /></label>
+      <label class="mq-field"><span>To</span><input type="date" name="to" value="<%= activeFilters.to || '' %>" /></label>
+      <% if (currentUser.role === 'admin' && (branches || []).length) { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id" onchange="this.form.submit()">
+            <option value="all">All branches</option>
+            <% (branches || []).forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= String(selectedBranch) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+      <a class="mq-btn" href="<%= basePath %>/assessment-monitoring">Clear</a>
+    </div>
+  </form>
 
   <%# ------------------------------------------------------------ at a glance %>
   <div class="mq-summary">
@@ -73,8 +138,13 @@
 
       <% if (!rows.length) { %>
         <div class="mq-empty">
-          <strong>No submissions yet</strong>
-          Results appear here as soon as a learner submits an assessment.
+          <% if (narrowed) { %>
+            <strong>No submissions match these filters</strong>
+            Widen the date range, or clear the filters above.
+          <% } else { %>
+            <strong>No submissions yet</strong>
+            Results appear here as soon as a learner submits an assessment.
+          <% } %>
         </div>
       <% } %>
 
@@ -130,8 +200,13 @@
 
       <% if (!sets.length) { %>
         <div class="mq-empty">
-          <strong>No tutor-created assessments yet</strong>
-          Assessments a tutor builds for a module appear here.
+          <% if (narrowed) { %>
+            <strong>No assessment matches these filters</strong>
+            Clear the filters above to see every assessment a tutor has set.
+          <% } else { %>
+            <strong>No tutor-created assessments yet</strong>
+            Assessments a tutor builds for a module appear here.
+          <% } %>
         </div>
       <% } %>
 

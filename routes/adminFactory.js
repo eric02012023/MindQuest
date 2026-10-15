@@ -158,7 +158,12 @@ const {
   // All Subjects -> subject -> Subject Assessments (the live ones)
   getSubjectAssessmentsOverview
 } = require('../lib/data');
-const { normalizeArray } = require('../lib/utils');
+const { normalizeArray, todayDate } = require('../lib/utils');
+const { getUserRegistry, getProgressComparison } = require('../lib/analytics');
+const { registryCsv, progressCsv } = require('../lib/reportsCsv');
+const {
+  matchesSearch, withinDates, nameParts, cleanDate, cleanId
+} = require('../lib/listFilters');
 const { buildBellItems } = require('../lib/bell');
 const { normalizeAmount } = require('../lib/billing');
 const { slipCode, parseSlipCode } = require('../lib/paymentSlip');
@@ -441,10 +446,13 @@ function createAdminRouter(role) {
   // on the dashboard after each one meant finding the inbox again every time.
   const inboxPath = `${basePath}/notifications`;
 
+  // read / archive / recover say so when nothing was found — another branch's
+  // notification, for an assistant — instead of reporting a success that did
+  // not happen.
   router.post('/notifications/:id/read', async (req, res, next) => {
     try {
-      await markNotificationRead(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
-      setFlash(req, 'success', 'Notification marked as read.');
+      const done = await markNotificationRead(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
+      setFlash(req, done ? 'success' : 'error', done ? 'Notification marked as read.' : 'Notification not found.');
       res.redirect(inboxPath);
     } catch (error) {
       failBack(req, res, error, `${basePath}/notifications`);
@@ -468,8 +476,8 @@ function createAdminRouter(role) {
 
   router.post('/notifications/:id/archive', async (req, res, next) => {
     try {
-      await archiveNotification(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
-      setFlash(req, 'success', 'Notification archived successfully.');
+      const done = await archiveNotification(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
+      setFlash(req, done ? 'success' : 'error', done ? 'Notification archived successfully.' : 'Notification not found.');
       res.redirect(inboxPath);
     } catch (error) {
       failBack(req, res, error, `${basePath}/notifications`);
@@ -482,8 +490,8 @@ function createAdminRouter(role) {
 
   router.post('/notifications/:id/recover', async (req, res, next) => {
     try {
-      await recoverNotification(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
-      setFlash(req, 'success', 'Archived notification recovered.');
+      const done = await recoverNotification(req.params.id, req.session.user.role === 'admin_assistant' ? req.session.user.assistant_scope_branch_id : null);
+      setFlash(req, done ? 'success' : 'error', done ? 'Archived notification recovered.' : 'Notification not found.');
       res.redirect(`${basePath}/notifications/archive`);
     } catch (error) {
       failBack(req, res, error, `${basePath}/notifications`);
@@ -553,8 +561,7 @@ function createAdminRouter(role) {
 
       // The search / branch / role / status filters narrow the list on the
       // server. What they return is listed in full: the table shows ten rows
-      // and scrolls, and its own search icon looks inside those rows
-      // (public/js/mq-tables.js).
+      // and scrolls (public/js/mq-tables.js).
       const isMainAdmin = req.session.user.role === 'admin';
       const [page, needsTutorCount, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts, assistantProfiles] = await Promise.all([
         getUsersPaged({
@@ -1231,14 +1238,22 @@ function createAdminRouter(role) {
         getBranchMembers(req.params.id),
         getBranchAssistants(req.params.id)
       ]);
+      // Search narrows the students and the tutors: name, ID, year or grade level.
+      const search = String(req.query.search || '').trim();
+      const found = (item) => matchesSearch(
+        [nameParts(item), item.user_id, item.year_level, item.grade_level, (item.subjects || []).join(' ')],
+        search
+      );
       const shell = await buildShellData(req, {
         pageTitle: `${branch.name}`,
         section: 'branches',
         contentView: '../content/admin-branch-detail',
         branch,
         assistants,
-        students: members.filter((item) => item.role === 'student'),
-        tutors: members.filter((item) => item.role === 'tutor')
+        search,
+        everyone: { students: members.filter((item) => item.role === 'student').length, tutors: members.filter((item) => item.role === 'tutor').length },
+        students: members.filter((item) => item.role === 'student').filter(found),
+        tutors: members.filter((item) => item.role === 'tutor').filter(found)
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -1443,11 +1458,13 @@ function createAdminRouter(role) {
       const scope = resolveScope(req.session.user, { requestedBranchId: req.query.branch_id });
       const filters = {
         search: String(req.query.search || '').trim(),
-        from: req.query.from || '',
-        to: req.query.to || '',
+        // Only a real YYYY-MM-DD: anything else reached the query as an Invalid
+        // Date and turned the page into a Server Error.
+        from: cleanDate(req.query.from),
+        to: cleanDate(req.query.to),
         method: req.query.method || 'all',
         purpose: req.query.purpose || 'all',
-        branchId: req.query.branch_id || 'all'
+        branchId: cleanId(req.query.branch_id)
       };
 
       const rows = await getPaymentLedger(scope, filters);
@@ -1646,13 +1663,30 @@ function createAdminRouter(role) {
 
   router.get('/payments/history', async (req, res, next) => {
     try {
+      // Search (student, ID, reference), method, from/to and — main admin —
+      // branch. An assistant is held to their own branch whatever branch_id says.
       const scopeBranchId = getScopeBranchId(req);
-      const paymentHistory = await getPaymentHistory(scopeBranchId);
+      const filters = {
+        search: String(req.query.search || '').trim(),
+        method: req.query.method || 'all',
+        from: cleanDate(req.query.from),
+        to: cleanDate(req.query.to)
+      };
+      const everyPayment = await getPaymentHistory(scopeBranchId);
+      const paymentHistory = everyPayment.filter((item) => (
+        matchesSearch([nameParts(item), item.user_id, item.provider_reference], filters.search)
+        && (filters.method === 'all' || String(item.payment_method || 'Cash') === filters.method)
+        && withinDates(item.paid_at, filters.from, filters.to)
+      ));
       const shell = await buildShellData(req, {
         pageTitle: 'Payment History',
         section: 'payment_history',
         contentView: '../content/admin-payment-history',
-        paymentHistory
+        paymentHistory,
+        recordCount: everyPayment.length,
+        filters,
+        paymentMethods: PAYMENT_METHODS,
+        selectedBranch: req.query.branch_id || 'all'
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -1683,8 +1717,8 @@ function createAdminRouter(role) {
         getAppNotifications(req.session.user, { search })
       ]);
 
-      // Every slip and every alert: each table shows ten rows and scrolls, with
-      // a search icon in its heading, instead of page numbers.
+      // Every slip and every alert: each table shows ten rows and scrolls
+      // instead of page numbers.
       const requests = allRequests;
       const alerts = allAlerts;
       const openRequestId = req.query.request ? String(req.query.request) : '';
@@ -2111,7 +2145,7 @@ function createAdminRouter(role) {
         preResults, preStatuses, comparisons
       ] = await Promise.all([
         getSubjectMembers(req.params.id, scopeBranchId),
-        getSubjectArchivedAssignments(req.params.id),
+        getSubjectArchivedAssignments(req.params.id, scopeBranchId),
         getSubjectArchivedTutors(req.params.id, scopeBranchId),
         // The Legacy Modules panel and its upload/archive/recover routes are
         // gone. "Subject Assessments" lists the assessments that exist today —
@@ -2128,14 +2162,31 @@ function createAdminRouter(role) {
         // each student's opens on the last day of their enrolment.
         getSubjectPrePostComparison(req.params.id)
       ]);
-      const { subject, students, tutors } = members;
+      const { subject } = members;
       if (!subject) {
         setFlash(req, 'error', 'Subject not found.');
         return res.redirect(`${basePath}/subjects`);
       }
+      // The assignment dialogs need everyone in scope, whatever is searched for.
+      const allStudents = members.students;
+      const allTutors = members.tutors;
       const assignableStudentsByTutorId = Object.fromEntries(
-        tutors.map((tutor) => [String(tutor.id), getAssignableStudentsForTutor(tutor, students)])
+        allTutors.map((tutor) => [String(tutor.id), getAssignableStudentsForTutor(tutor, allStudents)])
       );
+
+      // The filter bar: search (name, ID, year or grade level), and — main
+      // admin — branch. An assistant is held to their own branch whatever
+      // branch_id says. The results and the Pre vs Post list used to be every
+      // branch's; with a branch in scope they are that branch's students only.
+      const search = String(req.query.search || '').trim();
+      const inBranch = (row) => !scopeBranchId || Number(row.student_branch_id) === Number(scopeBranchId);
+      const studentFound = (row) => matchesSearch(
+        [nameParts(row), row.user_id || row.student_code, row.year_level, row.grade_level, row.branch_name, row.tutor_name],
+        search
+      );
+      const tutorFound = (row) => matchesSearch([nameParts(row), row.user_id, row.year_level, row.branch_name], search);
+      const students = allStudents.filter(studentFound);
+      const tutors = allTutors.filter(tutorFound);
       const shell = await buildShellData(req, {
         pageTitle: subject ? subject.name : 'Subject',
         section: 'subjects',
@@ -2143,20 +2194,22 @@ function createAdminRouter(role) {
         subject,
         students,
         tutors,
-        archivedAssignments,
-        archivedTutors,
-        assignmentStudents: students,
+        search,
+        selectedBranch: req.query.branch_id || 'all',
+        archivedAssignments: archivedAssignments.filter(studentFound),
+        archivedTutors: archivedTutors.filter(tutorFound),
+        assignmentStudents: allStudents,
         assignableStudentsByTutorId,
         subjectAssessments,
         modules,
         maxModuleNumber: MAX_MODULE_NUMBER,
         moduleTargetOptions: getModuleTargetOptions(),
-        preResults,
+        preResults: preResults.filter(inBranch).filter(studentFound),
         preStatuses: preStatuses.map((status) => ({
           ...status,
           warmup: getWarmupState(req.params.id, status.gradeLevel)
         })),
-        comparisons
+        comparisons: comparisons.filter(inBranch).filter(studentFound)
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -2577,19 +2630,30 @@ function createAdminRouter(role) {
    * an admin. That is the "enforced at the query level, not hidden in the UI"
    * requirement — the rows for other branches are never fetched.
    */
+  /**
+   * The filter bar: search, subject, assessment, from/to and (main admin)
+   * branch — and, for the User registry tab, the role and status of the accounts
+   * listed. The page and the CSV downloads read them the same way.
+   */
+  function analyticsFilters(req) {
+    return {
+      search: String(req.query.search || '').trim(),
+      subjectId: cleanId(req.query.subject_id),
+      kind: req.query.kind || 'all',
+      // Only a real YYYY-MM-DD: anything else would reach the query as an
+      // Invalid Date, which the driver refuses (a Server Error).
+      from: cleanDate(req.query.from),
+      to: cleanDate(req.query.to),
+      branchId: req.query.branch_id || 'all',
+      registryRole: ['Assistant Admin', 'Tutor', 'Student'].includes(req.query.reg_role) ? req.query.reg_role : 'all',
+      registryStatus: ['Approved', 'Pending', 'Rejected', 'Archived'].includes(req.query.reg_status) ? req.query.reg_status : 'all'
+    };
+  }
+
   router.get('/analytics', async (req, res, next) => {
     try {
-      // The filter bar: search, subject, assessment, from/to and (main admin)
-      // branch. Each table still shows ten rows and scrolls, with its own
-      // search icon.
-      const filters = {
-        search: String(req.query.search || '').trim(),
-        subjectId: req.query.subject_id || 'all',
-        kind: req.query.kind || 'all',
-        from: req.query.from || '',
-        to: req.query.to || '',
-        branchId: req.query.branch_id || 'all'
-      };
+      // Each table shows ten rows and scrolls.
+      const filters = analyticsFilters(req);
 
       const data = await getAnalyticsDashboard(req.session.user, filters);
       const focus = await getFocusHandouts(data.scope, { search: filters.search }).catch(() => []);
@@ -2605,6 +2669,40 @@ function createAdminRouter(role) {
         viewerRole: req.session.user.role
       });
       res.render('shells/dashboard', shell);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
+   * The User registry and Student progress tables as CSV files — the same rows as
+   * their tabs, after the same scope and filters, so the file says what the screen
+   * says. An assistant gets their own branch's, whatever branch_id asks for.
+   */
+  function sendCsv(res, name, text) {
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="mindquest-${name}-${todayDate()}.csv"`
+    });
+    res.send(text);
+  }
+
+  router.get('/analytics/registry.csv', async (req, res, next) => {
+    try {
+      const filters = analyticsFilters(req);
+      const scope = resolveScope(req.session.user, { requestedBranchId: filters.branchId });
+      const { rows } = await getUserRegistry(scope, filters);
+      sendCsv(res, 'user-registry', registryCsv(rows));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/analytics/progress.csv', async (req, res, next) => {
+    try {
+      const filters = analyticsFilters(req);
+      const scope = resolveScope(req.session.user, { requestedBranchId: filters.branchId });
+      sendCsv(res, 'student-progress', progressCsv(await getProgressComparison(scope, filters)));
     } catch (error) {
       next(error);
     }
@@ -2694,17 +2792,54 @@ function createAdminRouter(role) {
   // with a section each.
   router.get('/assessment-monitoring', async (req, res, next) => {
     try {
-      const [assessments, results] = await Promise.all([
-        getAllTutorAssessmentsAdmin(),
-        // An assistant sees their own branch's students' results only.
-        getStudentResultsAdmin({ branchId: billingScopeBranchId(req) })
+      // The filter bar: search (student, ID, assessment, subject), subject,
+      // assessment type, level, from/to and — main admin — branch.
+      const filters = {
+        search: String(req.query.search || '').trim(),
+        subjectId: cleanId(req.query.subject_id),
+        kind: req.query.kind || 'all',
+        level: req.query.level || 'all',
+        from: cleanDate(req.query.from),
+        to: cleanDate(req.query.to)
+      };
+      // An assistant sees their own branch's students' results, and the
+      // assessments of the tutors who teach there, only; the main admin may
+      // narrow both to a branch.
+      const scopeBranchId = getScopeBranchId(req);
+      const [everyAssessment, everyResult, subjectOptions] = await Promise.all([
+        getAllTutorAssessmentsAdmin({ branchId: scopeBranchId }),
+        getStudentResultsAdmin({ branchId: scopeBranchId }),
+        getSubjects(false)
       ]);
+      const levelKey = (level) => (level === 'Advanced' ? 'Advance' : level);
+      const results = everyResult.filter((row) => (
+        matchesSearch([nameParts(row), row.student_code, row.assessment_title, row.subject_name], filters.search)
+        && (filters.subjectId === 'all' || Number(row.subject_id) === Number(filters.subjectId))
+        && (filters.kind === 'all' || row.assessment_kind === filters.kind)
+        && (filters.level === 'all' || levelKey(row.level) === filters.level)
+        && withinDates(row.submitted_at, filters.from, filters.to)
+      ));
+      // The assessments tutors set are narrowed by what applies to them: the
+      // words typed, the subject, the type and when they were made. Not the
+      // level — Beginner / Intermediate / Advance is how a LEARNER did, and an
+      // assessment has none (modules.level is an old column, empty on every
+      // module), so the level filter used to empty this list every time.
+      const assessments = everyAssessment.filter((row) => (
+        matchesSearch([row.title, row.subject_name, row.module_title, nameParts(row)], filters.search)
+        && (filters.subjectId === 'all' || Number(row.subject_id) === Number(filters.subjectId))
+        && (filters.kind === 'all' || row.assessment_kind === filters.kind)
+        && withinDates(row.created_at, filters.from, filters.to)
+      ));
       const shell = await buildShellData(req, {
         pageTitle: 'Assessment Monitoring',
         section: 'assessment_monitoring',
         contentView: '../content/admin-assessment-monitoring',
         assessments,
-        results
+        results,
+        filters,
+        subjectOptions,
+        selectedBranch: req.query.branch_id || 'all',
+        everything: { results: everyResult.length, assessments: everyAssessment.length }
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }

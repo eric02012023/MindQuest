@@ -3,8 +3,23 @@
 
     Four statuses: Present, Late, Absent, Excused. In the Attendance Logs only
     the status of a record can be changed — its date, student and subject stay
-    as they were recorded (POST /tutor/attendance/:id/status). %>
-<% const statusOptions = ['present', 'late', 'absent', 'excused']; %>
+    as they were recorded (POST /tutor/attendance/:id/status).
+
+    The Attendance Logs have their own filter bar (a learner or subject, a
+    status, from/to dates). Its fields are log_*, so they never mix with the
+    marking form, and a status change comes back to the same filtered list.
+
+    Locals: attendanceLogs (the logs the filter returns), logCount (all of
+            them), logFilters, tutorSubjects, students, selectedSubjectId %>
+<%
+  const statusOptions = ['present', 'late', 'absent', 'excused'];
+  const logFilter = typeof logFilters === 'undefined' ? { search: '', status: 'all', from: '', to: '' } : logFilters;
+  const totalLogs = typeof logCount === 'undefined' ? (attendanceLogs || []).length : logCount;
+  const logsNarrowed = !!(logFilter.search || logFilter.from || logFilter.to || logFilter.status !== 'all');
+  // What the logs' filter carries, kept on every status change.
+  const logKeep = [['subject_id', selectedSubjectId], ['log_search', logFilter.search], ['log_status', logFilter.status === 'all' ? '' : logFilter.status],
+    ['log_from', logFilter.from], ['log_to', logFilter.to]].filter((pair) => pair[1]);
+%>
 <section class="page-stack">
   <section class="panel-card">
     <div class="panel-card-head"><h2>Mark Attendance</h2></div>
@@ -28,7 +43,7 @@
       <label>Attendance Date<input type="date" name="attendance_date" value="<%= toInputDate(new Date()) %>" required /></label>
       <div class="table-wrap scroll-table-box">
         <table>
-          <thead><tr><th>Select</th><th>Subject</th><th data-search-col>Student</th><th>Status</th></tr></thead>
+          <thead><tr><th>Select</th><th>Subject</th><th>Student</th><th>Status</th></tr></thead>
           <tbody>
             <% if (!(students || []).length) { %>
               <tr><td colspan="4">Select a subject first, then click Load Assigned Students.</td></tr>
@@ -56,14 +71,42 @@
 
   <section class="panel-card" id="attendance-logs">
     <div class="panel-card-head">
-      <h2>Attendance Logs</h2>
-      <p>Change a status here if it was marked wrongly.</p>
+      <div>
+        <h2>Attendance Logs</h2>
+        <p>Change a status here if it was marked wrongly.</p>
+      </div>
+      <span class="mq-count"><%= (attendanceLogs || []).length %><%= logsNarrowed ? ` of ${totalLogs}` : '' %> log<%= totalLogs === 1 ? '' : 's' %></span>
     </div>
+
+    <%# Narrow the logs. The subject loaded above for marking stays loaded. %>
+    <form class="mq-toolbar" method="get" action="/tutor/attendance#attendance-logs">
+      <% if (selectedSubjectId) { %><input type="hidden" name="subject_id" value="<%= selectedSubjectId %>" /><% } %>
+      <div class="mq-filters">
+        <label class="mq-field mq-field-search">
+          <span>Search</span>
+          <input type="search" name="log_search" value="<%= logFilter.search %>" placeholder="Learner or subject" />
+        </label>
+        <label class="mq-field">
+          <span>Status</span>
+          <select name="log_status" onchange="this.form.submit()">
+            <option value="">All statuses</option>
+            <% statusOptions.forEach((status) => { %>
+              <option value="<%= status %>" <%= logFilter.status === status ? 'selected' : '' %>><%= attendanceLabel(status) %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label class="mq-field"><span>From</span><input type="date" name="log_from" value="<%= logFilter.from %>" /></label>
+        <label class="mq-field"><span>To</span><input type="date" name="log_to" value="<%= logFilter.to %>" /></label>
+        <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+        <a class="mq-btn" href="/tutor/attendance<%= selectedSubjectId ? `?subject_id=${encodeURIComponent(selectedSubjectId)}` : '' %>#attendance-logs">Clear</a>
+      </div>
+    </form>
+
     <div class="table-wrap scroll-table-box">
       <table>
-        <thead><tr><th>Date</th><th data-search-col>Student</th><th>Subject</th><th>Status</th><th>Edit Status</th></tr></thead>
+        <thead><tr><th>Date</th><th>Student</th><th>Subject</th><th>Status</th><th>Edit Status</th></tr></thead>
         <tbody>
-          <% if (!(attendanceLogs || []).length) { %><tr><td colspan="5">No attendance logs yet.</td></tr><% } %>
+          <% if (!(attendanceLogs || []).length) { %><tr><td colspan="5"><%= logsNarrowed ? 'No attendance log matches these filters.' : 'No attendance logs yet.' %></td></tr><% } %>
           <% (attendanceLogs || []).forEach((item) => { %>
             <tr>
               <td><%= formatDate(item.attendance_date) %></td>
@@ -73,7 +116,10 @@
               <td>
                 <form method="post" action="/tutor/attendance/<%= item.id %>/status" class="attendance-edit-form"
                       data-confirm-message="Change <%= item.first_name %> <%= item.last_name %>'s attendance on <%= formatDate(item.attendance_date) %>?">
-                  <input type="hidden" name="subject_id" value="<%= selectedSubjectId || '' %>" />
+                  <%# Back to this same list — the subject loaded, and the filter on. %>
+                  <% logKeep.forEach((pair) => { %>
+                    <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
+                  <% }) %>
                   <select name="status" aria-label="New status">
                     <% statusOptions.forEach((status) => { %>
                       <option value="<%= status %>" <%= String(item.status).toLowerCase() === status ? 'selected' : '' %>><%= attendanceLabel(status) %></option>

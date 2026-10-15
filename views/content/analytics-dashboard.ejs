@@ -13,16 +13,23 @@
     only the one clicked shows its data:
 
       Student          Score trends · Level spread · Weak topics ·
-                       My assessment history · Enrollment & progress ·
-                       Auto-generated focus areas
+                       My progress · My assessment history ·
+                       Enrollment & progress · Auto-generated focus areas
       Tutor            Score trends · Level spread · Weak topics ·
-                       Learner performance · Recent attempts ·
+                       Learner performance · Student progress · Recent attempts ·
                        Enrollment & progress · Auto-generated focus areas ·
                        Assessment integrity
       Admin, Assistant Score trend · Level spread · Weak topics ·
-                       Learner performance · Recent attempts ·
+                       Learner performance · Student progress · Recent attempts ·
                        Enrollment & progress · Auto-generated focus areas ·
-                       Payment collection · Assessment integrity
+                       Payment collection · Assessment integrity · User registry
+
+    STUDENT PROGRESS compares, for each learner and subject, the Pre-Assessment,
+    the module activities and the Post-Assessment, with the change between them,
+    and pivots it by subject and by branch. USER REGISTRY (staff only) lists every
+    account — learners, tutors and assistant admins, in every branch — as one
+    table with pivot tables of the same people. Both can be printed or downloaded
+    as CSV.
 
     A chart is drawn the first time its tab is shown (`mq:vtab-shown`): drawn in
     a hidden tab it would have no size. The open tab is kept in the address.
@@ -88,17 +95,66 @@
   const levelTotal = Object.values(a.levels || {}).reduce((s, n) => s + Number(n || 0), 0);
   const focusList = focusHandouts || [];
 
+  // ---------------------------------------------- student progress + registry
+  const progressRows = (a.progress && a.progress.rows) || [];
+  const progressSummary = (a.progress && a.progress.summary) || {};
+  const registry = a.registry || null;
+  const showRegistry = !!registry;
+  const enrolmentPivot = a.enrolmentPivot || null;
+  const pct = (value) => (value === null || value === undefined ? '—' : `${value}%`);
+  const signed = (value) => (value === null || value === undefined ? '—' : value > 0 ? `+${value}` : String(value));
+  const changeClass = (value) => (value === null || value === undefined ? '' : value > 0 ? 'mq-pos' : value < 0 ? 'mq-neg' : '');
+  const progressStatusClass = (status) => ({
+    'Improved': 'mq-status-paid',
+    'No change': 'mq-status-partial',
+    'Declined': 'mq-status-unpaid',
+    'Awaiting Post-Assessment': 'mq-status-pending'
+  }[status] || 'mq-status-none');
+  // The filters that are on screen, as [name, value] pairs: the page's own, and
+  // the User registry's role and status. The CSV links carry them all, so a file
+  // matches its tab; each filter form carries the other form's, so using one
+  // does not undo the other.
+  const pageFilters = [['search', activeFilters.search], ['subject_id', activeFilters.subjectId], ['kind', activeFilters.kind],
+    ['from', activeFilters.from], ['to', activeFilters.to], ['branch_id', activeFilters.branchId]]
+    .filter((pair) => pair[1] && pair[1] !== 'all');
+  const registryFilters = [['reg_role', activeFilters.registryRole], ['reg_status', activeFilters.registryStatus]]
+    .filter((pair) => pair[1] && pair[1] !== 'all');
+  const queryOf = (pairs) => {
+    const text = new URLSearchParams(pairs).toString();
+    return text ? `?${text}` : '';
+  };
+  const progressCsvHref = `${basePath}/analytics/progress.csv${queryOf(pageFilters)}`;
+  const registryCsvHref = `${basePath}/analytics/registry.csv${queryOf([...pageFilters, ...registryFilters])}`;
+  // "Change per learner": the learners whose scores moved most, either way.
+  const learnerChart = (() => {
+    const moved = progressRows.filter((row) => row.change !== null)
+      .sort((x, y) => Math.abs(y.change) - Math.abs(x.change)).slice(0, 15)
+      .sort((x, y) => y.change - x.change);
+    return {
+      labels: moved.map((row) => `${nameOf(row)} — ${row.subject_name}`),
+      values: moved.map((row) => row.change)
+    };
+  })();
+  const subjectChart = {
+    labels: (progressSummary.bySubject || []).map((row) => row.label),
+    pre: (progressSummary.bySubject || []).map((row) => row.pre),
+    module: (progressSummary.bySubject || []).map((row) => row.module),
+    post: (progressSummary.bySubject || []).map((row) => row.post)
+  };
+
   // The tabs this viewer gets, in the order they asked for.
   const tabs = [
     { key: 'score-trends', label: showMoney ? 'Score trend' : 'Score trends', icon: 'trend' },
     { key: 'level-spread', label: 'Level spread', icon: 'pie' },
     { key: 'weak-topics', label: 'Weak topics', icon: 'warning', count: (a.weakTopics || []).length },
     !isStudent && { key: 'learner-performance', label: 'Learner performance', icon: 'users', count: (a.performance || []).length },
+    { key: 'progress', label: isStudent ? 'My progress' : 'Student progress', icon: 'target', count: progressRows.length },
     { key: 'attempts', label: isStudent ? 'My assessment history' : 'Recent attempts', icon: 'clipboard', count: (a.submissions || []).length },
     { key: 'enrollment', label: 'Enrollment & progress', icon: 'book' },
     { key: 'focus-areas', label: 'Auto-generated focus areas', icon: 'flag', count: focusList.length },
     showMoney && { key: 'payments', label: 'Payment collection', icon: 'wallet' },
-    !isStudent && { key: 'integrity', label: 'Assessment integrity', icon: 'shield', count: (a.violations || []).length }
+    !isStudent && { key: 'integrity', label: 'Assessment integrity', icon: 'shield', count: (a.violations || []).length },
+    showRegistry && { key: 'registry', label: 'User registry', icon: 'grid', count: registry.everyone.length }
   ].filter(Boolean);
 %>
 <section class="mq-page">
@@ -158,6 +214,10 @@
 
   <%# --------------------------------------------------------------- filters %>
   <form class="mq-toolbar" method="get" action="<%= analyticsPath %>" data-analytics-filters>
+    <%# The User registry's role and status travel with it, so a search does not undo them. %>
+    <% registryFilters.forEach((pair) => { %>
+      <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
+    <% }) %>
     <div class="mq-filters">
       <% if (!isStudent) { %>
         <label class="mq-field mq-field-search">
@@ -296,7 +356,7 @@
 
           <div class="mq-table" style="--mq-cols: minmax(200px, 3fr) 1fr 90px 90px minmax(120px, 1fr);">
             <div class="mq-head">
-              <span data-search-col>Topic</span><span>Subject</span><span class="mq-num">Correct</span>
+              <span>Topic</span><span>Subject</span><span class="mq-num">Correct</span>
               <span class="mq-num">Score</span><span>Mastery</span>
             </div>
 
@@ -339,7 +399,7 @@
 
             <div class="mq-table" style="--mq-cols: minmax(170px, 2fr) 1fr 80px 90px 90px 130px 90px 48px;">
               <div class="mq-head">
-                <span data-search-col>Learner</span><span>Branch</span><span class="mq-num">Attempts</span>
+                <span>Learner</span><span>Branch</span><span class="mq-num">Attempts</span>
                 <span class="mq-num">Average</span><span class="mq-num">Best</span>
                 <span>Last attempt</span><span class="mq-num">Flags</span><span></span>
               </div>
@@ -374,6 +434,240 @@
         </section>
       <% } %>
 
+      <%# ====================================================== Student progress
+          Pre-Assessment, module activities and Post-Assessment side by side, for
+          every learner and subject in scope (lib/analytics.js getProgressComparison).
+          A tutor sees the subjects they teach the learner; a student, their own. %>
+      <section class="mq-vtab-panel" role="tabpanel" id="vpanel-progress" data-vtab-panel="progress" aria-labelledby="vtab-progress" hidden>
+        <section class="mq-panel">
+          <div class="mq-panel-head">
+            <div>
+              <h3><%= isStudent ? 'My progress' : 'Student progress' %></h3>
+              <p>
+                <%= isStudent
+                  ? 'How you did before you started (Pre-Assessment), along the way (module activities) and at the end (Post-Assessment), subject by subject.'
+                  : 'Each learner\'s Pre-Assessment, module activities and Post-Assessment side by side — to see how far they have come, learner by learner and subject by subject.' %>
+              </p>
+            </div>
+            <div class="mq-panel-head-actions">
+              <button type="button" class="mq-btn mq-btn-sm" onclick="window.print()"><%- icon('print') %> Print</button>
+              <a class="mq-btn mq-btn-sm" href="<%= progressCsvHref %>"><%- icon('download') %> Download CSV</a>
+            </div>
+          </div>
+
+          <% if (!progressRows.length) { %>
+            <div class="mq-empty">
+              <strong>Nothing to compare yet</strong>
+              <%= isStudent ? 'You are not enrolled in a subject yet.' : 'No learner in scope is enrolled in a subject that matches these filters.' %>
+            </div>
+          <% } else { %>
+            <div class="mq-summary">
+              <div class="mq-summary-item"><span><%= isStudent ? 'Subjects' : 'Learners' %></span><strong><%= isStudent ? progressRows.length : progressSummary.learners %></strong></div>
+              <div class="mq-summary-item"><span>Average Pre</span><strong><%= pct(progressSummary.averagePre) %></strong></div>
+              <div class="mq-summary-item"><span>Average Post</span><strong><%= pct(progressSummary.averagePost) %></strong></div>
+              <div class="mq-summary-item <%= progressSummary.averageChange === null ? '' : progressSummary.averageChange >= 0 ? 'is-positive' : 'is-negative' %>">
+                <span>Average change</span><strong><%= signed(progressSummary.averageChange) %></strong>
+              </div>
+            </div>
+            <div class="mq-summary" style="margin-top: 10px;">
+              <div class="mq-summary-item is-positive"><span>Improved</span><strong><%= progressSummary.improved %></strong></div>
+              <div class="mq-summary-item is-negative"><span>Declined</span><strong><%= progressSummary.declined %></strong></div>
+              <div class="mq-summary-item"><span>Awaiting Post</span><strong><%= progressSummary.awaiting %></strong></div>
+              <div class="mq-summary-item"><span>Not yet assessed</span><strong><%= progressSummary.notAssessed %></strong></div>
+            </div>
+          <% } %>
+        </section>
+
+        <% if (progressRows.length) { %>
+          <%# ---------------------------------------------------- comparison charts %>
+          <div class="mq-chart-grid mq-progress-charts">
+            <section class="mq-panel">
+              <div class="mq-panel-head">
+                <div>
+                  <h3>Score by subject</h3>
+                  <p>Average Pre-Assessment, module activities and Post-Assessment.</p>
+                </div>
+              </div>
+              <div class="mq-chart-box mq-chart-box-tall"><canvas id="progressSubjectChart"></canvas></div>
+            </section>
+
+            <% if (!isStudent) { %>
+              <section class="mq-panel">
+                <div class="mq-panel-head">
+                  <div>
+                    <h3>Change per learner</h3>
+                    <p>Post minus Pre, in points — the <%= learnerChart.labels.length %> biggest changes.</p>
+                  </div>
+                </div>
+                <% if (!learnerChart.labels.length) { %>
+                  <div class="mq-empty">No learner has both a Pre- and a Post-Assessment yet.</div>
+                <% } else { %>
+                  <div class="mq-chart-box mq-chart-box-tall"><canvas id="progressLearnerChart"></canvas></div>
+                <% } %>
+              </section>
+            <% } %>
+          </div>
+
+          <%# --------------------------------------------------------- pivot tables %>
+          <section class="mq-panel">
+            <div class="mq-panel-head">
+              <div>
+                <h3>Pivot — average score by subject</h3>
+                <p>Each stage averaged over the learners who sat it. Change is counted only for learners with both a Pre and a Post.</p>
+              </div>
+              <span class="mq-count"><%= countOf(progressSummary.bySubject, 'subject') %></span>
+            </div>
+            <div class="mq-table mq-pivot" style="--mq-min-width: 640px; --mq-cols: minmax(180px, 2fr) 90px 90px 120px 90px 100px;">
+              <div class="mq-head">
+                <span>Subject</span><span class="mq-num">Learners</span><span class="mq-num">Pre</span>
+                <span class="mq-num">Module activities</span><span class="mq-num">Post</span><span class="mq-num">Change</span>
+              </div>
+              <% progressSummary.bySubject.forEach((row) => { %>
+                <div class="mq-row">
+                  <span class="mq-cell mq-name" data-label="Subject"><%= row.label %></span>
+                  <span class="mq-cell mq-num" data-label="Learners"><%= row.learners %></span>
+                  <span class="mq-cell mq-num" data-label="Pre"><%= pct(row.pre) %></span>
+                  <span class="mq-cell mq-num" data-label="Module activities"><%= pct(row.module) %></span>
+                  <span class="mq-cell mq-num" data-label="Post"><%= pct(row.post) %></span>
+                  <span class="mq-cell mq-num <%= changeClass(row.change) %>" data-label="Change"><%= signed(row.change) %></span>
+                </div>
+              <% }) %>
+              <div class="mq-row mq-pivot-total">
+                <span class="mq-cell mq-name" data-label="Subject">All subjects</span>
+                <span class="mq-cell mq-num" data-label="Learners"><%= progressSummary.learners %></span>
+                <span class="mq-cell mq-num" data-label="Pre"><%= pct(progressSummary.averagePre) %></span>
+                <span class="mq-cell mq-num" data-label="Module activities"><%= pct(progressSummary.averageModule) %></span>
+                <span class="mq-cell mq-num" data-label="Post"><%= pct(progressSummary.averagePost) %></span>
+                <span class="mq-cell mq-num <%= changeClass(progressSummary.averageChange) %>" data-label="Change"><%= signed(progressSummary.averageChange) %></span>
+              </div>
+            </div>
+          </section>
+
+          <% if (!isStudent && progressSummary.byBranch.length > 1) { %>
+            <section class="mq-panel">
+              <div class="mq-panel-head">
+                <div>
+                  <h3>Pivot — average score by branch</h3>
+                  <p>The same figures, branch against branch.</p>
+                </div>
+                <span class="mq-count"><%= countOf(progressSummary.byBranch, 'branch') %></span>
+              </div>
+              <div class="mq-table mq-pivot" style="--mq-min-width: 640px; --mq-cols: minmax(180px, 2fr) 90px 90px 120px 90px 100px;">
+                <div class="mq-head">
+                  <span>Branch</span><span class="mq-num">Learners</span><span class="mq-num">Pre</span>
+                  <span class="mq-num">Module activities</span><span class="mq-num">Post</span><span class="mq-num">Change</span>
+                </div>
+                <% progressSummary.byBranch.forEach((row) => { %>
+                  <div class="mq-row">
+                    <span class="mq-cell mq-name" data-label="Branch"><%= row.label %></span>
+                    <span class="mq-cell mq-num" data-label="Learners"><%= row.learners %></span>
+                    <span class="mq-cell mq-num" data-label="Pre"><%= pct(row.pre) %></span>
+                    <span class="mq-cell mq-num" data-label="Module activities"><%= pct(row.module) %></span>
+                    <span class="mq-cell mq-num" data-label="Post"><%= pct(row.post) %></span>
+                    <span class="mq-cell mq-num <%= changeClass(row.change) %>" data-label="Change"><%= signed(row.change) %></span>
+                  </div>
+                <% }) %>
+              </div>
+            </section>
+          <% } %>
+
+          <% const changePivot = progressSummary.branchSubjectChange; %>
+          <% if (!isStudent && changePivot.rows.length && changePivot.columns.length) { %>
+            <section class="mq-panel">
+              <div class="mq-panel-head">
+                <div>
+                  <h3>Pivot — average change, branch by subject</h3>
+                  <p>Post minus Pre, in points, where both were sat. A dash means nobody has both yet.</p>
+                </div>
+              </div>
+              <div class="mq-table mq-pivot" style="--mq-min-width: <%= 200 + changePivot.columns.length * 110 %>px; --mq-cols: minmax(160px, 1.6fr) repeat(<%= changePivot.columns.length %>, minmax(90px, 1fr)) 90px;">
+                <div class="mq-head">
+                  <span>Branch</span>
+                  <% changePivot.columns.forEach((column) => { %><span class="mq-num"><%= column %></span><% }) %>
+                  <span class="mq-num">All</span>
+                </div>
+                <% changePivot.rows.forEach((row) => { %>
+                  <div class="mq-row">
+                    <span class="mq-cell mq-name" data-label="Branch"><%= row.label %></span>
+                    <% row.counts.forEach((value, index) => { %>
+                      <span class="mq-cell mq-num <%= changeClass(value) %>" data-label="<%= changePivot.columns[index] %>"><%= signed(value) %></span>
+                    <% }) %>
+                    <span class="mq-cell mq-num <%= changeClass(row.total) %>" data-label="All"><%= signed(row.total) %></span>
+                  </div>
+                <% }) %>
+                <div class="mq-row mq-pivot-total">
+                  <span class="mq-cell mq-name" data-label="Branch">All branches</span>
+                  <% changePivot.totals.forEach((value, index) => { %>
+                    <span class="mq-cell mq-num <%= changeClass(value) %>" data-label="<%= changePivot.columns[index] %>"><%= signed(value) %></span>
+                  <% }) %>
+                  <span class="mq-cell mq-num <%= changeClass(changePivot.grand) %>" data-label="All"><%= signed(changePivot.grand) %></span>
+                </div>
+              </div>
+            </section>
+          <% } %>
+
+          <%# ----------------------------------------------------- the full list %>
+          <section class="mq-panel">
+            <div class="mq-panel-head">
+              <div>
+                <h3><%= isStudent ? 'Subject by subject' : 'Learner by learner' %></h3>
+                <p>One line for each <%= isStudent ? 'subject' : 'learner and subject' %>. Open a learner to see every score they have.</p>
+              </div>
+              <span class="mq-count"><%= progressRows.length %> line<%= progressRows.length === 1 ? '' : 's' %></span>
+            </div>
+            <div class="mq-table" style="--mq-min-width: <%= isStudent ? 760 : (scope.isAdmin ? 1060 : 960) %>px; --mq-cols: <%= isStudent
+              ? 'minmax(160px, 2fr) 90px 130px 90px 90px 150px 160px'
+              : (scope.isAdmin
+                ? 'minmax(170px, 2fr) minmax(100px, 1fr) minmax(130px, 1.4fr) 80px 130px 80px 90px 120px 160px'
+                : 'minmax(170px, 2fr) minmax(130px, 1.4fr) 80px 130px 80px 90px 120px 160px') %>;">
+              <div class="mq-head">
+                <% if (!isStudent) { %><span>Learner</span><% } %>
+                <% if (scope.isAdmin) { %><span>Branch</span><% } %>
+                <span>Subject</span>
+                <span class="mq-num">Pre</span>
+                <span class="mq-num">Module activities</span>
+                <span class="mq-num">Post</span>
+                <span class="mq-num">Change</span>
+                <span>Modules opened</span>
+                <span>Status</span>
+              </div>
+              <% progressRows.forEach((row) => { %>
+                <div class="mq-row">
+                  <% if (!isStudent) { %>
+                    <span class="mq-cell mq-cell-primary" data-label="Learner">
+                      <a class="mq-name" href="<%= learnerHref(row.student_id) %>"><%= nameOf(row) %></a>
+                      <span class="mq-sub"><%= row.student_code %><%= row.grade_level ? ` · ${row.grade_level}` : '' %></span>
+                    </span>
+                  <% } %>
+                  <% if (scope.isAdmin) { %><span class="mq-cell mq-sub" data-label="Branch"><%= row.branch_name %></span><% } %>
+                  <span class="mq-cell <%= isStudent ? 'mq-name' : 'mq-sub' %>" data-label="Subject"><%= row.subject_name %></span>
+                  <span class="mq-cell mq-num" data-label="Pre">
+                    <%= pct(row.pre) %>
+                    <% if (row.pre_level) { %><span class="mq-sub"><%= row.pre_level %></span><% } %>
+                  </span>
+                  <span class="mq-cell mq-num" data-label="Module activities">
+                    <%= pct(row.module_average) %>
+                    <% if (row.module_attempts) { %><span class="mq-sub"><%= row.module_attempts %> taken</span><% } %>
+                  </span>
+                  <span class="mq-cell mq-num" data-label="Post">
+                    <%= pct(row.post) %>
+                    <% if (row.post_level) { %><span class="mq-sub"><%= row.post_level %></span><% } %>
+                  </span>
+                  <span class="mq-cell mq-num <%= changeClass(row.change) %>" data-label="Change"><strong><%= signed(row.change) %></strong></span>
+                  <span class="mq-cell" data-label="Modules opened">
+                    <% if (row.modules_total) { %>
+                      <span class="mq-sub"><%= row.modules_opened %> of <%= row.modules_total %></span>
+                      <span class="mq-meter <%= meterClass((row.modules_opened / row.modules_total) * 100) %>"><i style="width: <%= Math.max(2, Math.round((row.modules_opened / row.modules_total) * 100)) %>%"></i></span>
+                    <% } else { %><span class="mq-sub">—</span><% } %>
+                  </span>
+                  <span class="mq-cell" data-label="Status"><span class="mq-status <%= progressStatusClass(row.status) %>"><%= row.status %></span></span>
+                </div>
+              <% }) %>
+            </div>
+          </section>
+        <% } %>
+      </section>
+
       <%# ======================================================== Attempt list %>
       <section class="mq-vtab-panel" role="tabpanel" id="vpanel-attempts" data-vtab-panel="attempts" aria-labelledby="vtab-attempts" hidden>
         <section class="mq-panel">
@@ -388,8 +682,8 @@
           <div class="mq-table" style="--mq-cols: 130px <%= isStudent ? '' : 'minmax(160px, 2fr)' %> minmax(160px, 2fr) 130px 90px 110px;">
             <div class="mq-head">
               <span>Date</span>
-              <% if (!isStudent) { %><span data-search-col>Learner</span><% } %>
-              <span <%= isStudent ? 'data-search-col' : '' %>>Assessment</span>
+              <% if (!isStudent) { %><span>Learner</span><% } %>
+              <span>Assessment</span>
               <span>Subject</span>
               <span class="mq-num">Score</span>
               <span>Result</span>
@@ -443,7 +737,7 @@
             <%# Learners only. This page reports on how students are doing; a staff
                 headcount is a User Management question. %>
             <div class="mq-table" style="--mq-cols: minmax(180px, 3fr) 90px;">
-              <div class="mq-head"><span data-search-col>Subject</span><span class="mq-num">Learners</span></div>
+              <div class="mq-head"><span>Subject</span><span class="mq-num">Learners</span></div>
               <% if (!(a.enrolment || []).length) { %>
                 <div class="mq-empty">No active enrollments.</div>
               <% } %>
@@ -468,7 +762,7 @@
 
           <div class="mq-table" style="--mq-cols: minmax(200px, 3fr) 90px 90px 90px minmax(120px, 1fr);">
             <div class="mq-head">
-              <span data-search-col>Subject</span><span class="mq-num">Learners</span><span class="mq-num">Modules</span>
+              <span>Subject</span><span class="mq-num">Learners</span><span class="mq-num">Modules</span>
               <span class="mq-num">Opened</span><span>Completion</span>
             </div>
             <% if (!(a.completion || []).length) { %>
@@ -503,7 +797,7 @@
 
           <div class="mq-table" style="--mq-cols: 120px minmax(160px, 2fr) minmax(200px, 3fr) 90px <%= isStudent ? '0px' : '96px' %>;">
             <div class="mq-head">
-              <span>Created</span><span data-search-col><%= isStudent ? 'Subject' : 'Learner' %></span>
+              <span>Created</span><span><%= isStudent ? 'Subject' : 'Learner' %></span>
               <span>Focus</span><span class="mq-num">Pre %</span><span></span>
             </div>
             <% if (!focusList.length) { %>
@@ -579,7 +873,7 @@
 
             <div class="mq-table" style="--mq-cols: 150px minmax(150px, 2fr) minmax(150px, 2fr) 150px 70px;">
               <div class="mq-head">
-                <span>When</span><span data-search-col>Learner</span><span>Assessment</span><span>Event</span><span class="mq-num">Strike</span>
+                <span>When</span><span>Learner</span><span>Assessment</span><span>Event</span><span class="mq-num">Strike</span>
               </div>
               <% if (!(a.violations || []).length) { %>
                 <div class="mq-empty">
@@ -606,6 +900,202 @@
         </section>
       <% } %>
 
+      <%# ============================================================ User registry
+          Every account — learners, tutors and assistant admins — across the
+          branches in scope, as one table, with pivot tables of the same people
+          (lib/analytics.js getUserRegistry, buildRegistryPivots). Staff only:
+          the main admin sees every branch, an assistant their own. %>
+      <% if (showRegistry) { %>
+        <section class="mq-vtab-panel" role="tabpanel" id="vpanel-registry" data-vtab-panel="registry" aria-labelledby="vtab-registry" hidden>
+          <section class="mq-panel">
+            <div class="mq-panel-head">
+              <div>
+                <h3>User registry</h3>
+                <p>
+                  Every account in <%= scope.isAdmin ? 'the system' : 'your branch' %> — learners, tutors and assistant admins<%= scope.isAdmin ? ', in every branch' : '' %>.
+                  The search<%= scope.isAdmin ? ' and branch' : '' %> above narrow it; pick a role or a status below.
+                </p>
+              </div>
+              <div class="mq-panel-head-actions">
+                <button type="button" class="mq-btn mq-btn-sm" onclick="window.print()"><%- icon('print') %> Print</button>
+                <a class="mq-btn mq-btn-sm" href="<%= registryCsvHref %>"><%- icon('download') %> Download CSV</a>
+              </div>
+            </div>
+
+            <% const people = registry.everyone.filter((row) => row.role !== 'admin'); %>
+            <div class="mq-summary">
+              <div class="mq-summary-item"><span>Accounts</span><strong><%= registry.everyone.length %></strong></div>
+              <div class="mq-summary-item"><span>Assistant admins</span><strong><%= people.filter((row) => row.role === 'admin_assistant').length %></strong></div>
+              <div class="mq-summary-item"><span>Tutors</span><strong><%= people.filter((row) => row.role === 'tutor').length %></strong></div>
+              <div class="mq-summary-item"><span>Learners</span><strong><%= people.filter((row) => row.role === 'student').length %></strong></div>
+              <div class="mq-summary-item is-negative"><span>Archived</span><strong><%= people.filter((row) => row.status === 'Archived').length %></strong></div>
+            </div>
+          </section>
+
+          <%# ------------------------------------------------- build your own pivot
+              Pick what goes down the side and what goes across; the table counts the
+              accounts where they meet. Done in the browser from the accounts above
+              (nothing is sent), so it follows the search and branch already applied. %>
+          <section class="mq-panel" data-pivot-builder>
+            <div class="mq-panel-head">
+              <div>
+                <h3>Build a pivot</h3>
+                <p>Choose what goes down the side and what goes across. The table counts the accounts where they meet.</p>
+              </div>
+            </div>
+            <div class="mq-toolbar">
+              <div class="mq-filters">
+                <label class="mq-field">
+                  <span>Rows</span>
+                  <select data-pivot-rows aria-label="Pivot rows">
+                    <% [['branch', 'Branch'], ['role', 'Role'], ['status', 'Status'], ['level', 'Year level'], ['gender', 'Gender'], ['subject', 'Subject']].forEach((dim) => { %>
+                      <option value="<%= dim[0] %>" <%= dim[0] === 'branch' ? 'selected' : '' %>><%= dim[1] %></option>
+                    <% }) %>
+                  </select>
+                </label>
+                <label class="mq-field">
+                  <span>Columns</span>
+                  <select data-pivot-cols aria-label="Pivot columns">
+                    <% [['branch', 'Branch'], ['role', 'Role'], ['status', 'Status'], ['level', 'Year level'], ['gender', 'Gender'], ['subject', 'Subject']].forEach((dim) => { %>
+                      <option value="<%= dim[0] %>" <%= dim[0] === 'role' ? 'selected' : '' %>><%= dim[1] %></option>
+                    <% }) %>
+                  </select>
+                </label>
+                <button type="button" class="mq-btn" data-pivot-swap>Swap rows and columns</button>
+              </div>
+            </div>
+            <div data-pivot-output></div>
+            <p class="mq-form-note" data-pivot-note style="padding: 0 16px 14px;"></p>
+          </section>
+          <script type="application/json" id="registry-pivot-data"><%- JSON.stringify(registry.everyone.filter((row) => row.role !== 'admin').map((row) => ({
+            branch: row.branch_name, role: row.role_label, status: row.status, level: row.level_group || '', gender: row.gender || '', subjects: row.subjects || []
+          }))).replace(/</g, '\\u003c') %></script>
+
+          <%# ---------------------------------------------------------------- pivots %>
+          <% const pivotTable = (pivot, firstColumn, title, note) => { %>
+            <section class="mq-panel">
+              <div class="mq-panel-head">
+                <div>
+                  <h3><%= title %></h3>
+                  <p><%= note %></p>
+                </div>
+              </div>
+              <% if (!pivot.rows.length) { %>
+                <div class="mq-empty">Nothing to count yet.</div>
+              <% } else { %>
+                <div class="mq-table mq-pivot" style="--mq-min-width: <%= 220 + (pivot.columns.length + 1) * 110 %>px; --mq-cols: minmax(170px, 1.8fr) repeat(<%= pivot.columns.length + 1 %>, minmax(90px, 1fr));">
+                  <div class="mq-head">
+                    <span><%= firstColumn %></span>
+                    <% pivot.columns.forEach((column) => { %><span class="mq-num"><%= column %></span><% }) %>
+                    <span class="mq-num">Total</span>
+                  </div>
+                  <% pivot.rows.forEach((row) => { %>
+                    <div class="mq-row">
+                      <span class="mq-cell mq-name" data-label="<%= firstColumn %>"><%= row.label %></span>
+                      <% row.counts.forEach((count, index) => { %>
+                        <span class="mq-cell mq-num" data-label="<%= pivot.columns[index] %>"><%= count || '—' %></span>
+                      <% }) %>
+                      <span class="mq-cell mq-num" data-label="Total"><strong><%= row.total %></strong></span>
+                    </div>
+                  <% }) %>
+                  <div class="mq-row mq-pivot-total">
+                    <span class="mq-cell mq-name" data-label="<%= firstColumn %>">Total</span>
+                    <% pivot.totals.forEach((count, index) => { %>
+                      <span class="mq-cell mq-num" data-label="<%= pivot.columns[index] %>"><strong><%= count %></strong></span>
+                    <% }) %>
+                    <span class="mq-cell mq-num" data-label="Total"><strong><%= pivot.grand %></strong></span>
+                  </div>
+                </div>
+              <% } %>
+            </section>
+          <% }; %>
+          <% pivotTable(registry.pivots.branchRole, 'Branch', 'Pivot — accounts by branch and role', 'Active accounts: how many assistant admins, tutors and learners each branch has.') %>
+          <% pivotTable(registry.pivots.branchLevel, 'Branch', 'Pivot — learners by branch and year level', 'Active learners in each branch, by the year level of their grade.') %>
+          <% pivotTable(registry.pivots.roleStatus, 'Role', 'Pivot — accounts by role and status', 'Every account, including the archived ones.') %>
+          <% if (enrolmentPivot && enrolmentPivot.rows.length) { %>
+            <% pivotTable(enrolmentPivot, 'Subject', 'Pivot — learners enrolled, by subject and branch', 'A learner taking three subjects is counted once in each.') %>
+          <% } %>
+
+          <%# ----------------------------------------------------- the register %>
+          <section class="mq-panel">
+            <div class="mq-panel-head">
+              <div>
+                <h3>All accounts</h3>
+                <p>One line for each account.</p>
+              </div>
+              <span class="mq-count"><%= registry.rows.length %><%= registry.rows.length === registry.everyone.length ? '' : ` of ${registry.everyone.length}` %></span>
+            </div>
+
+            <form class="mq-toolbar" method="get" action="<%= analyticsPath %>" data-analytics-filters>
+              <%# The page's own filters travel with it, so picking a role does not undo them. %>
+              <% pageFilters.forEach((pair) => { %>
+                <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
+              <% }) %>
+              <div class="mq-filters">
+                <label class="mq-field">
+                  <span>Role</span>
+                  <select name="reg_role" data-autosubmit>
+                    <option value="all">All roles</option>
+                    <% ['Assistant Admin', 'Tutor', 'Student'].forEach((role) => { %>
+                      <option value="<%= role %>" <%= activeFilters.registryRole === role ? 'selected' : '' %>><%= role %></option>
+                    <% }) %>
+                  </select>
+                </label>
+                <label class="mq-field">
+                  <span>Status</span>
+                  <select name="reg_status" data-autosubmit>
+                    <option value="all">All statuses</option>
+                    <% ['Approved', 'Pending', 'Rejected', 'Archived'].forEach((status) => { %>
+                      <option value="<%= status %>" <%= activeFilters.registryStatus === status ? 'selected' : '' %>><%= status %></option>
+                    <% }) %>
+                  </select>
+                </label>
+                <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+                <%# Clears the role and status only; the page's filters stay. %>
+                <a class="mq-btn" href="<%= analyticsPath %><%= queryOf(pageFilters) %>" data-filters-clear>Clear</a>
+              </div>
+            </form>
+
+            <div class="mq-table" style="--mq-min-width: 1180px; --mq-cols: 110px minmax(170px, 2fr) 120px minmax(110px, 1fr) minmax(120px, 1fr) minmax(170px, 1.6fr) 120px minmax(180px, 2fr) 100px 110px;">
+              <div class="mq-head">
+                <span>User ID</span><span>Name</span><span>Role</span><span>Branch</span><span>Year / grade</span>
+                <span>Email</span><span>Contact</span><span>Subjects</span><span>Status</span><span>Joined</span>
+              </div>
+
+              <% if (!registry.rows.length) { %>
+                <div class="mq-empty">
+                  <strong>No account matches</strong>
+                  Clear the filters to see every account in scope.
+                </div>
+              <% } %>
+
+              <% registry.rows.forEach((row) => { %>
+                <div class="mq-row">
+                  <span class="mq-cell mq-sub" data-label="User ID"><%= row.user_id %></span>
+                  <span class="mq-cell mq-cell-primary" data-label="Name">
+                    <% if (row.role === 'admin') { %>
+                      <span class="mq-name"><%= row.name %></span>
+                    <% } else { %>
+                      <a class="mq-name" href="<%= basePath %>/profile/<%= row.id %>"><%= row.name %></a>
+                    <% } %>
+                  </span>
+                  <span class="mq-cell" data-label="Role"><span class="mq-chip mq-chip-role"><%= row.role_label %></span></span>
+                  <span class="mq-cell" data-label="Branch"><%= row.branch_name %></span>
+                  <span class="mq-cell mq-sub" data-label="Year / grade"><%= row.level || '—' %></span>
+                  <span class="mq-cell mq-sub" data-label="Email"><%= row.email || '—' %></span>
+                  <span class="mq-cell mq-sub" data-label="Contact"><%= row.contact_number || '—' %></span>
+                  <span class="mq-cell mq-sub" data-label="Subjects"><%= row.subjects.length ? row.subjects.join(', ') : '—' %></span>
+                  <span class="mq-cell" data-label="Status">
+                    <span class="mq-status mq-status-<%= row.status === 'Approved' ? 'approved' : row.status === 'Pending' ? 'pending' : row.status === 'Archived' ? 'unpaid' : 'rejected' %>"><%= row.status %></span>
+                  </span>
+                  <span class="mq-cell mq-sub" data-label="Joined"><%= formatDate(row.joined_at) %></span>
+                </div>
+              <% }) %>
+            </div>
+          </section>
+        </section>
+      <% } %>
+
     </div>
   </div>
 
@@ -614,7 +1104,8 @@
 <style>
   .mq-chart-box-tall { height: 320px; }
   @media (min-width: 1300px) {
-    .mq-subject-trends { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mq-subject-trends,
+    .mq-progress-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 </style>
 
@@ -623,18 +1114,129 @@
   // address's #hash, which a submitted form would otherwise drop. A subject,
   // assessment or branch picked applies at once, as the Apply button does.
   (function () {
-    var form = document.querySelector('[data-analytics-filters]');
-    if (!form) return;
     var keepTab = function (url) { return String(url).split('#')[0] + (window.location.hash || ''); };
-    form.addEventListener('submit', function () { form.action = keepTab(form.action); });
-    form.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
-      select.addEventListener('change', function () {
-        form.action = keepTab(form.action);
-        form.submit();
+    document.querySelectorAll('form[data-analytics-filters]').forEach(function (form) {
+      form.addEventListener('submit', function () { form.action = keepTab(form.action); });
+      form.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
+        select.addEventListener('change', function () {
+          form.action = keepTab(form.action);
+          form.submit();
+        });
       });
+      var clear = form.querySelector('[data-filters-clear]');
+      if (clear) clear.addEventListener('click', function () { clear.href = keepTab(clear.href); });
     });
-    var clear = form.querySelector('[data-filters-clear]');
-    if (clear) clear.addEventListener('click', function () { clear.href = keepTab(clear.href); });
+  })();
+</script>
+
+<script>
+  // Build a pivot: count the registry's accounts by any two of their fields.
+  // Cells are filled with textContent, never innerHTML — a name or a subject is
+  // typed by a person.
+  (function () {
+    var root = document.querySelector('[data-pivot-builder]');
+    var dataNode = document.getElementById('registry-pivot-data');
+    if (!root || !dataNode) return;
+    var people = [];
+    try { people = JSON.parse(dataNode.textContent || '[]'); } catch (_e) { people = []; }
+    var rowsSelect = root.querySelector('[data-pivot-rows]');
+    var colsSelect = root.querySelector('[data-pivot-cols]');
+    var output = root.querySelector('[data-pivot-output]');
+    var note = root.querySelector('[data-pivot-note]');
+    var LABELS = { branch: 'Branch', role: 'Role', status: 'Status', level: 'Year level', gender: 'Gender', subject: 'Subject' };
+    var SEP = '\u0000';
+
+    // What an account says for a field. A subject is many (an account can have
+    // several); the others are one, or nothing (a tutor has no year-level group).
+    function valuesOf(person, field) {
+      if (field === 'subject') return person.subjects || [];
+      return person[field] ? [person[field]] : [];
+    }
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text != null) node.textContent = text;
+      return node;
+    }
+
+    function draw() {
+      var rowField = rowsSelect.value;
+      var colField = colsSelect.value;
+      var cells = {};
+      var rowLabels = [];
+      var colLabels = [];
+      var counted = 0;
+      people.forEach(function (person) {
+        var rowValues = valuesOf(person, rowField);
+        var colValues = valuesOf(person, colField);
+        if (!rowValues.length || !colValues.length) return;
+        counted += 1;
+        rowValues.forEach(function (r) {
+          colValues.forEach(function (c) {
+            if (rowLabels.indexOf(r) === -1) rowLabels.push(r);
+            if (colLabels.indexOf(c) === -1) colLabels.push(c);
+            cells[r + SEP + c] = (cells[r + SEP + c] || 0) + 1;
+          });
+        });
+      });
+      rowLabels.sort(function (a, b) { return String(a).localeCompare(String(b)); });
+      colLabels.sort(function (a, b) { return String(a).localeCompare(String(b)); });
+      output.innerHTML = '';
+      if (!rowLabels.length || !colLabels.length) {
+        output.appendChild(el('div', 'mq-empty', 'No account has a value for both of these fields.'));
+        note.textContent = '';
+        return;
+      }
+
+      var table = el('div', 'mq-table mq-pivot');
+      table.style.setProperty('--mq-min-width', (220 + (colLabels.length + 1) * 100) + 'px');
+      table.style.setProperty('--mq-cols', 'minmax(170px, 1.8fr) repeat(' + (colLabels.length + 1) + ', minmax(80px, 1fr))');
+      var head = el('div', 'mq-head');
+      head.appendChild(el('span', '', LABELS[rowField] + ' ↓  ·  ' + LABELS[colField] + ' →'));
+      colLabels.forEach(function (c) { head.appendChild(el('span', 'mq-num', c)); });
+      head.appendChild(el('span', 'mq-num', 'Total'));
+      table.appendChild(head);
+
+      var colTotals = colLabels.map(function () { return 0; });
+      var grand = 0;
+      rowLabels.forEach(function (r) {
+        var line = el('div', 'mq-row');
+        line.appendChild(el('span', 'mq-cell mq-name', r));
+        var total = 0;
+        colLabels.forEach(function (c, index) {
+          var n = cells[r + SEP + c] || 0;
+          total += n;
+          colTotals[index] += n;
+          line.appendChild(el('span', 'mq-cell mq-num', n ? String(n) : '—'));
+        });
+        grand += total;
+        var totalCell = el('span', 'mq-cell mq-num');
+        totalCell.appendChild(el('strong', '', String(total)));
+        line.appendChild(totalCell);
+        table.appendChild(line);
+      });
+      var foot = el('div', 'mq-row mq-pivot-total');
+      foot.appendChild(el('span', 'mq-cell mq-name', 'Total'));
+      colTotals.forEach(function (n) { foot.appendChild(el('span', 'mq-cell mq-num', String(n))); });
+      foot.appendChild(el('span', 'mq-cell mq-num', String(grand)));
+      table.appendChild(foot);
+      output.appendChild(table);
+
+      var skipped = people.length - counted;
+      note.textContent = counted + ' of ' + people.length + ' accounts counted (the main admin account is not part of a pivot)'
+        + (skipped ? ' — ' + skipped + ' have no value for ' + LABELS[rowField].toLowerCase() + ' or ' + LABELS[colField].toLowerCase() + ' (a tutor has no year level, an assistant admin has no subjects).' : '.')
+        + (rowField === 'subject' || colField === 'subject' ? ' An account with several subjects is counted once in each.' : '');
+    }
+
+    rowsSelect.addEventListener('change', draw);
+    colsSelect.addEventListener('change', draw);
+    root.querySelector('[data-pivot-swap]').addEventListener('click', function () {
+      var rows = rowsSelect.value;
+      rowsSelect.value = colsSelect.value;
+      colsSelect.value = rows;
+      draw();
+    });
+    draw();
   })();
 </script>
 
@@ -737,6 +1339,89 @@
             }
           }
         });
+      });
+    });
+
+    // Student progress — the average Pre-Assessment, module activities and
+    // Post-Assessment of each subject, side by side.
+    var subjectChart = <%- JSON.stringify(subjectChart).replace(/</g, '\\u003c') %>;
+    whenShown(document.getElementById('progressSubjectChart'), function (canvas) {
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: subjectChart.labels,
+          datasets: [
+            { label: 'Pre-Assessment', data: subjectChart.pre, backgroundColor: '#9aa4ae', borderRadius: 2, maxBarThickness: 34 },
+            { label: 'Module activities', data: subjectChart.module, backgroundColor: '#2ea9f4', borderRadius: 2, maxBarThickness: 34 },
+            { label: 'Post-Assessment', data: subjectChart.post, backgroundColor: '#32a65a', borderRadius: 2, maxBarThickness: 34 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 12, font: { size: 11 } } },
+            tooltip: { callbacks: { label: function (item) { return item.dataset.label + ': ' + (item.parsed.y == null ? 'none yet' : item.parsed.y + '%'); } } }
+          },
+          scales: {
+            y: { min: 0, max: 100, ticks: { stepSize: 25, callback: function (v) { return v + '%'; }, font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.06)' } },
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { size: 11 }, maxRotation: 40, minRotation: 0,
+                callback: function (value) {
+                  var label = String(this.getLabelForValue(value) || '');
+                  return label.length > 18 ? label.slice(0, 16) + '…' : label;
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+
+    // Student progress — how far each learner's score moved, Post minus Pre.
+    var learnerChart = <%- JSON.stringify(learnerChart).replace(/</g, '\\u003c') %>;
+    whenShown(document.getElementById('progressLearnerChart'), function (canvas) {
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: learnerChart.labels,
+          datasets: [{
+            label: 'Change (points)',
+            data: learnerChart.values,
+            backgroundColor: learnerChart.values.map(function (v) { return v >= 0 ? '#32a65a' : '#d54c4c'; }),
+            borderRadius: 2,
+            maxBarThickness: 22
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: function (items) { return items.length ? learnerChart.labels[items[0].dataIndex] : ''; },
+                label: function (item) { return (item.parsed.x > 0 ? '+' : '') + item.parsed.x + ' points'; }
+              }
+            }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 11 } }, title: { display: true, text: 'Points', font: { size: 11 } } },
+            y: {
+              grid: { display: false },
+              ticks: {
+                font: { size: 11 },
+                callback: function (value) {
+                  var label = String(this.getLabelForValue(value) || '');
+                  return label.length > 26 ? label.slice(0, 24) + '…' : label;
+                }
+              }
+            }
+          }
+        }
       });
     });
 

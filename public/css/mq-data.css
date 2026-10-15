@@ -1500,10 +1500,11 @@ a.mq-row {
 }
 
 /* -------------------------------------------------------------------------
-   13. Ten rows, then scroll — and the search icon in the heading
+   13. Ten rows, then scroll
    public/js/mq-tables.js gives every .mq-table and .table-wrap table a
-   max-height of exactly its heading plus ten rows (.mq-capped), and puts a
-   magnifier in the heading of its name column. These are the styles for both.
+   max-height of exactly its heading plus ten rows (.mq-capped). The small
+   search icon that used to sit in a table's heading is gone: a list that needs
+   searching has a search and filter bar above it instead.
    ---------------------------------------------------------------------- */
 
 .mq-table.mq-capped,
@@ -1542,148 +1543,9 @@ a.mq-row {
   border: 2px solid var(--mq-surface-soft);
 }
 
-/* A row the search does not match. */
-.mq-search-miss {
-  display: none !important;
-}
-
-/* The magnifier beside a column heading — the reference was a course list's
-   "Name 🔍". Small, quiet, and darker on hover so it reads as a control. */
-.mq-th-search {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin: -4px 0 -4px 6px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  vertical-align: middle;
-  cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s;
-}
-
-.mq-th-search:hover,
-.mq-th-search.is-active {
-  background: rgba(22, 168, 200, .12);
-  border-color: rgba(22, 168, 200, .3);
-  color: var(--mq-accent-deep);
-}
-
-.mq-th-search:focus-visible {
-  outline: 2px solid var(--mq-accent);
-  outline-offset: 1px;
-}
-
-/* The same icon as a standalone button, where a page puts it beside a panel
-   heading instead (User Management's "All users"). */
-.mq-heading-search {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--mq-2);
-}
-
-.mq-heading-search .mq-th-search {
-  width: 30px;
-  height: 30px;
-  margin: 0;
-  border-color: var(--mq-line);
-  background: var(--mq-surface);
-  color: var(--mq-text-soft);
-}
-
-/* The search box, opened above the table by the icon. */
-/* Framed and just above the table; inside a .mq-panel it runs flush under the
-   panel's heading instead. */
-.mq-table-search {
-  display: none;
-  align-items: center;
-  gap: var(--mq-2);
-  margin: 0 0 var(--mq-2);
-  padding: var(--mq-2) var(--mq-3);
-  background: var(--mq-surface);
-  border: 1px solid var(--mq-line);
-  border-radius: var(--mq-radius-sm);
-}
-
-.mq-panel > .mq-table-search {
-  margin: 0;
-  border: 0;
-  border-bottom: 1px solid var(--mq-line);
-  border-radius: 0;
-}
-
-.mq-table-search.is-open {
-  display: flex;
-  animation: mqSearchIn .16s ease-out;
-}
-
-@keyframes mqSearchIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: none; }
-}
-
-.mq-table-search-icon {
-  display: inline-flex;
-  color: var(--mq-text-soft);
-}
-
-.mq-table-search input {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 34px;
-  padding: 0 var(--mq-3);
-  border: 1px solid var(--mq-line);
-  border-radius: var(--mq-radius-sm);
-  background: var(--mq-surface);
-  color: var(--mq-text);
-  font-size: var(--mq-font);
-}
-
-.mq-table-search input:focus {
-  outline: none;
-  border-color: var(--mq-accent);
-  box-shadow: 0 0 0 3px rgba(22, 168, 200, .18);
-}
-
-.mq-table-search-count {
-  font-size: var(--mq-font-sm);
-  font-weight: 600;
-  color: var(--mq-text-soft);
-  white-space: nowrap;
-}
-
-.mq-table-search-close {
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--mq-line);
-  border-radius: var(--mq-radius-sm);
-  background: var(--mq-surface);
-  color: var(--mq-text-soft);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.mq-table-search-close:hover {
-  border-color: var(--danger, #d54c4c);
-  color: var(--danger, #d54c4c);
-}
-
-/* No heading row on a phone (the rows become stacked records), so the search
-   box is simply shown instead of the icon that would open it. */
+/* No heading row on a phone (the rows become stacked records), so the table
+   simply scrolls within most of the screen. */
 @media (max-width: 900px) {
-  .mq-table-search {
-    display: flex;
-  }
-
-  .mq-table-search-close {
-    display: none;
-  }
-
   .mq-table.mq-capped,
   .table-wrap.mq-capped {
     max-height: 75vh !important;
@@ -1696,11 +1558,36 @@ a.mq-row {
     max-height: none !important;
     overflow: visible !important;
   }
+}
 
-  .mq-table-search,
-  .mq-th-search {
-    display: none !important;
-  }
+/* -------------------------------------------------------------------------
+   13b. Pivot tables and the progress report
+   Used by Analytics & Reports: the User registry's pivots, and the Student
+   progress comparison. A pivot is an ordinary .mq-table with a totals row.
+   ---------------------------------------------------------------------- */
+
+.mq-pivot .mq-pivot-total {
+  background: var(--mq-surface-soft);
+  border-top: 2px solid var(--mq-line);
+  font-weight: 700;
+}
+
+/* A score that went up, or down. Colour alone is never the only signal: the
+   figure carries its own + or - sign. */
+.mq-pos { color: #1f7a44; }
+.mq-neg { color: #a83232; }
+
+.mq-status-none {
+  background: var(--mq-surface-soft);
+  color: var(--mq-text-soft);
+  border: 1px solid var(--mq-line);
+}
+
+@media print {
+  /* Printing a report prints the report, not the list of tabs beside it. */
+  .mq-vtabs { display: block; }
+  .mq-vtab-list { display: none !important; }
+  .mq-pivot .mq-pivot-total { background: #f0f0f0; }
 }
 
 /* =============================================================================

@@ -23,8 +23,7 @@
     THE FILTER BAR
     Search, From/To dates, branch (main admin), method, purpose, Apply, Clear,
     Print. Every transaction the filters return is listed in a table that shows
-    ten rows and scrolls; the search icon in its heading looks inside those
-    rows (public/js/mq-tables.js).
+    ten rows and scrolls (public/js/mq-tables.js).
 
     Locals: rows (every transaction the filters return), summary, filters,
             paymentMethods, paymentPurposes, selectedBranch %>
@@ -115,7 +114,7 @@
     <div class="mq-table" style="--mq-min-width: 890px; --mq-cols: 140px minmax(150px, 2fr) minmax(90px, 1fr) 100px 90px 100px minmax(110px, 1fr);">
       <div class="mq-head">
         <span>Date &amp; time</span>
-        <span data-search-col>Student</span>
+        <span>Student</span>
         <span>Branch</span>
         <span class="mq-num">Amount</span>
         <span>Method</span>

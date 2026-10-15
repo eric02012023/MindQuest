@@ -74,6 +74,26 @@ const {
   getScheduleRequestHistory
 } = require('../lib/data');
 const { buildBellItems } = require('../lib/bell');
+const { resolveScope } = require('../lib/rbac');
+const { getProgressComparison } = require('../lib/analytics');
+const { progressCsv } = require('../lib/reportsCsv');
+const {
+  cleanDate, cleanId, matchesSearch, nameParts, withinDates
+} = require('../lib/listFilters');
+
+const ATTENDANCE_STATUSES = ['present', 'late', 'absent', 'excused'];
+
+/** The Attendance Logs filter, read the same way by the page and by a status change. */
+function attendanceLogFilters(source = {}) {
+  const status = String(source.log_status || '').trim().toLowerCase();
+  return {
+    search: String(source.log_search || '').trim(),
+    status: ATTENDANCE_STATUSES.includes(status) ? status : 'all',
+    from: cleanDate(source.log_from),
+    to: cleanDate(source.log_to)
+  };
+}
+const { todayDate } = require('../lib/utils');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
 const { TUTOR_ASSESSMENT_MIN_ITEMS, TUTOR_ASSESSMENT_MAX_ITEMS } = require('../config/assessmentDefaults');
 
@@ -492,7 +512,7 @@ router.post('/resources/:resourceId/delete', retiredResourceAction);
 
 router.get('/attendance', async (req, res, next) => {
   try {
-    const [attendanceLogs, tutorSubjects] = await Promise.all([
+    const [everyLog, tutorSubjects] = await Promise.all([
       getAttendanceByTutor(req.session.user.id),
       getTutorSubjectsWithStudents(req.session.user.id)
     ]);
@@ -501,11 +521,22 @@ router.get('/attendance', async (req, res, next) => {
     const students = selectedSubject
       ? selectedSubject.students.map((student) => ({ ...student, subject_id: selectedSubject.id, subject_name: selectedSubject.name }))
       : [];
+    // The Attendance Logs grow with every session, so they have their own
+    // filter bar: a learner or a subject, a status, and a date range. Its fields
+    // are named log_* so they never mix with the marking form above.
+    const logFilters = attendanceLogFilters(req.query);
+    const attendanceLogs = everyLog.filter((item) => (
+      matchesSearch([nameParts(item), item.subject_name], logFilters.search)
+      && (logFilters.status === 'all' || String(item.status || '').trim().toLowerCase() === logFilters.status)
+      && withinDates(item.attendance_date, logFilters.from, logFilters.to)
+    ));
     const shell = await buildShell(req, {
       pageTitle: 'Attendance',
       section: 'attendance',
       contentView: '../content/tutor-attendance',
       attendanceLogs,
+      logCount: everyLog.length,
+      logFilters,
       tutorSubjects,
       students,
       selectedSubjectId
@@ -543,7 +574,13 @@ router.post('/attendance', async (req, res, next) => {
 // Attendance Logs: change one record's status (Present / Late / Absent /
 // Excused). Nothing else about the record can be edited.
 router.post('/attendance/:id/status', async (req, res) => {
-  const back = req.body.subject_id ? `/tutor/attendance?subject_id=${encodeURIComponent(req.body.subject_id)}` : '/tutor/attendance';
+  // Back to the same list: the subject loaded for marking, and the logs' filter.
+  const keep = attendanceLogFilters(req.body);
+  const query = new URLSearchParams([
+    ['subject_id', String(req.body.subject_id || '').trim()], ['log_search', keep.search],
+    ['log_status', keep.status === 'all' ? '' : keep.status], ['log_from', keep.from], ['log_to', keep.to]
+  ].filter((pair) => pair[1])).toString();
+  const back = `/tutor/attendance${query ? `?${query}` : ''}`;
   try {
     await updateAttendanceStatus(Number(req.params.id), req.session.user.id, req.body.status);
     setFlash(req, 'success', 'Attendance status updated.');
@@ -698,6 +735,20 @@ router.get('/students/:studentId/analytics', async (req, res, next) => {
   }
 });
 
+/**
+ * The filter bar: search, subject, assessment and from/to (a tutor has no branch
+ * to pick). A date is taken only as a plain YYYY-MM-DD.
+ */
+function analyticsFilters(req) {
+  return {
+    search: String(req.query.search || '').trim(),
+    subjectId: cleanId(req.query.subject_id),
+    kind: req.query.kind || 'all',
+    from: cleanDate(req.query.from),
+    to: cleanDate(req.query.to)
+  };
+}
+
 // Analytics & Reports used to be its own page. It listed the tutor's students
 // and how they were doing — the same question Student Results answers, off the
 // same submissions — so the two are one page now and this stays as a URL only.
@@ -714,13 +765,7 @@ router.get('/analytics', async (req, res, next) => {
     // The same report the admin reads, scoped to this tutor's own learners,
     // with the same filter bar (no branch). A learner's row opens their
     // per-subject score trend (/tutor/students/:id/analytics).
-    const filters = {
-      search: String(req.query.search || '').trim(),
-      subjectId: req.query.subject_id || 'all',
-      kind: req.query.kind || 'all',
-      from: req.query.from || '',
-      to: req.query.to || ''
-    };
+    const filters = analyticsFilters(req);
 
     const data = await getAnalyticsDashboard(req.session.user, filters);
     const focus = await getFocusHandoutsForTutor(req.session.user.id, { search: filters.search }).catch(() => []);
@@ -736,6 +781,19 @@ router.get('/analytics', async (req, res, next) => {
       viewerRole: 'tutor'
     });
     res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// The Student progress table as a CSV file: the same rows as its tab, within
+// this tutor's own learners and the subjects they teach them.
+router.get('/analytics/progress.csv', async (req, res, next) => {
+  try {
+    const rows = await getProgressComparison(resolveScope(req.session.user), analyticsFilters(req));
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="mindquest-student-progress-${todayDate()}.csv"`
+    });
+    res.send(progressCsv(rows));
   } catch (error) { next(error); }
 });
 

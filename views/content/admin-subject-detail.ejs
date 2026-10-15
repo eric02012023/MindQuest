@@ -7,8 +7,8 @@
     open is kept in the address (#modules, #students, ...), so coming back to
     the page — after adding a module, archiving a tutor — lands on it again.
 
-    Every section is a table that shows ten rows and scrolls, with a search icon
-    in its heading (public/js/mq-tables.js).
+    Every section is a table that shows ten rows and scrolls
+    (public/js/mq-tables.js).
 
     WHAT WENT: the Legacy Modules panel, and with it the routes that uploaded,
     archived and recovered those old files. Subject Assessments now lists the
@@ -19,6 +19,7 @@
   const kindLabel = (kind) => (kind === 'pre_assessment' ? 'Pre-Assessment'
     : kind === 'post_assessment' ? 'Post-Assessment' : 'Module assessment');
   const levelClass = (level) => String(level || 'beginner').toLowerCase();
+  const searching = typeof search !== 'undefined' && !!search;
   const uniqueStudents = [];
   const seenStudentIds = new Set();
   (students || []).forEach((s) => {
@@ -42,6 +43,30 @@
     <h2><%= subject ? subject.name : 'Subject' %></h2>
     <a class="btn btn-secondary btn-sm" href="<%= basePath %>/subjects">Back to All Subjects</a>
   </div>
+
+  <%# Search narrows the learners and tutors in every tab: name, ID, year or grade
+      level. The main admin may also pick a branch. The tab that was open is kept. %>
+  <form class="mq-toolbar" method="get" action="<%= basePath %>/subjects/<%= subject.id %>" data-subject-filters>
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= typeof search === 'undefined' ? '' : search %>" placeholder="Student or tutor — name, ID, year or grade level" />
+      </label>
+      <% if (isAdmin && (branches || []).length) { %>
+        <label class="mq-field">
+          <span>Branch</span>
+          <select name="branch_id" data-autosubmit>
+            <option value="all">All branches</option>
+            <% (branches || []).forEach((branch) => { %>
+              <option value="<%= branch.id %>" <%= String(selectedBranch) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Search</button>
+      <a class="mq-btn" href="<%= basePath %>/subjects/<%= subject.id %>" data-filters-clear>Clear</a>
+    </div>
+  </form>
 
   <nav class="mq-tabs" role="tablist" aria-label="<%= subject.name %> sections" data-tabs>
     <% tabs.forEach((tab, index) => { %>
@@ -67,7 +92,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Grade Level</th><th>Module</th><th data-search-col>Title</th><th>Handouts</th><th>Assessments</th><th>Manage</th></tr>
+          <tr><th>Grade Level</th><th>Module</th><th>Title</th><th>Handouts</th><th>Assessments</th><th>Manage</th></tr>
         </thead>
         <tbody>
           <% if (!modules.length) { %>
@@ -191,13 +216,13 @@
       <table>
         <thead>
           <tr>
-            <th data-search-col>Student</th><th>Year Level</th><th>Score</th><th>Percentage</th>
+            <th>Student</th><th>Year Level</th><th>Score</th><th>Percentage</th>
             <th>Classification</th><th>Submitted</th><th>Results</th>
           </tr>
         </thead>
         <tbody>
           <% if (!preResults.length) { %>
-            <tr><td colspan="7">No student has taken the Pre-Assessment for this subject yet.</td></tr>
+            <tr><td colspan="7"><%= searching ? 'No result matches your search.' : 'No student has taken the Pre-Assessment for this subject yet.' %></td></tr>
           <% } %>
           <% preResults.forEach((r) => { %>
             <tr>
@@ -227,7 +252,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th data-search-col>Title</th><th>Type</th><th>Module</th><th>Created by</th><th>Items</th><th>Answered</th><th>Average</th><th>Created</th></tr>
+          <tr><th>Title</th><th>Type</th><th>Module</th><th>Created by</th><th>Items</th><th>Answered</th><th>Average</th><th>Created</th></tr>
         </thead>
         <tbody>
           <% if (!(subjectAssessments || []).length) { %>
@@ -265,11 +290,11 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th data-search-col>Student</th><th>Year Level</th><th>Pre</th><th>Post</th><th>Change</th></tr>
+          <tr><th>Student</th><th>Year Level</th><th>Pre</th><th>Post</th><th>Change</th></tr>
         </thead>
         <tbody>
           <% if (!taken.length) { %>
-            <tr><td colspan="5">No student has taken an assessment in this subject yet.</td></tr>
+            <tr><td colspan="5"><%= searching ? 'No student matches your search.' : 'No student has taken an assessment in this subject yet.' %></td></tr>
           <% } %>
           <% taken.forEach((c) => { %>
             <tr>
@@ -322,11 +347,11 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th data-search-col>Student</th><th>Year / Grade</th><th>Branch</th><th>Tutor</th><th>Time Schedule</th><th>Manage</th></tr>
+          <tr><th>Student</th><th>Year / Grade</th><th>Branch</th><th>Tutor</th><th>Time Schedule</th><th>Manage</th></tr>
         </thead>
         <tbody>
           <% if (!uniqueStudents.length) { %>
-            <tr><td colspan="6">No students enrolled yet.</td></tr>
+            <tr><td colspan="6"><%= searching ? 'No student matches your search.' : 'No students enrolled yet.' %></td></tr>
           <% } %>
           <% uniqueStudents.forEach((student) => { const sid = student.student_id || student.id; %>
             <tr>
@@ -355,11 +380,11 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th data-search-col>Tutor</th><th>Branch</th><th>Year Level</th><th>Students in this subject</th><th>Time Schedule</th><th>Manage</th></tr>
+          <tr><th>Tutor</th><th>Branch</th><th>Year Level</th><th>Students in this subject</th><th>Time Schedule</th><th>Manage</th></tr>
         </thead>
         <tbody>
           <% if (!tutors.length) { %>
-            <tr><td colspan="6">No tutor teaches this subject yet.</td></tr>
+            <tr><td colspan="6"><%= searching ? 'No tutor matches your search.' : 'No tutor teaches this subject yet.' %></td></tr>
           <% } %>
           <% tutors.forEach((tutor) => { %>
             <%
@@ -393,10 +418,10 @@
     <div class="panel-card-head"><h3>Archived Enrolled Users</h3></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th data-search-col>Name</th><th>Branch</th><th>Role</th><th>Year Level</th><th>Time Schedule</th><th>Recover</th></tr></thead>
+        <thead><tr><th>Name</th><th>Branch</th><th>Role</th><th>Year Level</th><th>Time Schedule</th><th>Recover</th></tr></thead>
         <tbody>
           <% if (!archivedCount) { %>
-            <tr><td colspan="6">No archived enrolled users.</td></tr>
+            <tr><td colspan="6"><%= searching ? 'No archived user matches your search.' : 'No archived enrolled users.' %></td></tr>
           <% } %>
           <% (archivedAssignments || []).forEach((assignment) => { %>
             <tr>
@@ -460,5 +485,19 @@
 
     show((window.location.hash || '').replace('#', ''), false);
     window.addEventListener('hashchange', function () { show((window.location.hash || '').replace('#', ''), false); });
+  })();
+
+  // The search bar comes back to the tab that was open: the tab lives in the
+  // address's #hash, which a submitted form would otherwise drop.
+  (function () {
+    var form = document.querySelector('[data-subject-filters]');
+    if (!form) return;
+    var keepTab = function (url) { return String(url).split('#')[0] + (window.location.hash || ''); };
+    form.addEventListener('submit', function () { form.action = keepTab(form.action); });
+    form.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
+      select.addEventListener('change', function () { form.action = keepTab(form.action); form.submit(); });
+    });
+    var clear = form.querySelector('[data-filters-clear]');
+    if (clear) clear.addEventListener('click', function () { clear.href = keepTab(clear.href); });
   })();
 </script>

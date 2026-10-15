@@ -321,18 +321,18 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
   <% } %>
 
   <%# ------------------------------------------------ tutors & time schedule
-      A tutor teaches only the subjects they teach. So each of the student's
-      subjects has its own row here — its tutor and time — and the tutors
-      offered for a row are only those who teach that subject at the student's
-      branch. The quick form at the top gives one tutor every subject of this
-      student's that they teach, and says which are left for another tutor.
-      Admin and assistant only: a student cannot change a tutor once set. %>
+      A tutor teaches only the subjects they teach, and each subject has ONE
+      hour of its own. So each of the student's subjects has its own row here —
+      its tutor, its days and its time — and the tutors offered for a row are
+      only those who teach that subject at the student's branch. An hour the
+      student already spends on another subject, on the same days, is not
+      offered. Admin and assistant only: a student cannot change a tutor once
+      set. %>
   <% if (isStudent) { %>
     <%
       const slots = timeSlots || [];
       const usage = tutorSlotUsage || [];
       const bySubject = typeof tutorsBySubject !== 'undefined' ? (tutorsBySubject || {}) : {};
-      const branchTutors = (assignableTutors || []).filter((tutor) => Object.values(bySubject).some((list) => list.some((t) => Number(t.id) === Number(tutor.id))));
       // Which slots each tutor already has with SOMEONE ELSE. Shown rather than
       // hidden, so an admin can see why a slot is not on offer.
       const takenByTutor = {};
@@ -351,7 +351,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
         <span class="mq-card-icon"><%- icon('calendar', 18) %></span>
         <div>
           <h3>Tutors &amp; time schedule</h3>
-          <p>Each subject is taught by a tutor who teaches it.<%= openCount ? ` ${openCount} subject${openCount === 1 ? ' needs' : 's need'} a tutor.` : '' %></p>
+          <p>Each subject has its own tutor and its own one-hour slot.<%= openCount ? ` ${openCount} subject${openCount === 1 ? ' needs' : 's need'} a tutor.` : '' %></p>
         </div>
       </div>
 
@@ -361,54 +361,19 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
           Enroll this student in a subject first — there is nothing to assign a tutor to.
         </div>
       <% } else { %>
-        <%# One tutor for every subject of this student's that they teach. %>
-        <form method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor" data-tutor-form
-              data-confirm-message="Assign this tutor and time to every subject of this student's that the tutor teaches?">
-          <div class="mq-card-body mq-fields">
-            <label class="is-wide">Tutor for every subject they teach
-              <select name="tutor_id" data-tutor-select required>
-                <option value="">— Choose a tutor —</option>
-                <% branchTutors.forEach((tutor) => {
-                     const teaches = assignments.filter((item) => (bySubject[String(item.subject_id)] || []).some((t) => Number(t.id) === Number(tutor.id))).map((item) => item.subject_name); %>
-                  <option value="<%= tutor.id %>" data-taken="<%= (takenByTutor[String(tutor.id)] || []).join('|') %>">
-                    <%= tutorLabel(tutor) %> — teaches <%= teaches.join(', ') %>
-                  </option>
-                <% }) %>
-              </select>
-            </label>
-            <label>Time schedule
-              <select name="time_slot" data-slot-select>
-                <option value="">— No schedule set —</option>
-                <% slots.forEach((slot) => { %><option value="<%= slot %>"><%= slot %></option><% }) %>
-              </select>
-              <small class="mq-field-hint" data-slot-note></small>
-            </label>
-            <label>Preferred days
-              <select name="preferred_days" data-days-select>
-                <option value="">— Keep as chosen —</option>
-                <% dayOptions.forEach((day) => { %><option value="<%= day %>"><%= day %></option><% }) %>
-              </select>
-            </label>
-          </div>
-          <div class="mq-card-foot">
-            <span class="mq-card-foot-note">A subject the tutor does not teach is left for another tutor below.</span>
-            <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Assign</button>
-          </div>
-        </form>
-
-        <%# One row per subject: its tutor and time, changed on its own. %>
-        <div class="mq-table" data-no-table-search style="--mq-min-width: 900px; --mq-cols: minmax(150px, 1.2fr) minmax(220px, 2fr) minmax(170px, 1.3fr) minmax(130px, 1fr) 110px;">
+        <%# One row per subject: its tutor, days and hour, changed on its own. %>
+        <div class="mq-table" style="--mq-min-width: 900px; --mq-cols: minmax(150px, 1.2fr) minmax(220px, 2fr) minmax(170px, 1.3fr) minmax(130px, 1fr) 110px;">
           <div class="mq-head">
             <span>Subject</span><span>Tutor</span><span>Time schedule</span><span>Preferred days</span><span style="text-align:right;">Save</span>
           </div>
           <% assignments.forEach((item) => {
                const options = bySubject[String(item.subject_id)] || [];
                const formId = `tutor-row-${item.subject_id}`;
-               // This student's OTHER subjects' times, by tutor: a learner cannot be with two tutors at once.
-               const ownTaken = assignments
+               // This student's OTHER subjects' hours: one subject, one hour, so a
+               // time already spent on another subject (same days) is not offered.
+               const ownTaken = JSON.stringify(assignments
                  .filter((other) => Number(other.subject_id) !== Number(item.subject_id) && other.tutor_internal_id && other.time_slot)
-                 .map((other) => `${other.time_slot}=${other.tutor_internal_id}=${other.preferred_days || ''}`)
-                 .join('|'); %>
+                 .map((other) => ({ slot: other.time_slot, days: other.preferred_days || '', subject: other.subject_name }))); %>
             <form class="mq-row" id="<%= formId %>" method="post" action="<%= basePath %>/profile/<%= profileUser.id %>/tutor"
                   data-tutor-form data-own-taken="<%= ownTaken %>"
                   data-confirm-message="Save the tutor and time for <%= item.subject_name %>?">
@@ -462,8 +427,9 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
 
     <script>
       // Grey out the slots the chosen tutor already teaches someone else at, and
-      // the ones this student already spends with a DIFFERENT tutor. The server
-      // refuses a clash regardless — this only saves the admin a round trip.
+      // the ones this student already spends on ANOTHER subject (one subject, one
+      // hour — with this tutor or any other). The server refuses a clash
+      // regardless — this only saves the admin a round trip.
       (function () {
         document.querySelectorAll('[data-tutor-form]').forEach(function (form) {
           var tutorSelect = form.querySelector('[data-tutor-select]');
@@ -471,28 +437,26 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
           var note = form.querySelector('[data-slot-note]');
           if (!tutorSelect || !slotSelect) return;
           var daysSelect = form.querySelector('[data-days-select]');
-          var own = (form.getAttribute('data-own-taken') || '').split('|').filter(Boolean).map(function (pair) {
-            var parts = pair.split('=');
-            return { slot: parts[0], tutor: parts[1], days: parts[2] || '' };
-          });
+          var own = [];
+          try { own = JSON.parse(form.getAttribute('data-own-taken') || '[]'); } catch (_e) { own = []; }
           // Weekdays and the weekend are separate sessions; "not chosen"
           // could be either, so it collides with both.
           function overlaps(a, b) { return !a || !b || a === b; }
 
           function refresh() {
             var option = tutorSelect.options[tutorSelect.selectedIndex];
-            var tutorId = tutorSelect.value;
             var days = daysSelect ? daysSelect.value : '';
             var taken = (option && option.getAttribute('data-taken') || '').split('|').filter(Boolean).map(function (entry) {
               var parts = entry.split('~');
               return { slot: parts[0], days: parts[1] || '' };
             });
             var tutorBusy = taken.filter(function (t) { return overlaps(t.days, days); }).map(function (t) { return t.slot; });
-            var busy = own.filter(function (o) { return tutorId && o.tutor !== tutorId && overlaps(o.days, days); }).map(function (o) { return o.slot; });
+            var busy = own.filter(function (o) { return overlaps(o.days, days); });
+            var busySlots = busy.map(function (o) { return o.slot; });
             Array.prototype.forEach.call(slotSelect.options, function (slot) {
               if (!slot.value) return;
               var reason = tutorBusy.indexOf(slot.value) !== -1 ? ' — tutor already booked'
-                : busy.indexOf(slot.value) !== -1 ? ' — student has another subject then' : '';
+                : busySlots.indexOf(slot.value) !== -1 ? ' — ' + busy[busySlots.indexOf(slot.value)].subject + ' is then' : '';
               slot.disabled = !!reason;
               slot.textContent = slot.value + reason;
             });

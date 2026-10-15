@@ -87,7 +87,7 @@
       </div>
       <div class="mq-table" style="--mq-min-width: 760px; --mq-cols: minmax(180px, 2fr) 140px 100px 90px 110px 150px;">
         <div class="mq-head">
-          <span data-search-col>Assessment</span><span>Type</span><span class="mq-num">Score</span>
+          <span>Assessment</span><span>Type</span><span class="mq-num">Score</span>
           <span class="mq-num">Percent</span><span>Level</span><span>Taken</span>
         </div>
         <% if (!analytics.assessments.length) { %>
@@ -121,7 +121,7 @@
         <span class="mq-count"><%= analytics.moduleReads.length %></span>
       </div>
       <div class="mq-table" style="--mq-cols: minmax(200px, 2fr) 170px 170px;">
-        <div class="mq-head"><span data-search-col>Module</span><span>First opened</span><span>Last opened</span></div>
+        <div class="mq-head"><span>Module</span><span>First opened</span><span>Last opened</span></div>
         <% if (!analytics.moduleReads.length) { %>
           <div class="mq-empty">No module opened yet.</div>
         <% } %>
@@ -142,7 +142,7 @@
           <span class="mq-count"><%= analytics.antiCheatLogs.length %></span>
         </div>
         <div class="mq-table" style="--mq-cols: 160px minmax(160px, 1.4fr) minmax(160px, 2fr) 70px;">
-          <div class="mq-head"><span>When</span><span data-search-col>Assessment</span><span>Event</span><span class="mq-num">Strike</span></div>
+          <div class="mq-head"><span>When</span><span>Assessment</span><span>Event</span><span class="mq-num">Strike</span></div>
           <% analytics.antiCheatLogs.forEach((log) => { %>
             <div class="mq-row">
               <span class="mq-cell mq-sub" data-label="When"><%= formatDateTime(log.created_at) %></span>

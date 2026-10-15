@@ -513,3 +513,79 @@ Already applied on live on 2026-10-14 (a rerun changes nothing; dry-run by defau
 node scripts/remove-stray-records.js            # attempts across grades, test assessments #2/#3,
                                                 # the levels they set, focus handout #5
 ```
+
+### This release: one subject, one hour — a User registry and Student progress reports
+
+No migration and no new environment variable: it is code only. `npm test` now
+also runs `scripts/test-reports.js` (and `scripts/test-tutor-assignment.js` was
+rewritten for the new rule).
+
+**A student picks a tutor for each subject, one by one**
+- My Subjects → Select Tutor, per subject: the days (Weekdays / Weekend) first,
+  then the time, and only then the tutors who teach that subject and are free.
+- **One subject, one hour.** An hour a student already spends on another subject
+  — or has asked a tutor for — on the same days is not offered again (not even
+  for the same tutor). The same hour on the other days is still free. Filipino
+  on Weekdays 7:00-8:00 AM means AP cannot take Weekdays 7:00-8:00 AM, but
+  English can take Weekend 7:00-8:00 AM.
+- A request covers **one subject**, and the tutor who accepts takes that subject
+  alone. Before, accepting gave the tutor every open subject they teach, and
+  "Keep this tutor" copied the same hour onto a new subject; both are gone.
+  Ending or cancelling a session gives back that hour, on those days, only
+  (Weekdays 7:00 AM and Weekend 7:00 AM with the same tutor are two sessions).
+- What holds an hour is what is really held: an enrolment with its tutor and
+  time, or a request still waiting for a subject that still has no tutor. An
+  old accepted request whose session the office has since moved, a request left
+  over from a dropped subject, and an archived learner's enrolment hold nothing.
+- Only an approved, active tutor can be asked; a hand-made request for an
+  archived or not-yet-approved tutor is refused.
+- The office's per-subject editor (a student's profile) follows the same rule,
+  and the "one tutor for every subject" form is gone: each subject has its own
+  tutor, days and time. Setting one time on several subjects is refused.
+- **Not changed on purpose:** students who already hold one hour for several
+  subjects (every seeded account was given one slot for all its subjects, and
+  older enrolments) are left as they are. The rule applies to every new choice
+  and to every save in the editor, so the office moves those one subject at a
+  time when it wants to.
+
+**Analytics & Reports**
+- **User registry** (admin and assistant): every account — learners, tutors and
+  assistant admins, in every branch (an assistant: their own) — as one table,
+  with pivot tables (branch × role, branch × year level, role × status,
+  subject × branch). Print, or download as CSV.
+- **Student progress** (all four roles, each in its own scope): for every
+  learner and subject, the Pre-Assessment, the module activities and the
+  Post-Assessment side by side with the change between them; a chart per
+  subject and per learner, and pivots by subject and by branch. A tutor sees
+  the subjects they teach the learner; a student, their own. Print, or CSV.
+- CSV files neutralise cells a spreadsheet would run as a formula, and give each
+  date as the day the page shows (Manila time).
+- The page's search now narrows the Student progress table too, and the
+  registry's role and status survive a search (and the other way round). A date
+  in the filter bar is taken only as a plain YYYY-MM-DD.
+- A tutor's subjects in the registry leave out any the office archived for them.
+
+**Search and filters**
+- The small magnifier in table headings is gone everywhere (it doubled the
+  filter bars). Tables still show ten rows and scroll.
+- Filter bars were added where a list can grow without limit and had none:
+  Payment History, Assessment Monitoring (both sections), a branch's page and a
+  subject's page (search, and branch for the main admin), and a tutor's
+  Attendance Logs (learner or subject, status, from/to — a status change comes
+  back to the same filtered list).
+- An assistant admin's subject page no longer shows other branches' learners in
+  Pre-Assessment Results, Pre vs Post or the Archived tab (which also offered a
+  Recover button the server then refused). The search covers the Archived tab.
+- Assessment Monitoring: "Assessments set by tutors" follows the branch too — an
+  assistant sees the assessments of the tutors who teach at their branch, and
+  the main admin's Branch filter narrows both sections. The Level filter
+  narrows the results only (a level is how a learner did; an assessment has
+  none), where it used to empty the assessments list.
+- A hand-edited filter is ignored rather than trusted: a date that is not a
+  real calendar day ("2026-13-45", "2026-02-30") made Analytics and Payment
+  Collection (restored in the release before) a Server Error — the driver
+  refuses an Invalid Date — and a subject or branch that is not a number
+  quietly emptied the list. Both now fall back to "any".
+- An assistant marking, archiving or recovering another branch's registration
+  is told "Notification not found." — nothing was changed, and the page used to
+  say it had been.

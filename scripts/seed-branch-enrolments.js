@@ -10,7 +10,8 @@
  *             enrolments, opens the billing account and prices it at
  *             ₱1,800 per subject — and then a tutor and a time slot through
  *             the profile's "Tutor & schedule" save (setStudentTutorAndSchedule),
- *             which enforces one tutor per student and no double-booked slot.
+ *             one subject at a time — each subject has its own tutor and its
+ *             own hour, and no slot is double-booked.
  *
  * Only seeded accounts are touched: the "+" aliases of the given inbox, which is
  * the only thing marking them (their names are ordinary on purpose). Real
@@ -45,6 +46,8 @@ const { generateUserCode, safeJsonArray, safeJsonObject } = require('../lib/util
 const {
   updateUser,
   getUserById,
+  getStudentAssignments,
+  tutorTeachesSubject,
   setStudentTutorAndSchedule,
   recalculateStudentBilling,
   normalizeTutorYearLevels,
@@ -580,9 +583,31 @@ async function main() {
         }
       }
       if (plan.tutorChoice) {
-        await withDeadlockRetry(() => setStudentTutorAndSchedule(
-          student.id, { tutorId: plan.tutorChoice.tutor.id, timeSlot: plan.slot }, actor
-        ));
+        const tutor = plan.tutorChoice.tutor;
+        // One subject, one hour: each subject the tutor teaches gets its own
+        // slot, starting from the one planned for this student, and moving on
+        // to the next when it is taken (by the tutor's other students, or by
+        // this student's own other subject).
+        await withDeadlockRetry(async () => {
+          const open = (await getStudentAssignments(student.id))
+            .filter((row) => !row.tutor_internal_id && tutorTeachesSubject(tutor, row.subject_name));
+          let from = Math.max(0, FIXED_TIME_SLOTS.indexOf(plan.slot));
+          for (const row of open) {
+            let placed = false;
+            for (let k = 0; k < FIXED_TIME_SLOTS.length && !placed; k++) {
+              const candidate = FIXED_TIME_SLOTS[(from + k) % FIXED_TIME_SLOTS.length];
+              try {
+                await setStudentTutorAndSchedule(
+                  student.id, { tutorId: tutor.id, timeSlot: candidate, subjectIds: [row.subject_id] }, actor
+                );
+                placed = true;
+                from = (from + k + 1) % FIXED_TIME_SLOTS.length;
+              } catch (error) {
+                if (!/Pick another slot|one hour/i.test(error.message)) throw error;
+              }
+            }
+          }
+        });
         tutored++;
       }
     } catch (error) {
