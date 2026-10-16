@@ -142,6 +142,38 @@ async function main() {
   ok('with no end date, it is one month from the start',
     data.postWindowFor({ start_date: '2026-01-01' }).endDate === '2026-02-01', data.postWindowFor({ start_date: '2026-01-01' }).endDate);
 
+  console.log('\n== …and closes five days later ==');
+  const febWindow = data.postWindowFor(enrolledJan1);
+  ok('it is open for five days: the last day and the four after it', data.POST_ASSESSMENT_OPEN_DAYS === 5);
+  ok('the last minute is 11:59 PM Manila on 5 February', febWindow.openUntil && febWindow.openUntil.toISOString() === '2026-02-05T15:59:00.000Z',
+    febWindow.openUntil && febWindow.openUntil.toISOString());
+  ok('it closes at 12:00 AM on 6 February', febWindow.closesAt && febWindow.closesAt.toISOString() === '2026-02-05T16:00:00.000Z',
+    febWindow.closesAt && febWindow.closesAt.toISOString());
+  const at = (iso) => data.postWindowFor(enrolledJan1, new Date(iso));
+  ok('still open at 11:59 PM on the fifth day', at('2026-02-05T15:59:59Z').isOpen === true && at('2026-02-05T15:59:59Z').isClosed === false);
+  ok('closed from 12:00 AM on the sixth day', at('2026-02-05T16:00:00Z').isOpen === false && at('2026-02-05T16:00:00Z').isClosed === true);
+  ok('and closed for good after that', at('2026-03-20T04:00:00Z').isOpen === false && at('2026-03-20T04:00:00Z').isClosed === true);
+  ok('not "closed" before it ever opened', at('2026-01-20T04:00:00Z').isClosed === false);
+  const lateFeb = data.postWindowFor({ start_date: '2026-01-26', end_date: '2026-02-26' });
+  ok('the five days run across a month end (26 February -> 2 March)', lateFeb.openUntil.toISOString() === '2026-03-02T15:59:00.000Z', lateFeb.openUntil.toISOString());
+
+  console.log('\n== once the Post-Assessment is done — taken, or closed — the subject is view-only ==');
+  const finished = (row, post, iso) => data.subjectFinishedState(row, post, new Date(iso));
+  ok('during the month: theirs to work in', finished(enrolledJan1, null, '2026-01-20T04:00:00Z').viewOnly === false);
+  ok('the last day, and the five days of the Post-Assessment not yet taken: still theirs',
+    finished(enrolledJan1, null, '2026-02-01T04:00:00Z').viewOnly === false && finished(enrolledJan1, null, '2026-02-05T15:59:00Z').viewOnly === false);
+  ok('the five days over without it: view only ("closed")', finished(enrolledJan1, null, '2026-02-05T16:00:00Z').reason === 'closed');
+  const takenOnLastDay = { submitted_at: new Date('2026-02-01T03:00:00Z') };
+  ok('the Post-Assessment taken: view only at once ("taken")', finished(enrolledJan1, takenOnLastDay, '2026-02-01T04:00:00Z').reason === 'taken'
+    && finished(enrolledJan1, takenOnLastDay, '2026-02-01T04:00:00Z').viewOnly === true);
+  const enrolledAgain = { start_date: '2026-03-01', end_date: '2026-04-01' };
+  ok('enrolled again: a Post-Assessment from the earlier month does not finish the new one',
+    finished(enrolledAgain, { submitted_at: new Date('2026-02-02T03:00:00Z') }, '2026-03-10T04:00:00Z').viewOnly === false);
+  ok('…but the new month\'s five days running out does', finished(enrolledAgain, { submitted_at: new Date('2026-02-02T03:00:00Z') }, '2026-04-06T04:00:00Z').reason === 'closed');
+  ok('an end date read from the database as a Date counts as its day',
+    finished({ end_date: new Date('2026-02-01T00:00:00Z') }, null, '2026-02-05T16:00:00Z').reason === 'closed'
+    && finished({ end_date: new Date('2026-02-01T00:00:00Z') }, null, '2026-02-05T15:59:00Z').viewOnly === false);
+
   console.log('\n== where a student stands ==');
   db.user = { id: 5, role: 'student', grade_level: 'Grade 6', year_level: 'Primary Level' };
   db.preRows = [];
@@ -152,13 +184,23 @@ async function main() {
   db.preRows = [{ id: 70, assessment_id: 9, grade_level: 'Grade 6', percentage: 40, level: 'Beginner' }];
   ok('before the last day: not yet', (await data.getStudentPostState(5, 2)).status === 'not_yet');
 
-  db.enrolment = { start_date: '2020-01-01', end_date: '2020-02-01' };
+  // The enrolment ended yesterday (Manila): the Post-Assessment opened yesterday
+  // and is open for four more days.
+  const yesterday = require('../lib/utils').todayDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  db.enrolment = { start_date: '2026-01-01', end_date: yesterday };
   const open = await data.getStudentPostState(5, 2);
-  ok('on or after the last day: open', open.status === 'open');
+  ok('within its five days: open', open.status === 'open', `${open.status} (ended ${yesterday})`);
   ok('it repeats the Pre-Assessment the student took', open.preSubmission && open.preSubmission.assessment_id === 9);
+  ok('and it says until when', open.openUntil instanceof Date && open.openUntil.getTime() > Date.now());
+
+  db.enrolment = { start_date: '2020-01-01', end_date: '2020-02-01' };
+  ok('five days after it opened, not taken: closed', (await data.getStudentPostState(5, 2)).status === 'closed');
+  db.preRows = [];
+  ok('closed, too, for a student who never sat the Pre-Assessment', (await data.getStudentPostState(5, 2)).status === 'closed');
+  db.preRows = [{ id: 70, assessment_id: 9, grade_level: 'Grade 6', percentage: 40, level: 'Beginner' }];
 
   db.postRows = [{ id: 81, percentage: 75 }];
-  ok('once taken: taken', (await data.getStudentPostState(5, 2)).status === 'taken');
+  ok('once taken: taken, closed or not', (await data.getStudentPostState(5, 2)).status === 'taken');
 
   console.log('\n== the Pre-Assessment that counts is the student\'s own grade\'s ==');
   db.preRows = [];

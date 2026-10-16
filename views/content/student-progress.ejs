@@ -136,6 +136,9 @@
                 <td>
                   <% if (a.submission_id) { %>
                     <a href="/student/results/<%= a.submission_id %>"><strong><%= a.title %></strong></a>
+                  <% } else if (s.assignment && s.assignment.view_only) { %>
+                    <%# A finished subject is view-only: nothing left to take in it. %>
+                    <strong><%= a.title %></strong>
                   <% } else { %>
                     <a href="/student/tutor-assessments/<%= a.id %>"><strong><%= a.title %></strong></a>
                   <% } %>
@@ -145,7 +148,7 @@
                 <td><%= a.score != null ? `${Number(a.score)}/${Number(a.total_questions)}` : '—' %></td>
                 <td><%= a.percentage != null ? Number(a.percentage).toFixed(1) + '%' : '—' %></td>
                 <td><%= a.level || '—' %></td>
-                <td><%= a.taken_at ? formatDateTime(a.taken_at) : 'Not taken yet' %></td>
+                <td><%= a.taken_at ? formatDateTime(a.taken_at) : (s.assignment && s.assignment.view_only ? 'Not taken' : 'Not taken yet') %></td>
               </tr>
             <% }) %>
           </tbody>

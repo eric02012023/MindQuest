@@ -881,6 +881,16 @@ body {
 .pa-subtitle { margin: 4px 0 0; color: var(--text-soft, #5f7084); font-size: 14px; }
 .pa-intro p { margin: 0 0 8px; font-size: 14px; }
 .pa-note { color: var(--text-soft, #5f7084); font-size: 13px; }
+/* The Post-Assessment's closing time, above its questions. */
+.pa-deadline {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid #f0d58a;
+  border-radius: 12px;
+  background: #fff8e6;
+  color: #6b4f00;
+  font-size: 14px;
+}
 .pa-form { display: grid; gap: 16px; }
 
 .pa-question {

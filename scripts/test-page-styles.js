@@ -78,13 +78,13 @@ ok('an unmapped section uses its own name',
 ok('underscores become hyphens',
   resolvePageStyles('/admin', 'student_results').sectionSlug === 'student-results');
 ok('a mapped section is redirected to a sheet that exists',
-  resolvePageStyles('/admin', 'income').sectionSlug === 'dashboard');
+  resolvePageStyles('/admin', 'archive_notifications').sectionSlug === 'notification-archives');
 ok('role-specific mappings win over the shared map',
   resolvePageStyles('/admin', 'notifications').sectionSlug === 'notification-history');
 ok('both a theme and a page sheet are requested',
   resolvePageStyles('/admin', 'billing').styles.length === 2);
 ok('the body class matches the resolved slug',
-  resolvePageStyles('/admin', 'income').pageClass === 'admin-dashboard-page');
+  resolvePageStyles('/admin', 'archive_notifications').pageClass === 'admin-notification-archives-page');
 
 console.log('\n== a genuinely missing sheet IS detected (the check has teeth) ==');
 ok('a made-up section is reported missing',

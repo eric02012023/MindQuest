@@ -559,9 +559,13 @@ function createAdminRouter(role) {
       const selectedRole = folder === 'needs-tutor' ? 'student' : (req.query.role || 'all');
       const search = String(req.query.search || '').trim();
       const status = req.query.status || 'all';
+      // From / To: the day each account joined (the list's Joined column), as
+      // the page shows it. Only a real YYYY-MM-DD is taken.
+      const from = cleanDate(req.query.from);
+      const to = cleanDate(req.query.to);
 
-      // The search / branch / role / status filters narrow the list on the
-      // server. What they return is listed in full: the table shows ten rows
+      // The search / branch / role / status / date filters narrow the list on
+      // the server. What they return is listed in full: the table shows ten rows
       // and scrolls (public/js/mq-tables.js).
       const isMainAdmin = req.session.user.role === 'admin';
       const [page, needsTutorCount, archivedUsers, assistantAccounts, archivedAssistantAccounts, availableAssistantBranches, rosterCounts, assistantProfiles] = await Promise.all([
@@ -590,7 +594,7 @@ function createAdminRouter(role) {
         pageTitle: 'User Management',
         section: 'users',
         contentView: '../content/admin-users',
-        users: page.rows,
+        users: page.rows.filter((user) => withinDates(user.created_at, from, to)),
         query: req.query,
         archivedUsers,
         assistantAccounts,
@@ -603,6 +607,8 @@ function createAdminRouter(role) {
         selectedRole,
         selectedStatus: status,
         search,
+        selectedFrom: from,
+        selectedTo: to,
         openModal: String(req.query.open || '')
       });
       res.render('shells/dashboard', shell);
@@ -1450,9 +1456,8 @@ function createAdminRouter(role) {
   /**
    * Payment Collection: every transaction in scope (an assistant: their branch)
    * that the search, date, branch, method and purpose filters return, what they
-   * add up to, and what is still owed. The Payment Collection page shows it, and
-   * so does the Payment collection tab of Analytics & Reports — one report, so
-   * the two can never disagree.
+   * add up to, and what is still owed — the Payment collection tab of
+   * Analytics & Reports.
    *
    * @param {object} user     req.session.user
    * @param {object} filters  { search, from, to, branchId, method, purpose }, cleaned
@@ -1479,45 +1484,21 @@ function createAdminRouter(role) {
   };
 
   /**
-   * Payment Collection (was "Income Report") — one row per transaction, with search, date range, branch,
-   * method and purpose filters, and a compact summary bar on top.
+   * The Payment Collection page (once "Income Report") is gone: it was the same
+   * report as the Payment collection tab of Analytics & Reports, and two places
+   * for one report was redundant. Its address is kept so an old link or
+   * bookmark lands on that tab, with the filters it carried (the tab cleans
+   * them as it cleans its own).
    */
-  router.get('/income-report', async (req, res, next) => {
-    try {
-      // The table shows ten rows and scrolls; the summary describes everything
-      // the filters return.
-      const pick = (value, options) => (options.includes(value) ? value : 'all');
-      const filters = {
-        search: String(req.query.search || '').trim(),
-        // Only a real YYYY-MM-DD: anything else reached the query as an Invalid
-        // Date and turned the page into a Server Error.
-        from: cleanDate(req.query.from),
-        to: cleanDate(req.query.to),
-        method: pick(req.query.method, paymentChoices.methods),
-        purpose: pick(req.query.purpose, paymentChoices.purposes),
-        branchId: cleanId(req.query.branch_id)
-      };
-      const { rows, summary } = await paymentCollection(req.session.user, filters);
-
-      const shell = await buildShellData(req, {
-        // Phase 7.3: "Income Report" -> "Payment Collection". The page reports
-        // money COLLECTED from students, which is not the centre's income — it
-        // says nothing about costs — and staff read the old title as a P&L.
-        // The URL stays /income-report so existing links and bookmarks work.
-        pageTitle: 'Payment Collection',
-        section: 'income',
-        contentView: '../content/admin-income-report',
-        rows,
-        summary,
-        query: req.query,
-        filters,
-        paymentMethods: PAYMENT_METHODS,
-        paymentPurposes: PAYMENT_PURPOSES
-      });
-      res.render('shells/dashboard', shell);
-    } catch (error) {
-      next(error);
+  router.get('/income-report', (req, res) => {
+    const fields = { search: 'pay_search', from: 'pay_from', to: 'pay_to', branch_id: 'pay_branch', method: 'pay_method', purpose: 'pay_purpose' };
+    const params = new URLSearchParams();
+    for (const [old, now] of Object.entries(fields)) {
+      const value = typeof req.query[old] === 'string' ? req.query[old].trim() : '';
+      if (value && value !== 'all') params.set(now, value);
     }
+    const kept = params.toString();
+    res.redirect(`${basePath}/analytics${kept ? `?${kept}` : ''}#payments`);
   });
 
   // Route handler: GET request
@@ -2712,7 +2693,7 @@ function createAdminRouter(role) {
       const { registry } = analyticsFilters(req);
       const scope = resolveScope(req.session.user, { requestedBranchId: registry.branchId });
       const { rows } = await getUserRegistry(scope, {
-        search: registry.search, registryRole: registry.role, registryStatus: registry.status
+        search: registry.search, from: registry.from, to: registry.to, registryRole: registry.role, registryStatus: registry.status
       });
       sendCsv(res, 'user-registry', registryCsv(rows));
     } catch (error) {

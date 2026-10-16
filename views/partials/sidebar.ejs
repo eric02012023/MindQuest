@@ -25,11 +25,9 @@
       <a class="<%= section === 'billing' ? 'active' : '' %>" href="<%= basePath %>/billing">
         <span class="sidebar-icon"><%- icon('receipt', 18) %></span><span class="sidebar-label">Student Bill</span>
       </a>
-      <%# Phase 7.3: renamed from "Income Report". The URL is unchanged so old
-          links still resolve. %>
-      <a class="<%= section === 'income' ? 'active' : '' %>" href="<%= basePath %>/income-report">
-        <span class="sidebar-icon"><%- icon('wallet', 18) %></span><span class="sidebar-label">Payment Collection</span>
-      </a>
+      <%# No Payment Collection entry: it is the Payment collection tab of
+          Analytics & Reports, and a second entry for the same report was
+          redundant. Its old address (/income-report) opens that tab. %>
       <%# The full inbox — registrations, enrolment requests, payment slips and
           activity. The only sidebar entry with a count. %>
       <a class="<%= section === 'notifications' ? 'active' : '' %>" href="<%= basePath %>/notifications">

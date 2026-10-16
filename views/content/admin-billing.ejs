@@ -79,7 +79,8 @@
     </div>
 
     <div class="mq-toolbar-actions">
-      <a class="mq-btn" href="<%= basePath %>/income-report"><%- icon('chart') %> Payment Collection</a>
+      <%# The report lives in Analytics & Reports, as its Payment collection tab. %>
+      <a class="mq-btn" href="<%= basePath %>/analytics#payments"><%- icon('chart') %> Payment Collection</a>
       <a class="mq-btn" href="<%= basePath %>/payments/history"><%- icon('receipt') %> Payment history</a>
       <button type="button" class="mq-btn" data-modal-target="#reenroll-students-modal">Re-enroll</button>
     </div>

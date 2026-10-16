@@ -1,26 +1,26 @@
 <%# File: views/partials/payment-collection.ejs
     Purpose: The Payment Collection report — its summary, its search and filters,
-    and every transaction they return.
+    and every transaction they return — as the Payment collection tab of
+    Analytics & Reports (staff only).
 
-    It has two homes: the Payment Collection page (/income-report) and the
-    Payment collection tab of Analytics & Reports. Both are built from the same
-    rows (routes/adminFactory.js, paymentCollection), so they can never disagree.
-    What differs is only where the form goes: the page's fields are search, from,
-    to…; the tab's carry its prefix (pay_search, pay_from…) and keep the other
-    tabs' filters, and come back to #payments.
+    It used to be a page of its own as well (/income-report, in the sidebar);
+    the same report in two places was redundant, so the tab is its only home
+    and the old address opens it (routes/adminFactory.js).
+
+    Its fields carry the tab's prefix (pay_search, pay_from…), keep the other
+    tabs' filters as hidden fields, and come back to #payments; Clear clears
+    this tab's only. A branch, method or purpose picked applies at once.
 
     Every row is one payment_entries record, so the report and a student's ledger
     are the same rows. The table shows ten rows and scrolls (public/js/mq-tables.js).
 
-    Locals: rows, summary, values ({ search, from, to, branchId, method, purpose }),
-            paymentMethods, paymentPurposes,
-            action (where the form goes), names (each field's name in the address),
-            keep ([name, value] pairs the form carries along), clearHref,
-            analyticsTab (the tab it sits in — its picks then apply at once —
-            or null on the page), showPrint, headingTag ('h2' on the page, 'h3'
-            in a tab); branches and currentUser (from the shell) %>
+    Locals: rows, summary, form (analytics.forms.payments), action (the
+            Analytics address), paymentMethods, paymentPurposes; branches and
+            currentUser (from the shell) %>
 <%
-  const auto = analyticsTab ? 'data-autosubmit' : '';
+  const values = form.values || {};
+  const nameOf = (field) => `${form.prefix}_${field}`;
+  const kept = new URLSearchParams(form.others || []).toString();
   const branchList = typeof branches === 'undefined' ? [] : (branches || []);
 %>
 <div class="mq-summary">
@@ -41,27 +41,27 @@
   </div>
 </div>
 
-<form class="mq-toolbar" method="get" action="<%= action %>" <%- analyticsTab ? 'data-analytics-filters' : '' %>>
-  <% (keep || []).forEach((pair) => { %>
+<form class="mq-toolbar" method="get" action="<%= action %>#<%= form.panel %>" data-analytics-filters>
+  <% (form.others || []).forEach((pair) => { %>
     <input type="hidden" name="<%= pair[0] %>" value="<%= pair[1] %>" />
   <% }) %>
   <div class="mq-filters">
     <label class="mq-field mq-field-search">
       <span>Search</span>
-      <input type="search" name="<%= names.search %>" value="<%= values.search || '' %>" placeholder="Student, ID or reference" />
+      <input type="search" name="<%= nameOf('search') %>" value="<%= values.search || '' %>" placeholder="Student, ID or reference" />
     </label>
     <label class="mq-field">
       <span>From</span>
-      <input type="date" name="<%= names.from %>" value="<%= values.from || '' %>" />
+      <input type="date" name="<%= nameOf('from') %>" value="<%= values.from || '' %>" />
     </label>
     <label class="mq-field">
       <span>To</span>
-      <input type="date" name="<%= names.to %>" value="<%= values.to || '' %>" />
+      <input type="date" name="<%= nameOf('to') %>" value="<%= values.to || '' %>" />
     </label>
     <% if (currentUser.role === 'admin' && branchList.length) { %>
       <label class="mq-field">
         <span>Branch</span>
-        <select name="<%= names.branch %>" <%= auto %>>
+        <select name="<%= nameOf('branch') %>" data-autosubmit>
           <option value="all">All branches</option>
           <% branchList.forEach((branch) => { %>
             <option value="<%= branch.id %>" <%= String(values.branchId) === String(branch.id) ? 'selected' : '' %>><%= branch.name %></option>
@@ -71,7 +71,7 @@
     <% } %>
     <label class="mq-field">
       <span>Method</span>
-      <select name="<%= names.method %>" <%= auto %>>
+      <select name="<%= nameOf('method') %>" data-autosubmit>
         <option value="all">All methods</option>
         <% (paymentMethods || []).forEach((method) => { %>
           <option value="<%= method.value %>" <%= values.method === method.value ? 'selected' : '' %>><%= method.value %></option>
@@ -80,7 +80,7 @@
     </label>
     <label class="mq-field">
       <span>Purpose</span>
-      <select name="<%= names.purpose %>" <%= auto %>>
+      <select name="<%= nameOf('purpose') %>" data-autosubmit>
         <option value="all">All purposes</option>
         <% (paymentPurposes || []).forEach((purpose) => { %>
           <option value="<%= purpose %>" <%= values.purpose === purpose ? 'selected' : '' %>><%= purpose %></option>
@@ -88,20 +88,14 @@
       </select>
     </label>
     <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
-    <a class="mq-btn" href="<%= clearHref %>">Clear</a>
+    <a class="mq-btn" href="<%= action %><%= kept ? `?${kept}` : '' %>#<%= form.panel %>">Clear</a>
   </div>
-
-  <% if (showPrint) { %>
-    <div class="mq-toolbar-actions">
-      <button type="button" class="mq-btn" onclick="window.print()"><%- icon('print') %> Print</button>
-    </div>
-  <% } %>
 </form>
 
 <section class="mq-panel">
   <div class="mq-panel-head">
     <div>
-      <% if (headingTag === 'h3') { %><h3>Transactions</h3><% } else { %><h2>Transactions</h2><% } %>
+      <h3>Transactions</h3>
     </div>
     <span class="mq-count"><%= summary.transactionCount %> record<%= summary.transactionCount === 1 ? '' : 's' %></span>
   </div>

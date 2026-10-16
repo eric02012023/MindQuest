@@ -2,7 +2,8 @@
     Purpose: User Management, as a row list.
 
     One line per user, key facts only, icon actions on the right. The search /
-    branch / role / status filters above the table narrow the list; the table
+    branch / role / status / From-To filters above the table narrow the list
+    (From and To: the day an account joined, its Joined column); the table
     shows ten rows and scrolls (public/js/mq-tables.js).
 
     The heavy detail (full profile, subjects, guardian, documents) is one click
@@ -12,15 +13,19 @@
   const rosterOf = (assistant) => (typeof rosterCounts !== 'undefined' && rosterCounts && rosterCounts.get(Number(assistant.id)))
     || { currentTutors: 0, currentStudents: 0, ever: 0 };
   // Folders: everyone, or only the students still waiting for a tutor. A
-  // folder link keeps the branch, search and status.
+  // folder link keeps the branch, search, status and dates.
   const activeFolder = typeof folder === 'undefined' ? 'all' : folder;
   const waitingCount = typeof needsTutorCount === 'undefined' ? 0 : needsTutorCount;
   const inNeedsTutor = activeFolder === 'needs-tutor';
+  const joinedFrom = typeof selectedFrom === 'undefined' ? '' : selectedFrom;
+  const joinedTo = typeof selectedTo === 'undefined' ? '' : selectedTo;
   const folderHref = (value) => {
     const params = new URLSearchParams();
     ['search', 'branch_id', 'status'].forEach((key) => {
       if (currentQuery[key] && currentQuery[key] !== 'all') params.set(key, currentQuery[key]);
     });
+    if (joinedFrom) params.set('from', joinedFrom);
+    if (joinedTo) params.set('to', joinedTo);
     if (value !== 'all') params.set('folder', value);
     const text = params.toString();
     return `${basePath}/users${text ? `?${text}` : ''}`;
@@ -87,6 +92,10 @@
         </select>
       </label>
 
+      <%# The day an account joined (the Joined column), both days included. %>
+      <label class="mq-field"><span>From</span><input type="date" name="from" value="<%= joinedFrom %>" /></label>
+      <label class="mq-field"><span>To</span><input type="date" name="to" value="<%= joinedTo %>" /></label>
+
       <button class="mq-btn" type="submit"><%- icon('search') %> Search</button>
     </div>
 
@@ -119,7 +128,7 @@
 
       <% if (!users.length) { %>
         <div class="mq-empty">
-          <% if (inNeedsTutor && !search) { %>
+          <% if (inNeedsTutor && !search && !joinedFrom && !joinedTo) { %>
             <strong>Every enrolled subject has a tutor</strong>
             A student appears here while any of their subjects has no tutor.
           <% } else { %>

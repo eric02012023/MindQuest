@@ -1,7 +1,14 @@
-<%# Student Module View — Premium UI with progress ring and accordion sections %>
+<%# Student Module View — Premium UI with progress ring and accordion sections.
+    A finished subject (its Post-Assessment taken, or closed) is view-only: the
+    handouts open, the activities are listed but no longer offered (viewOnly). %>
 <link rel="stylesheet" href="/css/student/module-view.css" />
+<% const finishedNote = typeof viewOnly === 'undefined' ? '' : viewOnly; %>
 
 <section class="page-stack module-view-page">
+
+  <% if (finishedNote) { %>
+    <p class="pa-deadline" role="note"><strong>View only.</strong> <%= finishedNote %></p>
+  <% } %>
 
   <%# Module Hero Card %>
   <section class="module-hero-card">
@@ -133,6 +140,8 @@
               <div class="assessment-item-right">
                 <% if (isDone) { %>
                   <a class="btn btn-secondary btn-sm" href="/student/assessment-result/<%= sub.id %>">View Result</a>
+                <% } else if (finishedNote) { %>
+                  <span class="badge badge-info">Not taken</span>
                 <% } else { %>
                   <a class="btn btn-primary btn-sm" href="/student/tutor-assessments/<%= a.id %>">Start Activity</a>
                 <% } %>
@@ -183,6 +192,8 @@
               <div class="assessment-item-right">
                 <% if (isDone) { %>
                   <a class="btn btn-secondary btn-sm" href="/student/assessment-result/<%= sub.id %>">View Result</a>
+                <% } else if (finishedNote) { %>
+                  <span class="badge badge-info">Not taken</span>
                 <% } else { %>
                   <a class="btn btn-primary btn-sm" href="/student/tutor-assessments/<%= a.id %>">Take Post-Test</a>
                 <% } %>

@@ -38,8 +38,10 @@
     weak in it ("3 of 5"); clicking that lists who they are — their own score on
     the topic, and a link to their analytics (#weak-topic-modal).
 
-    PAYMENT COLLECTION is the Payment Collection report itself — the same
-    summary, filters and transactions (views/partials/payment-collection.ejs).
+    PAYMENT COLLECTION is the Payment Collection report — its summary, filters
+    and transactions (views/partials/payment-collection.ejs). It is the report's
+    only home: the sidebar's Payment Collection page was the same report again,
+    and its old address (/income-report) opens this tab.
 
     No explanatory sentences under the headings: the user asked for the page to
     show the reports, not describe them.
@@ -137,7 +139,8 @@
     'Improved': 'mq-status-paid',
     'No change': 'mq-status-partial',
     'Declined': 'mq-status-unpaid',
-    'Awaiting Post-Assessment': 'mq-status-pending'
+    'Awaiting Post-Assessment': 'mq-status-pending',
+    'Post-Assessment closed': 'mq-status-rejected'
   }[status] || 'mq-status-none');
   // A CSV carries its own tab's filters, so the file says what the tab says.
   const progressCsvHref = `${basePath}/analytics/progress.csv${queryOf((forms.progress || {}).own)}`;
@@ -478,6 +481,7 @@
               <div class="mq-summary-item is-positive"><span>Improved</span><strong><%= progressSummary.improved %></strong></div>
               <div class="mq-summary-item is-negative"><span>Declined</span><strong><%= progressSummary.declined %></strong></div>
               <div class="mq-summary-item"><span>Awaiting Post</span><strong><%= progressSummary.awaiting %></strong></div>
+              <div class="mq-summary-item"><span>Post closed</span><strong><%= progressSummary.closed || 0 %></strong></div>
               <div class="mq-summary-item"><span>Not yet assessed</span><strong><%= progressSummary.notAssessed %></strong></div>
             </div>
           <% } %>
@@ -840,22 +844,14 @@
           filters (pay_search, pay_from… — this tab's own) and every transaction
           they return. %>
       <% if (paymentReport) { %>
-        <% const payForm = forms.payments; %>
-        <% const payName = (field) => `${payForm.prefix}_${field}`; %>
         <section class="mq-vtab-panel" role="tabpanel" id="vpanel-payments" data-vtab-panel="payments" aria-labelledby="vtab-payments" hidden>
           <%- include('../partials/payment-collection', {
             rows: paymentReport.rows,
             summary: paymentReport.summary,
-            values: payForm.values,
+            form: forms.payments,
+            action: analyticsPath,
             paymentMethods: typeof paymentMethods === 'undefined' ? [] : paymentMethods,
-            paymentPurposes: typeof paymentPurposes === 'undefined' ? [] : paymentPurposes,
-            action: `${analyticsPath}#${payForm.panel}`,
-            names: { search: payName('search'), from: payName('from'), to: payName('to'), branch: payName('branch'), method: payName('method'), purpose: payName('purpose') },
-            keep: payForm.others,
-            clearHref: `${analyticsPath}${queryOf(payForm.others)}#${payForm.panel}`,
-            analyticsTab: payForm.panel,
-            showPrint: false,
-            headingTag: 'h3'
+            paymentPurposes: typeof paymentPurposes === 'undefined' ? [] : paymentPurposes
           }) %>
         </section>
       <% } %>

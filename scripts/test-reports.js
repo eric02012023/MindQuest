@@ -140,6 +140,25 @@ const user = (over) => ({
   ok('a status is Approved, Pending, Rejected or Archived', everyAccount.every((row) => ['Approved', 'Pending', 'Rejected', 'Archived'].includes(row.status)));
   ok('an assistant admin has no subjects; a learner and a tutor do', account('AST-2').subjects.length === 0 && account('STD-4').subjects.length === 2 && account('TTR-3').subjects.length === 2);
 
+  console.log('\n== the registry\'s From / To: the day an account joined ==');
+  const everyoneBeforeDates = script.users;
+  script.users = [
+    // 8 PM UTC on 30 September is 4 AM on 1 October in Manila: it joined in October.
+    user({ id: 21, user_id: 'STD-21', created_at: new Date('2026-09-30T20:00:00Z') }),
+    // Signed up in August, accepted in October: it joined when it was accepted (the Joined column).
+    user({ id: 22, user_id: 'STD-22', created_at: new Date('2026-08-01T00:00:00Z'), accepted_at: new Date('2026-10-05T02:00:00Z') }),
+    // 5 PM UTC on 31 October is 1 AM on 1 November in Manila: not October.
+    user({ id: 23, user_id: 'STD-23', created_at: new Date('2026-10-31T17:00:00Z') })
+  ];
+  const october = await getUserRegistry(staff(), { from: '2026-10-01', to: '2026-10-31' });
+  ok('From and To keep the accounts that joined in those days, as the page shows the day', october.rows.map((row) => row.user_id).join() === 'STD-21,STD-22', october.rows.map((row) => row.user_id).join());
+  ok('…an account joined the day it was accepted', october.rows.some((row) => row.user_id === 'STD-22'));
+  ok('…both ends included', (await getUserRegistry(staff(), { from: '2026-10-05', to: '2026-10-05' })).rows.map((row) => row.user_id).join() === 'STD-22');
+  ok('…and the headline counts follow them, as they follow the search', october.everyone.length === 2);
+  ok('only From, or only To, works too', (await getUserRegistry(staff(), { from: '2026-10-02' })).rows.map((row) => row.user_id).join() === 'STD-22,STD-23'
+    && (await getUserRegistry(staff(), { to: '2026-10-01' })).rows.map((row) => row.user_id).join() === 'STD-21');
+  script.users = everyoneBeforeDates;
+
   console.log('\n== a tutor\'s subjects are the ones they still teach ==');
   const everyoneBefore = script.users;
   script.users = [user({ id: 7, user_id: 'TTR-7', role: 'tutor', first_name: 'carla', last_name: 'diaz', subjects_json: '["ENGLISH","MATH"]', extra_json: '{"archived_subjects":["math"]}', grade_level: '' })];
@@ -202,6 +221,16 @@ const user = (over) => ({
   const declined = await getProgressComparison(staff(), { status: 'Declined' });
   ok('the tab\'s status narrows it to that status', declined.length === 1 && declined[0].student_id === 13, declined.map((x) => x.student_code).join());
   ok('…and "all" is every line', (await getProgressComparison(staff(), { status: 'all' })).length === 5);
+  script.progress = [
+    row({ student_id: 21, student_code: 'STD-21', post_percentage: null, post_level: null, end_date: '2020-02-01' }),
+    row({ student_id: 22, student_code: 'STD-22', post_percentage: null, post_level: null, end_date: '2099-02-01' })
+  ];
+  const windows = await getProgressComparison(staff(), {});
+  ok('no Post-Assessment, and its five days over: "Post-Assessment closed"', windows.find((x) => x.student_id === 21).status === PROGRESS_STATUS.closed);
+  ok('…still to come: "Awaiting Post-Assessment"', windows.find((x) => x.student_id === 22).status === PROGRESS_STATUS.awaiting);
+  ok('…counted apart in the summary', buildProgressSummary(windows).closed === 1 && buildProgressSummary(windows).awaiting === 1);
+  ok('…and the tab\'s status can pick them', (await getProgressComparison(staff(), { status: 'Post-Assessment closed' })).map((x) => x.student_id).join() === '21');
+  ok('…a status the filter offers', af.PROGRESS_STATUSES.includes('Post-Assessment closed'));
   script.progress = [];
   ok('nobody enrolled is an empty report, not an error', (await getProgressComparison(staff(), {})).length === 0);
 
@@ -250,6 +279,10 @@ const user = (over) => ({
   const forms = af.tabForms(adminF, 'admin');
   ok('each bar knows its tab on the page and its own fields', forms.weak.panel === 'weak-topics' && forms.weak.fields.join() === 'search,subject,branch'
     && forms.enrolment.fields.join() === 'branch' && forms.payments.fields.join() === 'search,from,to,branch,method,purpose');
+  ok('the User registry has its search, role, status, From and To — and the main admin\'s branch', forms.registry.fields.join() === 'search,role,status,from,to,branch'
+    && af.tabForms(adminF, 'admin_assistant').registry.fields.join() === 'search,role,status,from,to');
+  const joinedF = af.readAnalyticsFilters({ reg_from: '2026-10-01', reg_to: '2026-02-30' }, { role: 'admin_assistant' });
+  ok('…its dates are read as real days only', joinedF.registry.from === '2026-10-01' && joinedF.registry.to === '');
   ok('…a tab with nothing to filter for this viewer has no fields', af.tabForms(adminF, 'admin_assistant').enrolment.fields.length === 0
     && af.tabForms(adminF, 'student').trend.fields.length === 0 && af.tabForms(adminF, 'student').attempts.fields.join() === 'subject,kind,from,to');
   ok('…and carries the others, never its own', forms.attempts.others.every(([name]) => !name.startsWith('att_')) && forms.attempts.own.length === 2);
@@ -333,26 +366,22 @@ const user = (over) => ({
     icon: viewIcon, form: af.tabForms(af.readAnalyticsFilters({}, { role: 'tutor' }), 'tutor').enrolment, action: '/tutor/analytics', subjects: [], placeholder: ''
   });
   ok('a tab with no field for this viewer has no bar at all', noBar.trim() === '');
-  const report = (extra) => require('ejs').renderFile(require('path').join(viewsDir, 'payment-collection.ejs'), {
-    icon: viewIcon, money: viewUtils.money, formatDateTime: viewUtils.formatDateTime, titleCaseName: viewUtils.titleCaseName, basePath: '/admin',
-    currentUser: { role: 'admin' }, branches: [{ id: 1, name: 'MAIN' }],
+  const report = (role, query) => require('ejs').renderFile(require('path').join(viewsDir, 'payment-collection.ejs'), {
+    icon: viewIcon, money: viewUtils.money, formatDateTime: viewUtils.formatDateTime, titleCaseName: viewUtils.titleCaseName,
+    basePath: role === 'admin' ? '/admin' : '/assistant', currentUser: { role }, branches: [{ id: 1, name: 'MAIN' }],
     rows: [{ id: 1, amount: 500, paid_at: new Date('2026-10-14T09:00:00Z'), payment_method: 'Cash', purpose: 'Tuition', student_id: 4, user_id: 'STD-4', first_name: 'maria', last_name: 'santos', branch_name: 'MAIN' }],
     summary: { totalIncome: 500, transactionCount: 1, monthIncome: 500, payingStudents: 1, outstanding: 1000 },
-    paymentMethods: [{ value: 'Cash' }, { value: 'GCash' }], paymentPurposes: ['Tuition'], ...extra
+    form: af.tabForms(af.readAnalyticsFilters(query, { role, methods: ['Cash', 'GCash'], purposes: ['Tuition'] }), role).payments,
+    action: role === 'admin' ? '/admin/analytics' : '/assistant/analytics',
+    paymentMethods: [{ value: 'Cash' }, { value: 'GCash' }], paymentPurposes: ['Tuition']
   });
-  const inTab = await report({
-    values: { search: '', from: '', to: '', branchId: '1', method: 'GCash', purpose: 'all' }, action: '/admin/analytics#payments',
-    names: { search: 'pay_search', from: 'pay_from', to: 'pay_to', branch: 'pay_branch', method: 'pay_method', purpose: 'pay_purpose' },
-    keep: [['reg_role', 'Tutor']], clearHref: '/admin/analytics?reg_role=Tutor#payments', analyticsTab: 'payments', showPrint: false, headingTag: 'h3'
-  });
-  ok('in Analytics the report\'s fields carry the tab\'s prefix, and keep the other tabs\'', /name="pay_method" data-autosubmit/.test(inTab) && /<option value="GCash" selected>/.test(inTab) && /type="hidden" name="reg_role" value="Tutor"/.test(inTab));
-  ok('…with no Print, and its figures and transactions', !/Print/.test(inTab) && /Total collected/.test(inTab) && /<h3>Transactions<\/h3>/.test(inTab) && /Maria/.test(inTab));
-  const onPage = await report({
-    values: { search: 'ma', from: '', to: '', branchId: 'all', method: 'all', purpose: 'all' }, action: '/admin/income-report',
-    names: { search: 'search', from: 'from', to: 'to', branch: 'branch_id', method: 'method', purpose: 'purpose' },
-    keep: [], clearHref: '/admin/income-report', analyticsTab: null, showPrint: true, headingTag: 'h2'
-  });
-  ok('on its own page it keeps its plain names, its Print and no auto-apply', /name="branch_id"/.test(onPage) && /Print/.test(onPage) && !/data-autosubmit/.test(onPage) && /<h2>Transactions<\/h2>/.test(onPage));
+  const inTab = await report('admin', { pay_method: 'GCash', pay_branch: '1', reg_role: 'Tutor' });
+  ok('the report\'s fields carry the tab\'s prefix and keep the other tabs\'', /name="pay_method" data-autosubmit/.test(inTab) && /<option value="GCash" selected>/.test(inTab)
+    && /name="pay_branch" data-autosubmit/.test(inTab) && /type="hidden" name="reg_role" value="Tutor"/.test(inTab) && !/type="hidden" name="pay_/.test(inTab));
+  ok('…come back to the tab, and Clear clears its own only', /action="\/admin\/analytics#payments"/.test(inTab) && /href="\/admin\/analytics\?reg_role=Tutor#payments">Clear/.test(inTab));
+  ok('…with its five figures and its transactions, and no Print', /Total collected/.test(inTab) && /<h3>Transactions<\/h3>/.test(inTab) && /Maria/.test(inTab) && !/Print/.test(inTab));
+  const assistantTab = await report('admin_assistant', { pay_branch: '1' });
+  ok('an assistant\'s has no branch to pick', !/pay_branch/.test(assistantTab) && /name="pay_method"/.test(assistantTab));
 
   console.log('\n== CSV files are safe to open in a spreadsheet ==');
   ok('a plain cell is left alone', csvCell('Maria') === 'Maria');

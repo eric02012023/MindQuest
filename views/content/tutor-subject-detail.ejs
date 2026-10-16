@@ -148,8 +148,9 @@
 
       There is nothing to create or open: each student's Post-Assessment opens
       by itself at 12:01 AM on the last day of THEIR enrollment in the subject,
-      and it is a copy of the exact Pre-Assessment that student took — same
-      questions, same answers — so the before-and-after compares like with like.
+      stays open for five days and then closes, and it is a copy of the exact
+      Pre-Assessment that student took — same questions, same answers — so the
+      before-and-after compares like with like.
       ------------------------------------------------------------------------ %>
   <section class="panel-card">
     <div class="panel-card-head">
@@ -194,7 +195,9 @@
                     <a href="/tutor/results/<%= cmp.post_submission_id %>"><%= Number(cmp.post_percentage).toFixed(1) %>%</a>
                     <span class="res-level res-level-<%= String(cmp.post_level || '').toLowerCase() %>"><%= cmp.post_level %></span>
                   <% } else if (r.postStatus === 'open') { %>
-                    <span class="module-card-meta">open now</span>
+                    <span class="module-card-meta">open until <%= formatDateTime(r.postOpenUntil) %></span>
+                  <% } else if (r.postStatus === 'closed') { %>
+                    <span class="module-card-meta">closed <%= formatDate(r.postOpenUntil) %> — not taken</span>
                   <% } else if (r.postStatus === 'needs_pre') { %>
                     <span class="module-card-meta">needs the Pre-Assessment first</span>
                   <% } else if (r.postOpensAt) { %>

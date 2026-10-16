@@ -353,7 +353,9 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       completion,
       comparison,
       tutor,
-      attendanceLogs
+      attendanceLogs,
+      // Finished (its Post-Assessment taken, or closed): view-only from now on.
+      viewOnly: viewOnlyMessage(assignment)
     });
     res.render('shells/dashboard', shell);
   } catch (error) {
@@ -1025,6 +1027,21 @@ async function requireEnrolment(req, subjectId) {
   return assignments.find((a) => Number(a.subject_id) === Number(subjectId)) || null;
 }
 
+/**
+ * A finished subject — its Post-Assessment taken, or its five days over without
+ * it — is the student's to VIEW only (lib/data.js, subjectFinishedState): they
+ * can open it, its modules and their results, but not take its Pre-Assessment or
+ * its module activities. Returns the sentence that says so, or '' while it is
+ * still theirs to work in.
+ */
+function viewOnlyMessage(assignment) {
+  if (!assignment || !assignment.view_only) return '';
+  const why = assignment.view_only_reason === 'taken'
+    ? `You have finished ${assignment.subject_name} — your Post-Assessment is done`
+    : `Your Post-Assessment for ${assignment.subject_name} closed${assignment.post_open_until ? ` on ${formatDateTime(assignment.post_open_until)}` : ''} without being taken`;
+  return `${why}, so the subject is view-only now: you can still open its modules and your results, but not take its assessments.`;
+}
+
 /** A random key identifying one sitting, for grouping its anti-cheat strikes. */
 function newSittingKey() {
   return `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -1061,6 +1078,11 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
     if (!assignment) {
       setFlash(req, 'error', 'Subject not found in your account.');
       return res.redirect('/student/subjects');
+    }
+    // A finished subject is view-only.
+    if (assignment.view_only) {
+      setFlash(req, 'error', viewOnlyMessage(assignment));
+      return res.redirect(`/student/subjects/${subjectId}`);
     }
 
     // The down-payment gate. Checked here and again on POST, because hiding the
@@ -1135,6 +1157,10 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
     if (!assignment) {
       setFlash(req, 'error', 'Subject not found in your account.');
       return res.redirect('/student/subjects');
+    }
+    if (assignment.view_only) {
+      setFlash(req, 'error', viewOnlyMessage(assignment));
+      return res.redirect(`/student/subjects/${subjectId}`);
     }
 
     // The same gate as the GET. A submission that arrives without a down payment
@@ -1219,9 +1245,12 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
 //
 // It opens on its own at 12:01 AM on the LAST DAY of the student's enrolment in
 // the subject (enrolled 1 January -> open from 12:01 AM on 1 February), and not
-// a minute before. It is the same questions as the Pre-Assessment this student
-// sat, so that must have been taken. Enforced here, server-side: the button on
-// the subject page is only a reflection of it.
+// a minute before. It stays open for five days (to 11:59 PM on 5 February) and
+// then closes: not taken by then, it can no longer be taken — nor can a sitting
+// that was opened before the close be submitted after it. It is the same
+// questions as the Pre-Assessment this student sat, so that must have been
+// taken. Enforced here, server-side: the button on the subject page is only a
+// reflection of it.
 // ---------------------------------------------------------------------------
 
 /** Shared guard: returns { assignment, assessment } or null after flashing. */
@@ -1237,6 +1266,11 @@ async function requirePostAssessment(req, subjectId) {
     setFlash(req, 'info', 'You have already completed the Post-Assessment for this subject.');
     return { redirectTo: `/student/results/${state.postSubmission.id}` };
   }
+  if (state.status === 'closed') {
+    setFlash(req, 'error', `The Post-Assessment for ${assignment.subject_name} closed on ${formatDateTime(state.openUntil)}. `
+      + 'It was open for five days from the last day of your enrollment, and it can no longer be taken.');
+    return null;
+  }
   if (state.status === 'needs_pre') {
     setFlash(req, 'error', 'The Post-Assessment repeats your Pre-Assessment, so take the Pre-Assessment first.');
     return null;
@@ -1250,7 +1284,7 @@ async function requirePostAssessment(req, subjectId) {
 
   // The same questions as the Pre-Assessment this student sat.
   const assessment = await getOrCreatePostAssessmentFor(state.preSubmission.assessment_id);
-  return { assignment, assessment };
+  return { assignment, assessment, openUntil: state.openUntil };
 }
 
 router.get('/subjects/:subjectId/post-assessment', async (req, res, next) => {
@@ -1268,6 +1302,8 @@ router.get('/subjects/:subjectId/post-assessment', async (req, res, next) => {
       assignment: gate.assignment,
       subjectId,
       kind: 'post',
+      // The last minute it can be submitted, shown on the page.
+      postOpenUntil: gate.openUntil,
       startedAt: new Date().toISOString(),
       antiCheat: {
         endpoint: `/student/assessments/${gate.assessment.id}/violation`,
@@ -1397,8 +1433,11 @@ router.get('/modules/:moduleId', async (req, res, next) => {
     // Reaching this line means the student passed every gate and is looking at
     // the module's handouts, which is what "opened the module" means for the
     // Post-Assessment completion check (Phase 8). Recorded after the guards, never
-    // before, so a blocked attempt cannot count as progress.
-    await recordModuleOpen(studentId, mod.id, mod.subject_id);
+    // before, so a blocked attempt cannot count as progress — and not at all once
+    // the subject is finished: it is then theirs to look at, not to work in.
+    const assignment = assignments.find((a) => Number(a.subject_id) === Number(mod.subject_id));
+    const viewOnly = viewOnlyMessage(assignment);
+    if (!viewOnly) await recordModuleOpen(studentId, mod.id, mod.subject_id);
 
     const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
     const handouts = await getModuleHandouts(mod.id);
@@ -1442,7 +1481,9 @@ router.get('/modules/:moduleId', async (req, res, next) => {
       totalTasks,
       completedTasks,
       studentLevel,
-      handouts
+      handouts,
+      // A finished subject: its activities are shown, not offered.
+      viewOnly
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -1495,7 +1536,9 @@ async function requireModuleAssessment(req, assessmentId) {
     setFlash(req, 'error', 'Please complete the Pre-Assessment for this subject before its module assessments.');
     return { redirectTo: `/student/subjects/${assessment.subject_id}` };
   }
-  return { assessment, assignment, mod };
+  // A finished subject is view-only: the caller refuses a sitting with this
+  // (the page still sends a done one to its result first).
+  return { assessment, assignment, mod, viewOnly: viewOnlyMessage(assignment) };
 }
 
 // Student: Take a tutor assessment (activity or post)
@@ -1511,6 +1554,10 @@ router.get('/tutor-assessments/:id', async (req, res, next) => {
     if (alreadySubmitted) {
       setFlash(req, 'info', 'You have already completed this assessment.');
       return res.redirect(`/student/assessment-result/${alreadySubmitted.id}`);
+    }
+    if (gate.viewOnly) {
+      setFlash(req, 'error', gate.viewOnly);
+      return res.redirect(`/student/modules/${assessment.module_id}`);
     }
 
     const shell = await buildShell(req, {
@@ -1542,6 +1589,10 @@ router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
     // The same gate as the page: a typed or replayed POST is held to it too.
     const gate = await requireModuleAssessment(req, assessmentId);
     if (gate.redirectTo) return res.redirect(gate.redirectTo);
+    if (gate.viewOnly) {
+      setFlash(req, 'error', gate.viewOnly);
+      return res.redirect(`/student/subjects/${gate.assessment.subject_id}`);
+    }
 
     // Build answers from form
     const answers = [];

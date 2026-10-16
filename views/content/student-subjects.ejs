@@ -46,6 +46,10 @@
         <div class="subject-list-card">
           <div>
             <strong><%= assignment.subject_name %></strong>
+            <%# Finished — its Post-Assessment taken, or closed: view-only now. %>
+            <% if (assignment.view_only) { %>
+              <span class="badge badge-info"><%= assignment.view_only_reason === 'taken' ? 'Finished' : 'Post-Assessment closed' %> · view only</span>
+            <% } %>
             <span>
               <% if (assignment.tutor_internal_id) { %>
                 Tutor: <a href="/student/tutors/<%= assignment.tutor_internal_id %>"><%= assignment.tutor_name %></a><%= scheduleText(assignment.preferred_days, assignment.time_slot) ? ` · ${scheduleText(assignment.preferred_days, assignment.time_slot)}` : '' %>

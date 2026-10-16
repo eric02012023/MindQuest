@@ -678,3 +678,47 @@ Code only — no migration, no new environment variable.
 - A focus area's **Detailed results** opens the learner's own Analytics page
   (the tutor's: their page of the learner). It used to open Analytics & Reports
   searched for the learner's name — a search that page no longer has.
+
+### This release: the Post-Assessment closes after five days, and a finished subject is view-only
+
+Code only — no migration, no new environment variable.
+
+**The Post-Assessment closes** (students, and what tutors see)
+- It still opens by itself at 12:01 AM on the last day of the enrollment. It now
+  stays open for five days — the last day and the four after it — and closes at
+  12:00 AM on the sixth day (Manila time). Last day 15 October: open until
+  19 October, 11:59 PM; closed from 20 October.
+- Not taken by then, it can no longer be taken, and a Post-Assessment opened
+  before the close cannot be submitted after it.
+- The student's subject page says until when ("Take it by …"), the
+  Post-Assessment page says "Submit by …", and once it has closed the subject
+  page says so with a **Closed** badge. The tutor's subject page shows
+  "open until …" or "closed … — not taken" for each learner.
+- Student progress (Analytics & Reports) says **Post-Assessment closed** for a
+  learner whose five days passed without it — no longer "Awaiting
+  Post-Assessment" — counts them apart, and its Status filter can pick them.
+
+**A finished subject is view-only** (students)
+- A subject is finished once its Post-Assessment is taken, or once its five
+  days are over without it. From then the student still logs in and still opens
+  the subject, its modules, their results, Analytics, Billing and their profile —
+  but the subject's Pre-Assessment and module activities can no longer be taken,
+  no tutor can be chosen for it, and opening its modules no longer counts as
+  progress. The subject page and My Subjects say "view only" and why.
+- Until then — the last day and the Post-Assessment's five days included — the
+  subject works as before.
+- Enrolled again for a new month (Student Bill → Re-enroll), the subject is
+  theirs to work in again: a Post-Assessment from an earlier month does not
+  finish the new one.
+
+**Payment Collection is in Analytics & Reports only** (admin and assistant)
+- The sidebar's **Payment Collection** entry is gone: the same report is the
+  Payment collection tab of Analytics & Reports. Its old address
+  (`/income-report`, with its filters) opens that tab, and Student Bill's
+  "Payment Collection" button goes there too.
+
+**From / To** (admin and assistant)
+- User Management's filter bar has From and To: the day an account joined (its
+  Joined column), both days included. The folder links keep them.
+- The User registry tab has them too (its Joined date: when the account was
+  accepted, else when it signed up), and its Download CSV follows them.
