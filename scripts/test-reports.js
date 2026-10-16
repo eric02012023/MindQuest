@@ -226,11 +226,20 @@ const user = (over) => ({
     row({ student_id: 22, student_code: 'STD-22', post_percentage: null, post_level: null, end_date: '2099-02-01' })
   ];
   const windows = await getProgressComparison(staff(), {});
-  ok('no Post-Assessment, and its five days over: "Post-Assessment closed"', windows.find((x) => x.student_id === 21).status === PROGRESS_STATUS.closed);
-  ok('…still to come: "Awaiting Post-Assessment"', windows.find((x) => x.student_id === 22).status === PROGRESS_STATUS.awaiting);
-  ok('…counted apart in the summary', buildProgressSummary(windows).closed === 1 && buildProgressSummary(windows).awaiting === 1);
-  ok('…and the tab\'s status can pick them', (await getProgressComparison(staff(), { status: 'Post-Assessment closed' })).map((x) => x.student_id).join() === '21');
-  ok('…a status the filter offers', af.PROGRESS_STATUSES.includes('Post-Assessment closed'));
+  ok('no Post-Assessment yet, long after the month too: "Awaiting Post-Assessment" — it does not close',
+    windows.every((x) => x.status === PROGRESS_STATUS.awaiting), windows.map((x) => x.status).join());
+  ok('…one count in the summary', buildProgressSummary(windows).awaiting === 2 && !('closed' in buildProgressSummary(windows)));
+  ok('…and no "closed" status to filter by', !af.PROGRESS_STATUSES.includes('Post-Assessment closed') && !('closed' in PROGRESS_STATUS));
+  const modulesBefore = script.modules;
+  script.modules = [
+    { id: 100, subject_id: 2, grade_level: 'Grade 4', created_at: new Date('2020-01-15T09:00:00Z') },
+    { id: 101, subject_id: 2, grade_level: 'Grade 4', created_at: new Date('2020-02-02T00:00:00Z') }
+  ];
+  const months = await getProgressComparison(staff(), {});
+  ok('once a learner\'s month is over, a module added after it is not theirs to count',
+    months.find((x) => x.student_id === 21).modules_total === 1 && months.find((x) => x.student_id === 22).modules_total === 2,
+    months.map((x) => `${x.student_code}:${x.modules_total}`).join());
+  script.modules = modulesBefore;
   script.progress = [];
   ok('nobody enrolled is an empty report, not an error', (await getProgressComparison(staff(), {})).length === 0);
 

@@ -139,8 +139,7 @@
     'Improved': 'mq-status-paid',
     'No change': 'mq-status-partial',
     'Declined': 'mq-status-unpaid',
-    'Awaiting Post-Assessment': 'mq-status-pending',
-    'Post-Assessment closed': 'mq-status-rejected'
+    'Awaiting Post-Assessment': 'mq-status-pending'
   }[status] || 'mq-status-none');
   // A CSV carries its own tab's filters, so the file says what the tab says.
   const progressCsvHref = `${basePath}/analytics/progress.csv${queryOf((forms.progress || {}).own)}`;
@@ -481,7 +480,6 @@
               <div class="mq-summary-item is-positive"><span>Improved</span><strong><%= progressSummary.improved %></strong></div>
               <div class="mq-summary-item is-negative"><span>Declined</span><strong><%= progressSummary.declined %></strong></div>
               <div class="mq-summary-item"><span>Awaiting Post</span><strong><%= progressSummary.awaiting %></strong></div>
-              <div class="mq-summary-item"><span>Post closed</span><strong><%= progressSummary.closed || 0 %></strong></div>
               <div class="mq-summary-item"><span>Not yet assessed</span><strong><%= progressSummary.notAssessed %></strong></div>
             </div>
           <% } %>

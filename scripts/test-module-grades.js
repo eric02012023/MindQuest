@@ -1,7 +1,8 @@
 /**
  * File: scripts/test-module-grades.js
- * Purpose: Pin down "one grade per module" and "the Post-Assessment opens on the
- *          last day of the enrolment".
+ * Purpose: Pin down "one grade per module", "the Post-Assessment opens on the
+ *          last day of the enrolment", and what is left to a student once their
+ *          month is over (only what it held; view-only when nothing is left).
  *
  * Run:  node scripts/test-module-grades.js       (needs no database, no keys)
  *
@@ -33,7 +34,12 @@ const db = {
   lastParams: [],
   preRows: [],          // hasCompletedPreAssessment answers
   postRows: [],         // getStudentPostSubmission answers
-  enrolment: null,      // getPostAssessmentWindow answers
+  enrolment: null,      // getSubjectEnrolment answers
+  assignments: [],      // getStudentAssignments: the student's enrolments
+  sat: [],              // ...the Pre/Post-Assessments they sat, per subject
+  monthModules: [],     // ...the modules of the subjects whose month is over
+  monthActivities: [],  // ...and the activities in them
+  reads: 0,
   user: { id: 5, role: 'student', grade_level: 'Grade 6', year_level: 'Primary Level' }
 };
 
@@ -41,6 +47,11 @@ function answer(text, params) {
   const sql = String(text).replace(/\s+/g, ' ').trim();
   db.lastSql = sql;
   db.lastParams = params;
+  db.reads++;
+  if (sql.includes('FROM user_subject_assignments usa INNER JOIN subjects s')) return db.assignments;
+  if (sql.startsWith('SELECT DISTINCT ta.subject_id, ta.assessment_kind, ta.grade_level')) return db.sat;
+  if (sql.startsWith('SELECT m.id, m.subject_id, m.grade_level, m.target_year_levels_json, m.created_at')) return db.monthModules;
+  if (sql.startsWith('SELECT ta.id, ta.module_id, ta.created_at,')) return db.monthActivities;
   if (/FROM modules WHERE subject_id = \? AND is_archived = 0/.test(sql)) {
     const exclude = /AND id <> \?/.test(sql) ? Number(params[1]) : null;
     return db.modules.filter((m) => m.subject_id === Number(params[0]) && !m.is_archived && m.id !== exclude);
@@ -72,6 +83,7 @@ require.cache[dbPath] = {
 
 const grades = require('../lib/moduleGrades');
 const data = require('../lib/data');
+const postWindow = require('../lib/postWindow');
 
 async function main() {
   console.log('\n== a grade is read the same way everywhere ==');
@@ -142,37 +154,78 @@ async function main() {
   ok('with no end date, it is one month from the start',
     data.postWindowFor({ start_date: '2026-01-01' }).endDate === '2026-02-01', data.postWindowFor({ start_date: '2026-01-01' }).endDate);
 
-  console.log('\n== …and closes five days later ==');
-  const febWindow = data.postWindowFor(enrolledJan1);
-  ok('it is open for five days: the last day and the four after it', data.POST_ASSESSMENT_OPEN_DAYS === 5);
-  ok('the last minute is 11:59 PM Manila on 5 February', febWindow.openUntil && febWindow.openUntil.toISOString() === '2026-02-05T15:59:00.000Z',
-    febWindow.openUntil && febWindow.openUntil.toISOString());
-  ok('it closes at 12:00 AM on 6 February', febWindow.closesAt && febWindow.closesAt.toISOString() === '2026-02-05T16:00:00.000Z',
-    febWindow.closesAt && febWindow.closesAt.toISOString());
+  console.log('\n== …and does not close ==');
   const at = (iso) => data.postWindowFor(enrolledJan1, new Date(iso));
-  ok('still open at 11:59 PM on the fifth day', at('2026-02-05T15:59:59Z').isOpen === true && at('2026-02-05T15:59:59Z').isClosed === false);
-  ok('closed from 12:00 AM on the sixth day', at('2026-02-05T16:00:00Z').isOpen === false && at('2026-02-05T16:00:00Z').isClosed === true);
-  ok('and closed for good after that', at('2026-03-20T04:00:00Z').isOpen === false && at('2026-03-20T04:00:00Z').isClosed === true);
-  ok('not "closed" before it ever opened', at('2026-01-20T04:00:00Z').isClosed === false);
-  const lateFeb = data.postWindowFor({ start_date: '2026-01-26', end_date: '2026-02-26' });
-  ok('the five days run across a month end (26 February -> 2 March)', lateFeb.openUntil.toISOString() === '2026-03-02T15:59:00.000Z', lateFeb.openUntil.toISOString());
+  ok('still open five days on, and a month on', at('2026-02-06T04:00:00Z').isOpen === true && at('2026-03-20T04:00:00Z').isOpen === true);
+  ok('it has no closing time at all', !('closesAt' in data.postWindowFor(enrolledJan1)) && !('isClosed' in data.postWindowFor(enrolledJan1)));
+  ok('the old five-day setting is gone', data.POST_ASSESSMENT_OPEN_DAYS === undefined);
 
-  console.log('\n== once the Post-Assessment is done — taken, or closed — the subject is view-only ==');
-  const finished = (row, post, iso) => data.subjectFinishedState(row, post, new Date(iso));
-  ok('during the month: theirs to work in', finished(enrolledJan1, null, '2026-01-20T04:00:00Z').viewOnly === false);
-  ok('the last day, and the five days of the Post-Assessment not yet taken: still theirs',
-    finished(enrolledJan1, null, '2026-02-01T04:00:00Z').viewOnly === false && finished(enrolledJan1, null, '2026-02-05T15:59:00Z').viewOnly === false);
-  ok('the five days over without it: view only ("closed")', finished(enrolledJan1, null, '2026-02-05T16:00:00Z').reason === 'closed');
-  const takenOnLastDay = { submitted_at: new Date('2026-02-01T03:00:00Z') };
-  ok('the Post-Assessment taken: view only at once ("taken")', finished(enrolledJan1, takenOnLastDay, '2026-02-01T04:00:00Z').reason === 'taken'
-    && finished(enrolledJan1, takenOnLastDay, '2026-02-01T04:00:00Z').viewOnly === true);
-  const enrolledAgain = { start_date: '2026-03-01', end_date: '2026-04-01' };
-  ok('enrolled again: a Post-Assessment from the earlier month does not finish the new one',
-    finished(enrolledAgain, { submitted_at: new Date('2026-02-02T03:00:00Z') }, '2026-03-10T04:00:00Z').viewOnly === false);
-  ok('…but the new month\'s five days running out does', finished(enrolledAgain, { submitted_at: new Date('2026-02-02T03:00:00Z') }, '2026-04-06T04:00:00Z').reason === 'closed');
+  console.log('\n== the month is over at 12:00 AM after its last day ==');
+  const month = (row, iso) => data.monthOf(row, new Date(iso));
+  const jan = month(enrolledJan1, '2026-01-20T04:00:00Z');
+  ok('its last day is 1 February', jan.endDate === '2026-02-01');
+  ok('over at 12:00 AM Manila on 2 February (16:00 UTC on 1 February)', jan.overAt && jan.overAt.toISOString() === '2026-02-01T16:00:00.000Z',
+    jan.overAt && jan.overAt.toISOString());
+  ok('…the same moment as the database writes it', jan.overFrom === '2026-02-02 00:00:00', jan.overFrom);
+  ok('running all through January', jan.isOver === false);
+  ok('the last day itself is still the month (11:59 PM on 1 February)', month(enrolledJan1, '2026-02-01T15:59:59Z').isOver === false);
+  ok('over from 12:00 AM on 2 February', month(enrolledJan1, '2026-02-01T16:00:00Z').isOver === true);
   ok('an end date read from the database as a Date counts as its day',
-    finished({ end_date: new Date('2026-02-01T00:00:00Z') }, null, '2026-02-05T16:00:00Z').reason === 'closed'
-    && finished({ end_date: new Date('2026-02-01T00:00:00Z') }, null, '2026-02-05T15:59:00Z').viewOnly === false);
+    month({ end_date: new Date('2026-02-01T00:00:00Z') }, '2026-02-01T16:00:00Z').isOver === true
+    && month({ end_date: new Date('2026-02-01T00:00:00Z') }, '2026-02-01T15:59:00Z').isOver === false);
+  ok('no enrolment, no month to be over', month(null, '2026-02-10T00:00:00Z').isOver === false);
+
+  console.log('\n== once over, what was added later is not part of it ==');
+  const over = month(enrolledJan1, '2026-03-01T00:00:00Z');
+  // The driver hands a stored time back as if it were UTC (lib/postWindow.js, storedTime).
+  ok('a stored time reads back as it was written', postWindow.storedTime(new Date('2026-02-01T23:59:59Z')) === '2026-02-01 23:59:59');
+  ok('added at 11:59 PM on the last day: part of it', data.addedInMonth(new Date('2026-02-01T23:59:59Z'), over) === true);
+  ok('added at 12:00 AM the day after: not', data.addedInMonth(new Date('2026-02-02T00:00:00Z'), over) === false);
+  ok('…written as text too', data.addedInMonth('2026-02-01 22:00:00', over) === true && data.addedInMonth('2026-02-03 08:00:00', over) === false);
+  ok('while the month runs, everything is', data.addedInMonth(new Date('2026-02-03T08:00:00Z'), jan) === true);
+
+  console.log('\n== what is left, then view-only ==');
+  const state = (m, left) => data.subjectMonthState(m, left);
+  ok('while the month runs: nothing held back, nothing counted', state(jan, 3).monthOver === false && state(jan, 3).remaining === null && state(jan, 0).viewOnly === false);
+  ok('over with assessments left: still theirs to answer', state(over, 2).monthOver === true && state(over, 2).remaining === 2 && state(over, 2).viewOnly === false);
+  ok('over with nothing left: view-only', state(over, 0).viewOnly === true && state(over, 0).remaining === 0);
+  ok('enrolled again: a new month, not over', month({ start_date: '2026-03-01', end_date: '2026-04-01' }, '2026-03-10T04:00:00Z').isOver === false);
+
+  console.log('\n== counted for a real student ==');
+  // Enrolled 15 September, last day 15 October: over from 12:00 AM on 16 October.
+  db.user = { id: 5, role: 'student', grade_level: 'Grade 6', year_level: 'Primary Level' };
+  db.assignments = [{ id: 31, student_id: 5, subject_id: 2, subject_name: 'MATHEMATICS', start_date: '2020-09-15', end_date: '2020-10-15' }];
+  db.monthModules = [
+    { id: 61, subject_id: 2, grade_level: 'Grade 6', target_year_levels_json: '["Grade 6"]', created_at: new Date('2020-09-20T10:00:00Z') },
+    { id: 62, subject_id: 2, grade_level: 'Grade 6', target_year_levels_json: '["Grade 6"]', created_at: new Date('2020-10-16T08:00:00Z') },
+    { id: 63, subject_id: 2, grade_level: 'Grade 3', target_year_levels_json: '["Grade 3"]', created_at: new Date('2020-09-20T10:00:00Z') }
+  ];
+  db.monthActivities = [
+    { id: 71, module_id: 61, created_at: new Date('2020-10-15T23:59:00Z'), submitted: 0 }, // the last minute of the last day
+    { id: 72, module_id: 61, created_at: new Date('2020-10-16T00:00:00Z'), submitted: 0 }, // the first minute after it
+    { id: 73, module_id: 62, created_at: new Date('2020-10-17T09:00:00Z'), submitted: 0 }, // in a module added after it
+    { id: 74, module_id: 63, created_at: new Date('2020-09-21T09:00:00Z'), submitted: 0 } // another grade's
+  ];
+  db.sat = [];
+  let [mine] = await data.getStudentAssignments(5);
+  ok('the month is over', mine.month_over === true && mine.month_end === '2020-10-15', `${mine.month_over} ${mine.month_end}`);
+  ok('left: the Pre-Assessment, the one activity of that month, the Post-Assessment', mine.remaining === 3, `${mine.remaining}`);
+  ok('…so not view-only yet', mine.view_only === false);
+  db.sat = [{ subject_id: 2, assessment_kind: 'pre_assessment', grade_level: 'Grade 6' }];
+  db.monthActivities[0].submitted = 1;
+  [mine] = await data.getStudentAssignments(5);
+  ok('the Pre-Assessment and the activity answered: the Post-Assessment left', mine.remaining === 1 && mine.view_only === false, `${mine.remaining}`);
+  db.sat.push({ subject_id: 2, assessment_kind: 'post_assessment', grade_level: 'Grade 6' });
+  [mine] = await data.getStudentAssignments(5);
+  ok('everything of that month answered: view-only — what was added after it does not count', mine.remaining === 0 && mine.view_only === true, `${mine.remaining}`);
+  db.sat = [{ subject_id: 2, assessment_kind: 'pre_assessment', grade_level: 'Grade 3' }, { subject_id: 2, assessment_kind: 'post_assessment', grade_level: 'Grade 3' }];
+  [mine] = await data.getStudentAssignments(5);
+  ok("another grade's Pre-Assessment does not count as theirs", mine.remaining === 1 && mine.view_only === false, `${mine.remaining}`);
+  db.assignments = [{ ...db.assignments[0], start_date: '2099-01-01', end_date: '2099-02-01' }];
+  const reads = db.reads;
+  [mine] = await data.getStudentAssignments(5);
+  ok('while the month runs: not over, nothing counted, not view-only — and nothing extra read',
+    mine.month_over === false && mine.remaining === null && mine.view_only === false && db.reads === reads + 1, `${db.reads - reads} read(s)`);
 
   console.log('\n== where a student stands ==');
   db.user = { id: 5, role: 'student', grade_level: 'Grade 6', year_level: 'Primary Level' };
@@ -184,23 +237,21 @@ async function main() {
   db.preRows = [{ id: 70, assessment_id: 9, grade_level: 'Grade 6', percentage: 40, level: 'Beginner' }];
   ok('before the last day: not yet', (await data.getStudentPostState(5, 2)).status === 'not_yet');
 
-  // The enrolment ended yesterday (Manila): the Post-Assessment opened yesterday
-  // and is open for four more days.
+  // The enrolment ended yesterday (Manila): the Post-Assessment opened yesterday.
   const yesterday = require('../lib/utils').todayDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
   db.enrolment = { start_date: '2026-01-01', end_date: yesterday };
   const open = await data.getStudentPostState(5, 2);
-  ok('within its five days: open', open.status === 'open', `${open.status} (ended ${yesterday})`);
+  ok('from the last day: open', open.status === 'open', `${open.status} (ended ${yesterday})`);
   ok('it repeats the Pre-Assessment the student took', open.preSubmission && open.preSubmission.assessment_id === 9);
-  ok('and it says until when', open.openUntil instanceof Date && open.openUntil.getTime() > Date.now());
 
   db.enrolment = { start_date: '2020-01-01', end_date: '2020-02-01' };
-  ok('five days after it opened, not taken: closed', (await data.getStudentPostState(5, 2)).status === 'closed');
+  ok('long after the month, not taken: still open', (await data.getStudentPostState(5, 2)).status === 'open');
   db.preRows = [];
-  ok('closed, too, for a student who never sat the Pre-Assessment', (await data.getStudentPostState(5, 2)).status === 'closed');
+  ok('…once the Pre-Assessment it repeats is done', (await data.getStudentPostState(5, 2)).status === 'needs_pre');
   db.preRows = [{ id: 70, assessment_id: 9, grade_level: 'Grade 6', percentage: 40, level: 'Beginner' }];
 
   db.postRows = [{ id: 81, percentage: 75 }];
-  ok('once taken: taken, closed or not', (await data.getStudentPostState(5, 2)).status === 'taken');
+  ok('once taken: taken', (await data.getStudentPostState(5, 2)).status === 'taken');
 
   console.log('\n== the Pre-Assessment that counts is the student\'s own grade\'s ==');
   db.preRows = [];

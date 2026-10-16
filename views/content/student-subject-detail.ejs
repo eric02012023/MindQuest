@@ -28,10 +28,12 @@
     <% } %>
   </div>
 
-  <%# A finished subject — its Post-Assessment taken, or its five days over
-      without it — is view-only: its modules and results can be opened, its
-      assessments not (routes/student.js, viewOnlyMessage). %>
+  <%# Once the subject's month is over it stays as it was on its last day: what
+      was left in it can still be answered (monthNote), and with nothing left it
+      is view-only — its modules and results can be opened (routes/student.js,
+      monthLeftMessage / viewOnlyMessage). %>
   <% const finishedNote = typeof viewOnly === 'undefined' ? '' : viewOnly; %>
+  <% const leftNote = typeof monthNote === 'undefined' ? '' : monthNote; %>
   <% if (finishedNote) { %>
     <section class="panel-card lock-card" role="note">
       <div class="lock-head">
@@ -42,6 +44,8 @@
       </div>
       <p class="lock-note"><%= finishedNote %></p>
     </section>
+  <% } else if (leftNote) { %>
+    <p class="pa-deadline" role="note"><%= leftNote %></p>
   <% } %>
 
   <%# ------------------------------------------------------------------------
@@ -90,6 +94,20 @@
         <p class="lock-note">Your <%= myGrade %> modules have no handout yet, so the Pre-Assessment is not ready. It opens once the office uploads them.</p>
       <% } %>
     </section>
+
+    <%# The Post-Assessment repeats the Pre-Assessment, so it waits for it — even
+        once the last day has come and it is open. %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Post-Assessment</h3>
+        <% if (completion.postWindowOpen) { %>
+          <span class="badge badge-success">Open now</span>
+        <% } else { %>
+          <span class="badge badge-info"><%= completion.postOpensAt ? `Opens ${formatDate(completion.postOpensAt)}` : 'Not open yet' %></span>
+        <% } %>
+      </div>
+      <p class="table-note">Take the Pre-Assessment first: the Post-Assessment repeats it.</p>
+    </section>
   <% } else if (preAssessmentDone) { %>
     <section class="panel-card">
       <div class="panel-card-head">
@@ -133,9 +151,9 @@
 
     <%# --------------------------------------------------------------------
         Post-Assessment (overhaul Phase 8). It opens on its own at 12:01 AM on
-        the LAST DAY of this student's enrolment in the subject, and not before;
-        it stays open for five days and then closes for good. The same rule is
-        enforced server-side on the route; this only says when.
+        the LAST DAY of this student's enrolment in the subject, and not before,
+        and stays open until they take it. The same rule is enforced
+        server-side on the route; this only says when.
         -------------------------------------------------------------------- %>
     <section class="panel-card">
       <div class="panel-card-head">
@@ -144,8 +162,6 @@
           <span class="badge badge-success">Done</span>
         <% } else if (completion.postStatus === 'open') { %>
           <span class="badge badge-success">Open now</span>
-        <% } else if (completion.postStatus === 'closed') { %>
-          <span class="badge badge-danger">Closed</span>
         <% } else { %>
           <span class="badge badge-info">
             <%= completion.postOpensAt ? `Opens ${formatDate(completion.postOpensAt)}` : 'Not open yet' %>
@@ -187,16 +203,7 @@
           Your enrollment in <%= assignment.subject_name %> has reached its last day<%= completion.postOpensAt ? ` (${formatDate(completion.postOpensAt)})` : '' %>,
           so the Post-Assessment is open. It repeats your Pre-Assessment, so you and your tutor can see how much you have improved.
         </p>
-        <% if (completion.postOpenUntil) { %>
-          <p class="table-note">Take it by <strong><%= formatDateTime(completion.postOpenUntil) %></strong>. After that it closes and can no longer be taken.</p>
-        <% } %>
         <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/post-assessment">Start Post-Assessment</a>
-
-      <% } else if (completion.postStatus === 'closed') { %>
-        <p class="table-note">
-          The Post-Assessment closed<%= completion.postOpenUntil ? ` on ${formatDateTime(completion.postOpenUntil)}` : '' %>.
-          It was open for five days from the last day of your enrollment, and it can no longer be taken.
-        </p>
 
       <% } else { %>
         <p class="table-note">

@@ -480,7 +480,7 @@ router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', retir
 // stays so a stale page's button explains that instead of 404ing.
 // --------------------------------------------------------------------------
 router.post('/subjects/:subjectId/create-post-assessment', (req, res) => {
-  setFlash(req, 'info', 'The Post-Assessment opens automatically for each student at 12:01 AM on the last day of their enrollment, and closes five days later. There is nothing to create.');
+  setFlash(req, 'info', 'The Post-Assessment opens automatically for each student at 12:01 AM on the last day of their enrollment. There is nothing to create.');
   res.redirect(`/tutor/subjects/${Number(req.params.subjectId) || ''}`);
 });
 

@@ -7,8 +7,12 @@ Limang seeded learner ito. Kaya na nilang kunin ang **LAHAT** ng assessment sa *
 ng subject nila: ang Pre-Assessment, ang mga module assessment ng grade nila, at ang
 Post-Assessment. Wala pa silang nasasagutan kahit isa.
 
-Hanggang **19 Okt 2026, 11:59 PM** lang ito. Mula 20 Okt, sarado na ang Post-Assessment
-at view-only na ang mga subject nila.
+Ang isang buwan nila: **15 Set – 15 Okt 2026** (pareho ng "Joined" nila, 15 Set). Tapos na
+ito, kaya:
+- Masasagutan pa rin nila ang lahat ng natira, **kahit kailan** (walang deadline).
+- Ang module, handout o assessment na idadagdag **pagkatapos ng 15 Okt** ay hindi na
+  lalabas sa kanila.
+- Kapag nasagutan na nila lahat, **view-only** na ang subject.
 
 ## Pag-login
 
@@ -32,26 +36,31 @@ at view-only na ang mga subject nila.
 
 | Student | Subject | Pre-Assessment | Module assessments | Post-Assessment |
 |---|---|---|---|---|
-| STD-0166 | ARALING PANLIPUNAN (AP) | 30 items | 4: "AP — Assessment" (5 items), "Handsome miles" (1), "Rizals life — Quiz" (1), "Activity" (2) | 30 items, hanggang 19 Okt |
-| STD-0166 | READING & WRITING | 30 items | wala pang ginawa para sa Grade 5 | 30 items, hanggang 19 Okt |
-| STD-0063 | MATHEMATICS (BASIC TO ADVANCE) | 30 items | 1: "Multiplication — Assessment" (5 items) | 30 items, hanggang 19 Okt |
-| STD-0088 | ENGLISH | 30 items | wala pang ginawa para sa Grade 5 | 30 items, hanggang 19 Okt |
-| STD-0121 | ARALING PANLIPUNAN (AP) | 30 items | wala pang ginawa para sa Grade 12 | 30 items, hanggang 19 Okt |
-| STD-0229 | ARALING PANLIPUNAN (AP) | 30 items | wala pang ginawa para sa Grade 3 | 30 items, hanggang 19 Okt |
+| STD-0166 | ARALING PANLIPUNAN (AP) | 30 items | 4: "AP — Assessment" (5 items), "Handsome miles" (1), "Rizals life — Quiz" (1), "Activity" (2) | 30 items, bukas na |
+| STD-0166 | READING & WRITING | 30 items | wala para sa Grade 5 | 30 items, bukas na |
+| STD-0063 | MATHEMATICS (BASIC TO ADVANCE) | 30 items | 1: "Multiplication — Assessment" (5 items) | 30 items, bukas na |
+| STD-0088 | ENGLISH | 30 items | wala para sa Grade 5 | 30 items, bukas na |
+| STD-0121 | ARALING PANLIPUNAN (AP) | 30 items | wala para sa Grade 12 | 30 items, bukas na |
+| STD-0229 | ARALING PANLIPUNAN (AP) | 30 items | wala para sa Grade 3 | 30 items, bukas na |
 
-Kung gusto mong may module assessment ang iba pa, gumawa ang tutor nila ng assessment
-sa module ng grade na iyon. Lalabas ito agad sa student.
+Tapos na ang buwan nila, kaya ang module assessment na gagawin ngayon ng tutor nila ay
+**hindi na lalabas** sa kanila. Ito mismo ang patakaran: puwede mo itong subukan. Kapag
+ni-Re-enroll sila (Student Bill → Re-enroll), may bagong buwan sila at lalabas na ulit
+ang lahat.
 
 ## Paano i-test (bawat student)
 
-1. Mag-login, tapos pumunta sa **My Subjects**, at pindutin ang **View Subject**.
+1. Mag-login, tapos pumunta sa **My Subjects**, at pindutin ang **View Subject**. Nakasulat
+   doon kung ilan pa ang masasagutan ("Month ended · N left to answer").
 2. Unahin ang **Pre-Assessment** (30 items). Pagkatapos nito, mabubuksan na ang mga
    module at ang mga module assessment.
 3. Buksan ang mga module, tapos sagutan ang bawat **module assessment** (kung meron).
-4. Kunin ang **Post-Assessment** sa huli. Bukas ito mula 15 Okt 2026 (ang huling araw ng
-   enrolment nila) hanggang **19 Okt 2026, 11:59 PM**. Pareho ang mga tanong sa
-   Pre-Assessment, para makita ang pagbabago.
-5. Tingnan ang resulta:
+4. Kunin ang **Post-Assessment**. Bukas na ito mula 15 Okt 2026 (ang huling araw ng
+   enrolment nila) at hindi na nagsasara. Pareho ang mga tanong sa Pre-Assessment, para
+   makita ang pagbabago.
+5. Kapag nasagutan na lahat, **view-only** na ang subject ("Finished · view only"):
+   bukas pa rin ang modules at results, pero wala nang masasagutan.
+6. Tingnan ang resulta:
    - **Student:** Results, at Analytics & Reports → My progress
    - **Admin:** Analytics & Reports → Student progress, at Assessment Monitoring
    - **Tutor:** Student Results, at Analytics & Reports → Student progress
@@ -61,10 +70,8 @@ Paalala:
 - May **anti-cheat**: huwag lumipat ng tab o umalis sa page habang sumasagot. Sa ikatlong
   violation, kusang naisusumite ang sagot.
 - Unahin ang Pre-Assessment. Hindi bubukas ang module assessments at ang Post hangga't
-  hindi pa ito tapos.
-- Kapag naisumite na ang Post-Assessment, **view-only** na ang subject: makikita pa ang
-  modules at results, pero hindi na masasagutan ang natitirang module assessment. Kaya
-  tapusin muna ang lahat ng module assessment bago ang Post.
+  hindi pa ito tapos. Nakikita na ang Post-Assessment sa subject page ("Open now"), pero
+  hinihintay nito ang Pre-Assessment kasi inuulit lang nito iyon.
 
 ## Ang mga tutor nila (para makita ang resulta sa panig ng tutor)
 
@@ -78,9 +85,9 @@ Password: `MindQuest@2026`. Ang login code ay dumarating din sa rafaeleulalz@gma
 | STD-0121 (AP) | Vicente Flores Ignacio | TTR-0113 | rafaeleulalz+vicenteignacio.fatima03@gmail.com |
 | STD-0229 (AP) | Miguel Bautista Dela Cruz | TTR-0191 | rafaeleulalz+migueldelacruz.bawing01@gmail.com |
 
-## Ang binago sa live database (15 Okt 2026)
+## Ang binago sa live database (15–16 Okt 2026)
 
-Dalawang bagay lang ang binago, para sa limang ito lamang:
+Tatlong bagay lang ang binago, para sa limang ito lamang:
 
 1. **Down payment na ₱500 (Cash)** bawat isa. Kailangan muna ng ₱500 na bayad bago
    mabuksan ang Pre-Assessment. Naitala ito sa ledger bilang payment entries #1067–#1071,
@@ -90,8 +97,11 @@ Dalawang bagay lang ang binago, para sa limang ito lamang:
    Nagbubukas ang Post-Assessment nang 12:01 AM sa huling araw na iyon.
    - Enrolment rows: 266 at 267 (STD-0166), 85 (STD-0063), 128 (STD-0088), 189 (STD-0121),
      397 (STD-0229).
-   - Hindi binago ang start date (28 Set 2026) at ang due date ng bill (28 Okt 2026), kaya
-     walang bagong payment reminder.
+   - Hindi binago ang due date ng bill (28 Okt 2026), kaya walang bagong payment reminder.
+3. **Simula ng enrolment (16 Okt 2026):** inilipat mula **28 Set 2026** papuntang
+   **15 Set 2026**, ang araw na nag-"Joined" sila. Kaya 15 Set – 15 Okt na ang nakasulat na
+   enrollment period, at "Enrolled: Sep 15, 2026" na sa dashboard nila. Ang oras ng
+   enrolment ay 10 minuto pagkatapos magawa ang account nila (mga 9:11 AM).
 
 Bago ibigay, sinubukan na ang buong landas ng lima sa live site: login, Pre-Assessment,
 bawat module assessment, Post-Assessment at ang mga resulta. Pumasa lahat. Ginawa ito sa
@@ -100,7 +110,7 @@ transaction na ibinalik (rollback), kaya wala pa rin silang nasasagutan.
 Kung kailangang ibalik ang dating petsa:
 
 ```sql
-UPDATE user_subject_assignments SET end_date = '2026-10-28' WHERE id IN (266, 267, 85, 128, 189, 397);
+UPDATE user_subject_assignments SET start_date = '2026-09-28', end_date = '2026-10-28' WHERE id IN (266, 267, 85, 128, 189, 397);
 ```
 
 Kasama ng mga seeded account ang mga bayad. Nabubura ang mga ito kapag pinatakbo ang

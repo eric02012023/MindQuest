@@ -722,3 +722,38 @@ Code only — no migration, no new environment variable.
   Joined column), both days included. The folder links keep them.
 - The User registry tab has them too (its Joined date: when the account was
   accepted, else when it signed up), and its Download CSV follows them.
+
+### This release: after a student's month — what was left, then view-only
+
+Code only — no migration, no new environment variable. It replaces the
+five-day close and the view-only rule of the release above.
+
+**The Post-Assessment no longer closes**
+- It still opens by itself at 12:01 AM on the last day of the enrollment, and
+  it stays open until the student takes it — after their month too. The
+  "Take it by" / "Submit by" lines, the **Closed** badge, the tutor's
+  "closed … — not taken" and Student progress's **Post-Assessment closed** are
+  gone; a learner with a Pre-Assessment and no Post-Assessment is "Awaiting
+  Post-Assessment" again.
+- Before the Pre-Assessment, the subject page now shows the Post-Assessment
+  card too — "Open now" (or the day it opens) and "Take the Pre-Assessment
+  first: the Post-Assessment repeats it" — instead of nothing.
+
+**Once a student's month is over** (12:00 AM after its last day)
+- The subject stays as it was on its last day. A module, a handout or a module
+  assessment added after that does not show for that student — not on the
+  subject or module pages, not in My Progress, not as a file, not by its
+  address — and the tutor's "Check Answers" page does not list the student as
+  owing such an assessment. Student progress and Module completion count only
+  the modules of their month.
+- Whatever was left in it — the Pre-Assessment, the month's module assessments,
+  the Post-Assessment — can still be answered, whenever the student likes. The
+  subject page says when the month ended and how many are left; My Subjects
+  says "Month ended · N left to answer".
+- No tutor can be chosen any more for a subject whose month is over.
+- Once nothing is left, the subject is **view-only**: the student still logs in
+  and opens it, its modules and their results ("Finished · view only"); opening
+  a module no longer counts as progress.
+- While the month runs nothing is held back — taking the Post-Assessment on the
+  last day does not make the subject view-only. Enrolled again (Student Bill →
+  Re-enroll), the student has a new month and everything shows again.

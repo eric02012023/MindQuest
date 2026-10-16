@@ -100,7 +100,9 @@ const { getProgressComparison } = require('../lib/analytics');
 const { progressCsv } = require('../lib/reportsCsv');
 const { readAnalyticsFilters } = require('../lib/analyticsFilters');
 const { determineLevel } = require('../config/levelThresholds');
-const { normalizeArray, formatDateTime, todayDate } = require('../lib/utils');
+const { normalizeArray, formatDate, formatDateTime, todayDate } = require('../lib/utils');
+// A student's month in a subject: once over, only what was left in it is theirs.
+const { monthOf, addedInMonth } = require('../lib/postWindow');
 // Phase 3: cash is a POS transaction now. The student's side ends at a slip.
 const { buildSlipModel, renderSlipPdf, slipFilename, slipCode, formatSlipDate } = require('../lib/paymentSlip');
 
@@ -303,8 +305,12 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       setFlash(req, 'error', 'Subject not found in your account.');
       return res.redirect('/student/subjects');
     }
-    const resources = await getSubjectResources(req.params.subjectId, req.session.user.id, { mode: 'student' });
-    const modules = await getModulesForStudent(req.session.user.id, req.params.subjectId);
+    // Once the student's month in the subject is over it stays as it was on its
+    // last day: whatever was shared or added after that is not part of it.
+    const month = monthOf(assignment);
+    const inMonth = (row) => addedInMonth(row.created_at, month);
+    const resources = (await getSubjectResources(req.params.subjectId, req.session.user.id, { mode: 'student' })).filter(inMonth);
+    const modules = (await getModulesForStudent(req.session.user.id, req.params.subjectId)).filter(inMonth);
     const tutor = assignment.tutor_internal_id ? await getUserById(assignment.tutor_internal_id) : null;
     const attendanceLogs = await getAttendanceBySubject(req.session.user.id, req.params.subjectId);
 
@@ -323,7 +329,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     const studentRecord = await getUserById(req.session.user.id);
     const gradeLevel = studentGradeOf(studentRecord);
     const preAssessmentDone = await hasCompletedPreAssessment(req.session.user.id, Number(req.params.subjectId), gradeLevel);
-    const newModules = await getStudentSubjectModules(req.session.user.id, Number(req.params.subjectId));
+    const newModules = await getStudentSubjectModules(req.session.user.id, Number(req.params.subjectId), { month });
     const handoutsReady = gradeLevel
       ? (await getSubjectHandoutTexts(Number(req.params.subjectId), gradeLevel)).length
       : 0;
@@ -354,7 +360,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       comparison,
       tutor,
       attendanceLogs,
-      // Finished (its Post-Assessment taken, or closed): view-only from now on.
+      // Its month over: what is left to answer, or — nothing left — view-only.
+      monthNote: monthLeftMessage(assignment),
       viewOnly: viewOnlyMessage(assignment)
     });
     res.render('shells/dashboard', shell);
@@ -1027,19 +1034,33 @@ async function requireEnrolment(req, subjectId) {
   return assignments.find((a) => Number(a.subject_id) === Number(subjectId)) || null;
 }
 
+/** "ended on Oct 15, 2026" — the last day of the subject's month. */
+function monthEndedText(assignment) {
+  return `ended${assignment.month_end ? ` on ${formatDate(assignment.month_end)}` : ''}`;
+}
+
 /**
- * A finished subject — its Post-Assessment taken, or its five days over without
- * it — is the student's to VIEW only (lib/data.js, subjectFinishedState): they
- * can open it, its modules and their results, but not take its Pre-Assessment or
- * its module activities. Returns the sentence that says so, or '' while it is
- * still theirs to work in.
+ * A subject whose month is over, with nothing left in it to answer, is the
+ * student's to VIEW only (lib/data.js, subjectMonthState): they can open it, its
+ * modules and their results. Returns the sentence that says so, or '' while
+ * there is still something to answer.
  */
 function viewOnlyMessage(assignment) {
   if (!assignment || !assignment.view_only) return '';
-  const why = assignment.view_only_reason === 'taken'
-    ? `You have finished ${assignment.subject_name} — your Post-Assessment is done`
-    : `Your Post-Assessment for ${assignment.subject_name} closed${assignment.post_open_until ? ` on ${formatDateTime(assignment.post_open_until)}` : ''} without being taken`;
-  return `${why}, so the subject is view-only now: you can still open its modules and your results, but not take its assessments.`;
+  return `Your month in ${assignment.subject_name} ${monthEndedText(assignment)} and you have answered all its assessments, `
+    + 'so it is view-only now: you can still open its modules and your results.';
+}
+
+/**
+ * A subject whose month is over, with assessments still to answer: they can
+ * be answered whenever the student likes. Returns the sentence that says how
+ * many, or ''.
+ */
+function monthLeftMessage(assignment) {
+  if (!assignment || !assignment.month_over || assignment.view_only) return '';
+  const left = Number(assignment.remaining || 0);
+  return `Your month in ${assignment.subject_name} ${monthEndedText(assignment)}. `
+    + `You can still answer the ${left} assessment${left === 1 ? '' : 's'} left in it.`;
 }
 
 /** A random key identifying one sitting, for grouping its anti-cheat strikes. */
@@ -1079,7 +1100,7 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       setFlash(req, 'error', 'Subject not found in your account.');
       return res.redirect('/student/subjects');
     }
-    // A finished subject is view-only.
+    // A view-only subject has nothing left to answer.
     if (assignment.view_only) {
       setFlash(req, 'error', viewOnlyMessage(assignment));
       return res.redirect(`/student/subjects/${subjectId}`);
@@ -1244,13 +1265,11 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
 // Post-Assessment (overhaul Phase 8, spec Section 4b)
 //
 // It opens on its own at 12:01 AM on the LAST DAY of the student's enrolment in
-// the subject (enrolled 1 January -> open from 12:01 AM on 1 February), and not
-// a minute before. It stays open for five days (to 11:59 PM on 5 February) and
-// then closes: not taken by then, it can no longer be taken — nor can a sitting
-// that was opened before the close be submitted after it. It is the same
-// questions as the Pre-Assessment this student sat, so that must have been
-// taken. Enforced here, server-side: the button on the subject page is only a
-// reflection of it.
+// the subject (enrolled 15 September -> open from 12:01 AM on 15 October), and
+// not a minute before. It does not close: a student who has not taken it can
+// take it after their month is over too. It is the same questions as the
+// Pre-Assessment this student sat, so that must have been taken. Enforced here,
+// server-side: the button on the subject page is only a reflection of it.
 // ---------------------------------------------------------------------------
 
 /** Shared guard: returns { assignment, assessment } or null after flashing. */
@@ -1266,11 +1285,6 @@ async function requirePostAssessment(req, subjectId) {
     setFlash(req, 'info', 'You have already completed the Post-Assessment for this subject.');
     return { redirectTo: `/student/results/${state.postSubmission.id}` };
   }
-  if (state.status === 'closed') {
-    setFlash(req, 'error', `The Post-Assessment for ${assignment.subject_name} closed on ${formatDateTime(state.openUntil)}. `
-      + 'It was open for five days from the last day of your enrollment, and it can no longer be taken.');
-    return null;
-  }
   if (state.status === 'needs_pre') {
     setFlash(req, 'error', 'The Post-Assessment repeats your Pre-Assessment, so take the Pre-Assessment first.');
     return null;
@@ -1284,7 +1298,7 @@ async function requirePostAssessment(req, subjectId) {
 
   // The same questions as the Pre-Assessment this student sat.
   const assessment = await getOrCreatePostAssessmentFor(state.preSubmission.assessment_id);
-  return { assignment, assessment, openUntil: state.openUntil };
+  return { assignment, assessment };
 }
 
 router.get('/subjects/:subjectId/post-assessment', async (req, res, next) => {
@@ -1302,8 +1316,6 @@ router.get('/subjects/:subjectId/post-assessment', async (req, res, next) => {
       assignment: gate.assignment,
       subjectId,
       kind: 'post',
-      // The last minute it can be submitted, shown on the page.
-      postOpenUntil: gate.openUntil,
       startedAt: new Date().toISOString(),
       antiCheat: {
         endpoint: `/student/assessments/${gate.assessment.id}/violation`,
@@ -1430,22 +1442,31 @@ router.get('/modules/:moduleId', async (req, res, next) => {
       return res.redirect(`/student/subjects/${mod.subject_id}`);
     }
 
+    // Once the student's month in the subject is over, it stays as it was on its
+    // last day: a module added after that is not theirs, nor is a handout or an
+    // activity added to this one.
+    const assignment = assignments.find((a) => Number(a.subject_id) === Number(mod.subject_id));
+    const month = monthOf(assignment);
+    if (!addedInMonth(mod.created_at, month)) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect(`/student/subjects/${mod.subject_id}`);
+    }
+
     // Reaching this line means the student passed every gate and is looking at
     // the module's handouts, which is what "opened the module" means for the
     // Post-Assessment completion check (Phase 8). Recorded after the guards, never
     // before, so a blocked attempt cannot count as progress — and not at all once
-    // the subject is finished: it is then theirs to look at, not to work in.
-    const assignment = assignments.find((a) => Number(a.subject_id) === Number(mod.subject_id));
+    // the subject is view-only: it is then theirs to look at, not to work in.
     const viewOnly = viewOnlyMessage(assignment);
     if (!viewOnly) await recordModuleOpen(studentId, mod.id, mod.subject_id);
 
     const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
-    const handouts = await getModuleHandouts(mod.id);
+    const handouts = (await getModuleHandouts(mod.id)).filter((h) => addedInMonth(h.created_at, month));
 
     // Get assessments and submissions for this module — the published ones; a
     // tutor's draft is not the student's to see.
     const assessments = (await getTutorAssessmentsByModule(mod.id))
-      .filter((a) => Number(a.is_published) === 1);
+      .filter((a) => Number(a.is_published) === 1 && addedInMonth(a.created_at, month));
     const submissions = await getStudentSubmissions(studentId, mod.subject_id);
 
     // Calculate progress
@@ -1531,13 +1552,20 @@ async function requireModuleAssessment(req, assessmentId) {
     setFlash(req, 'error', 'This assessment belongs to a module for another grade level.');
     return { redirectTo: `/student/subjects/${assessment.subject_id}` };
   }
+  // Once the student's month is over, only what was left in it is theirs to
+  // answer: an assessment (or its module) added after it ended is not.
+  const month = monthOf(assignment);
+  if (!addedInMonth(mod.created_at, month) || !addedInMonth(assessment.created_at, month)) {
+    setFlash(req, 'error', 'Assessment not found.');
+    return { redirectTo: `/student/subjects/${assessment.subject_id}` };
+  }
 
   if (!(await hasCompletedPreAssessment(req.session.user.id, assessment.subject_id, studentGradeOf(student)))) {
     setFlash(req, 'error', 'Please complete the Pre-Assessment for this subject before its module assessments.');
     return { redirectTo: `/student/subjects/${assessment.subject_id}` };
   }
-  // A finished subject is view-only: the caller refuses a sitting with this
-  // (the page still sends a done one to its result first).
+  // A view-only subject has nothing left to answer: the caller refuses a
+  // sitting with this (the page still sends a done one to its result first).
   return { assessment, assignment, mod, viewOnly: viewOnlyMessage(assignment) };
 }
 

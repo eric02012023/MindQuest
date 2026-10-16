@@ -46,9 +46,11 @@
         <div class="subject-list-card">
           <div>
             <strong><%= assignment.subject_name %></strong>
-            <%# Finished — its Post-Assessment taken, or closed: view-only now. %>
+            <%# Its month over: what is left to answer, or — nothing left — view-only. %>
             <% if (assignment.view_only) { %>
-              <span class="badge badge-info"><%= assignment.view_only_reason === 'taken' ? 'Finished' : 'Post-Assessment closed' %> · view only</span>
+              <span class="badge badge-info">Finished · view only</span>
+            <% } else if (assignment.month_over) { %>
+              <span class="badge badge-warning">Month ended · <%= assignment.remaining %> left to answer</span>
             <% } %>
             <span>
               <% if (assignment.tutor_internal_id) { %>
