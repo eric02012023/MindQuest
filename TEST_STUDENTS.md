@@ -7,6 +7,9 @@ Limang seeded learner ito. Kaya na nilang kunin ang **LAHAT** ng assessment sa *
 ng subject nila: ang Pre-Assessment, ang mga module assessment ng grade nila, at ang
 Post-Assessment. Wala pa silang nasasagutan kahit isa.
 
+Hanggang **19 Okt 2026, 11:59 PM** lang ito. Mula 20 Okt, sarado na ang Post-Assessment
+at view-only na ang mga subject nila.
+
 ## Pag-login
 
 - Website: https://mindquesttutorial.com/login
@@ -29,12 +32,12 @@ Post-Assessment. Wala pa silang nasasagutan kahit isa.
 
 | Student | Subject | Pre-Assessment | Module assessments | Post-Assessment |
 |---|---|---|---|---|
-| STD-0166 | ARALING PANLIPUNAN (AP) | 30 items | 4: "AP — Assessment" (5 items), "Handsome miles" (1), "Rizals life — Quiz" (1), "Activity" (2) | 30 items, bukas na |
-| STD-0166 | READING & WRITING | 30 items | wala pang ginawa para sa Grade 5 | 30 items, bukas na |
-| STD-0063 | MATHEMATICS (BASIC TO ADVANCE) | 30 items | 1: "Multiplication — Assessment" (5 items) | 30 items, bukas na |
-| STD-0088 | ENGLISH | 30 items | wala pang ginawa para sa Grade 5 | 30 items, bukas na |
-| STD-0121 | ARALING PANLIPUNAN (AP) | 30 items | wala pang ginawa para sa Grade 12 | 30 items, bukas na |
-| STD-0229 | ARALING PANLIPUNAN (AP) | 30 items | wala pang ginawa para sa Grade 3 | 30 items, bukas na |
+| STD-0166 | ARALING PANLIPUNAN (AP) | 30 items | 4: "AP — Assessment" (5 items), "Handsome miles" (1), "Rizals life — Quiz" (1), "Activity" (2) | 30 items, hanggang 19 Okt |
+| STD-0166 | READING & WRITING | 30 items | wala pang ginawa para sa Grade 5 | 30 items, hanggang 19 Okt |
+| STD-0063 | MATHEMATICS (BASIC TO ADVANCE) | 30 items | 1: "Multiplication — Assessment" (5 items) | 30 items, hanggang 19 Okt |
+| STD-0088 | ENGLISH | 30 items | wala pang ginawa para sa Grade 5 | 30 items, hanggang 19 Okt |
+| STD-0121 | ARALING PANLIPUNAN (AP) | 30 items | wala pang ginawa para sa Grade 12 | 30 items, hanggang 19 Okt |
+| STD-0229 | ARALING PANLIPUNAN (AP) | 30 items | wala pang ginawa para sa Grade 3 | 30 items, hanggang 19 Okt |
 
 Kung gusto mong may module assessment ang iba pa, gumawa ang tutor nila ng assessment
 sa module ng grade na iyon. Lalabas ito agad sa student.
@@ -45,9 +48,9 @@ sa module ng grade na iyon. Lalabas ito agad sa student.
 2. Unahin ang **Pre-Assessment** (30 items). Pagkatapos nito, mabubuksan na ang mga
    module at ang mga module assessment.
 3. Buksan ang mga module, tapos sagutan ang bawat **module assessment** (kung meron).
-4. Kunin ang **Post-Assessment**. Bukas na ito dahil ngayong araw (15 Okt 2026) ang huling
-   araw ng enrolment nila. Pareho ang mga tanong sa Pre-Assessment, para makita ang
-   pagbabago.
+4. Kunin ang **Post-Assessment** sa huli. Bukas ito mula 15 Okt 2026 (ang huling araw ng
+   enrolment nila) hanggang **19 Okt 2026, 11:59 PM**. Pareho ang mga tanong sa
+   Pre-Assessment, para makita ang pagbabago.
 5. Tingnan ang resulta:
    - **Student:** Results, at Analytics & Reports → My progress
    - **Admin:** Analytics & Reports → Student progress, at Assessment Monitoring
@@ -59,6 +62,9 @@ Paalala:
   violation, kusang naisusumite ang sagot.
 - Unahin ang Pre-Assessment. Hindi bubukas ang module assessments at ang Post hangga't
   hindi pa ito tapos.
+- Kapag naisumite na ang Post-Assessment, **view-only** na ang subject: makikita pa ang
+  modules at results, pero hindi na masasagutan ang natitirang module assessment. Kaya
+  tapusin muna ang lahat ng module assessment bago ang Post.
 
 ## Ang mga tutor nila (para makita ang resulta sa panig ng tutor)
 
