@@ -1,41 +1,4 @@
-/**
- * File: public/js/anti-cheat.js
- * Purpose: Watch an assessment sitting for the actions that indicate cheating,
- *          warn three times, then submit whatever the student has answered.
- *
- * HOW IT IS WIRED
- * A page opts in by putting one element on it:
- *
- *   <div id="mq-anti-cheat"
- *        data-endpoint="/student/assessments/12/violation"
- *        data-session="a1b2c3"
- *        data-form="#assessment-form"
- *        data-limit="3"
- *        data-start-count="0"></div>
- *
- * WHY THE SERVER COUNTS THE STRIKES
- * The count that matters comes back from the endpoint on every event. If this
- * script kept its own tally, a reload would reset it to zero and devtools could
- * set it to anything — so the number in front of the student would be a number
- * they control. Here the browser only REPORTS; the server decides which warning
- * this is and whether the sitting is over.
- *
- * WHY MODALS
- * The warnings are blocking dialogs that must be acknowledged, not toasts. A
- * toast can be missed, and "I never saw a warning" is exactly the dispute this
- * feature exists to prevent.
- *
- * WHAT IT WATCHES
- *   tab_switch       the page became hidden (another tab, another app)
- *   window_blur      the window lost focus
- *   copy / paste     text taken out of, or pushed into, the assessment
- *   context_menu     right-click
- *   devtools         F12, Ctrl/Cmd+Shift+I/J/C, Ctrl/Cmd+U
- *   print            Ctrl/Cmd+P
- *
- * Blur and visibilitychange both fire for a single alt-tab, so events are
- * de-duplicated inside a short window: one action must cost one strike, not two.
- */
+
 (function () {
   var mount = document.getElementById('mq-anti-cheat');
   if (!mount) return;
@@ -48,12 +11,12 @@
 
   if (!endpoint || !form) return;
 
-  var finished = false;      // set once the sitting ends, to stop all reporting
-  var reporting = false;     // one request in flight at a time
+  var finished = false;      
+  var reporting = false;     
   var lastEventAt = 0;
   var DEDUPE_MS = 1200;
 
-  // ---------------------------------------------------------------- the modal
+  
 
   var overlay = document.createElement('div');
   overlay.className = 'mq-ac-overlay';
@@ -81,8 +44,8 @@
     buttonEl.textContent = options.button || 'I understand';
     overlay.classList.add('is-open');
     overlay.classList.toggle('is-final', !!options.final);
-    // Focus the only control, so Enter or Space dismisses it. A dialog the
-    // keyboard cannot reach is not a dialog anyone has to acknowledge.
+    
+    
     buttonEl.focus();
 
     buttonEl.onclick = function () {
@@ -91,16 +54,9 @@
     };
   }
 
-  // ------------------------------------------------------------- auto-submit
+  
 
-  /**
-   * Submit the sitting with whatever has been answered.
-   *
-   * `required` is stripped first: the browser refuses to submit a form with an
-   * empty required field, which would leave a student stuck on a page that has
-   * just told them the assessment is over. The brief is explicit that the
-   * partial answers are kept, so the constraint has to come off.
-   */
+  
   function autoSubmit(reason) {
     if (finished) return;
     finished = true;
@@ -115,8 +71,8 @@
     marker.value = reason || 'anti_cheat_limit';
     form.appendChild(marker);
 
-    // The form's own confirm dialog must not stand in the way of a submit the
-    // student did not ask for.
+    
+    
     form.removeAttribute('data-confirm-message');
     form.dataset.confirmed = 'true';
 
@@ -124,7 +80,7 @@
     else form.submit();
   }
 
-  // ----------------------------------------------------------------- reporting
+  
 
   function report(type, detail) {
     if (finished || reporting) return;
@@ -158,8 +114,8 @@
             final: true,
             onAcknowledge: function () { autoSubmit('anti_cheat_limit'); }
           });
-          // Submit even if the dialog is never acknowledged — a student who
-          // walks away must not leave the sitting open indefinitely.
+          
+          
           window.setTimeout(function () { autoSubmit('anti_cheat_limit'); }, 8000);
           return;
         }
@@ -179,14 +135,14 @@
       });
   }
 
-  // -------------------------------------------------------------- the watchers
+  
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) report('tab_switch', 'The assessment tab was hidden.');
   });
 
   window.addEventListener('blur', function () {
-    // Focus moving to an element inside the page is not leaving the page.
+    
     if (document.hasFocus()) return;
     report('window_blur', 'The assessment window lost focus.');
   });
@@ -229,14 +185,14 @@
     }
   });
 
-  // A normal submit ends the sitting: no warning should fire while the page is
-  // unloading, or the student would see a violation for finishing properly.
-  //
-  // Not the FIRST submit event, though, when the form asks "are you sure?"
-  // (data-confirm-message, public/js/main.js): that one is stopped to show the
-  // dialog, and a student who presses Cancel is still sitting the assessment.
-  // Ending the sitting there switched the watcher off for the rest of it. The
-  // confirmed submit comes through again with data-confirmed="true".
+  
+  
+  
+  
+  
+  
+  
+  
   form.addEventListener('submit', function () {
     if (form.getAttribute('data-confirm-message') && form.dataset.confirmed !== 'true') return;
     finished = true;

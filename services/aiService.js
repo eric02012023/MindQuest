@@ -1,14 +1,4 @@
-/**
- * File: services/aiService.js
- * Purpose: AI service layer for MindQuest. Handles AI-driven assessment generation,
- *          module generation from assessment results, and essay grading.
- *          Uses OpenAI API when configured, falls back to built-in mock generation.
- *
- * Environment variables:
- *   AI_PROVIDER   - 'openai' or 'mock' (default: 'mock')
- *   OPENAI_API_KEY - OpenAI API key (required when AI_PROVIDER=openai)
- *   AI_MODEL       - Model name (default: 'gpt-4o-mini')
- */
+
 
 require('dotenv').config();
 
@@ -16,18 +6,16 @@ const AI_PROVIDER = String(process.env.AI_PROVIDER || 'mock').toLowerCase();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const AI_MODEL = process.env.AI_MODEL || 'gpt-4o-mini';
 
-// ============================================================================
-// OpenAI integration (used when AI_PROVIDER === 'openai' and key is set)
-// ============================================================================
+
 
 async function callOpenAI(systemPrompt, userPrompt, options = {}) {
-  // max_tokens is a cap on the ANSWER, and a JSON answer that hits the cap comes
-  // back truncated — which fails as "invalid JSON" rather than as a length error.
-  // A 30-item assessment needs far more room than the 4,000 that was fine for 10,
-  // so callers that ask for a lot of output raise it.
-  //
-  // temperature: writing questions wants a little variety; CHECKING an answer
-  // key wants none (0), the same answer every time.
+  
+  
+  
+  
+  
+  
+  
   const { maxTokens = 4000, temperature = 0.7 } = options;
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -71,24 +59,12 @@ async function callOpenAI(systemPrompt, userPrompt, options = {}) {
   }
 }
 
-/**
- * Transcribe a page image to plain text using the same OpenAI account and
- * client config as everything else here (Section 6: one provider only).
- *
- * This is the OCR path for scanned handouts — PDFs that are photographs of
- * paper and so carry no text layer. gpt-4o-mini is multimodal, so no separate
- * OCR engine or native dependency is needed.
- *
- * Measured on this project's own scans: ~3.6s and roughly $0.004 per page.
- *
- * @param {string} dataUrl a data:image/png;base64,... page render
- * @returns {Promise<{text: string, tokensUsed: number}>}
- */
+
 async function transcribeImage(dataUrl) {
-  // Deliberately NO "output NO_TEXT if empty" escape hatch. An earlier version
-  // offered one and the model took it on diagram-heavy pages, returning NO_TEXT
-  // for a page whose labels it transcribed perfectly well once the escape was
-  // removed. Emptiness is detected by the caller from the length of the result.
+  
+  
+  
+  
   const systemPrompt = 'You transcribe page images into plain text for study material. '
     + 'Transcribe every word you can read, including labels inside diagrams, tables, boxes and figures. '
     + 'Preserve the natural reading order. Output only the transcribed text, with no commentary, '
@@ -117,17 +93,14 @@ async function transcribeImage(dataUrl) {
 
   const data = await response.json();
   let text = data.choices?.[0]?.message?.content || '';
-  // The model still tends to wrap transcriptions in a markdown fence.
+  
   text = text.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
-  // Guard against a model that describes the page instead of transcribing it.
+  
   if (/^(no (readable )?text|this (page|image) (is|contains|appears))/i.test(text)) text = '';
   return { text, tokensUsed: data.usage?.total_tokens || 0 };
 }
 
-/**
- * Whether the OpenAI integration is usable. Never throws — a bad/missing
- * config must degrade to the mock generators, not 500 the calling route.
- */
+
 function isOpenAIConfigured() {
   try {
     return AI_PROVIDER === 'openai' && OPENAI_API_KEY.length > 10;
@@ -136,9 +109,7 @@ function isOpenAIConfigured() {
   }
 }
 
-// ============================================================================
-// MOCK generators (built-in fallback — no API key needed)
-// ============================================================================
+
 
 const QUESTION_TYPES = ['Multiple Choice', 'True or False', 'Identification'];
 
@@ -151,7 +122,7 @@ function generateMockQuestions(subject, levelGroup, count = 20) {
   const levelLabel = levelGroup || 'General';
   const subjectName = subject || 'General Subject';
 
-  // Distribute question types: ~10 MC, ~5 TF, ~5 Identification
+  
   const distribution = [];
   for (let i = 0; i < Math.ceil(count * 0.5); i++) distribution.push('Multiple Choice');
   for (let i = 0; i < Math.ceil(count * 0.25); i++) distribution.push('True or False');
@@ -271,20 +242,9 @@ function generateMockEssayGrade(question, studentAnswer) {
   };
 }
 
-// ============================================================================
-// PUBLIC API — These are the functions other modules call
-// ============================================================================
 
-/**
- * Generate a 20-question mixed-type assessment from module content.
- *
- * @param {Object} options
- * @param {string} options.moduleContent - Text content or title of the source module
- * @param {string} options.subject - Subject name
- * @param {string} options.levelGroup - Education level group (Pre School, Primary, etc.)
- * @param {number} [options.questionCount=20] - Number of questions to generate
- * @returns {Promise<{questions: Array, tokensUsed: number, provider: string, model: string}>}
- */
+
+
 async function generateAssessmentFromModule(options = {}) {
   const { moduleContent, subject, levelGroup, questionCount = 20 } = options;
 
@@ -314,7 +274,7 @@ Make questions perfectly appropriate for the student's education level.`;
         throw new Error('AI returned no questions');
       }
 
-      // Validate and normalize each question
+      
       const validated = questions.slice(0, questionCount).map((q, i) => ({
         question_text: q.question_text || `Question ${i + 1}`,
         question_type: QUESTION_TYPES.includes(q.question_type) ? q.question_type : 'Multiple Choice',
@@ -333,57 +293,28 @@ Make questions perfectly appropriate for the student's education level.`;
     }
   }
 
-  // Mock fallback
+  
   const questions = generateMockQuestions(subject, levelGroup, questionCount);
   return { questions, tokensUsed: 0, provider: 'mock', model: 'built-in' };
 }
 
-// ============================================================================
-// Pre/Post assessment generation from handouts (overhaul Phase 5)
-// ============================================================================
 
-/**
- * The question types each kind of assessment may use.
- *
- * These are a REQUIREMENT, not a preference, and they differ per assessment kind:
- *
- *   Pre-Assessment / Post-Assessment  Multiple Choice only.
- *       Both are marked automatically and the Post reuses the Pre's exact items
- *       to measure improvement, so every item has to be gradeable the same way
- *       twice with no judgement involved.
- *
- *   Module assessment (written by a tutor)  Multiple Choice and True or False.
- *       Essay is deliberately NOT here: it needs an AI grader, which makes a
- *       tutor's own quiz depend on a network call and a model's opinion.
- *
- * Fill in the blank is gone from every assessment: no assessment may be created
- * with it, by hand or by AI. Questions of that type written before it was
- * removed still grade (gradeObjectiveAnswer in lib/data.js), so an old
- * assessment a student has open does not break.
- */
+
+
 const PRE_POST_QUESTION_TYPES = ['multiple_choice'];
 const MODULE_QUESTION_TYPES = ['multiple_choice', 'true_false'];
 
-/**
- * Kept as the module-assessment set under its old name: every existing caller
- * that imports SPEC_QUESTION_TYPES is a tutor-side path.
- */
+
 const SPEC_QUESTION_TYPES = MODULE_QUESTION_TYPES;
 
 const { PRE_ASSESSMENT_ITEM_COUNT } = require('../config/assessmentDefaults');
 
-/**
- * How many of each type to ask for, given a total item count.
- *
- * @param {number} itemCount
- * @param {string} [requestedType='mixed']  one allowed type, or 'mixed'
- * @param {string[]} [allowedTypes]         the types this assessment may use
- */
+
 function planQuestionMix(itemCount, requestedType = 'mixed', allowedTypes = MODULE_QUESTION_TYPES) {
   const total = Math.max(1, Number(itemCount) || 10);
   const types = (allowedTypes && allowedTypes.length) ? allowedTypes : MODULE_QUESTION_TYPES;
 
-  // A single-type assessment (a Pre-Assessment, say) needs no mixing at all.
+  
   if (types.length === 1) return { [types[0]]: total };
 
   if (requestedType && requestedType !== 'mixed' && types.includes(requestedType)) {
@@ -391,7 +322,7 @@ function planQuestionMix(itemCount, requestedType = 'mixed', allowedTypes = MODU
   }
 
   if (total < types.length) {
-    // Not enough room for all of them; lead with the most gradeable types.
+    
     const mix = {};
     for (let i = 0; i < total; i++) {
       const type = types[i];
@@ -400,7 +331,7 @@ function planQuestionMix(itemCount, requestedType = 'mixed', allowedTypes = MODU
     return mix;
   }
 
-  // Multiple choice carries half; the rest is split evenly over the others.
+  
   const mix = {};
   const primary = types[0];
   mix[primary] = Math.max(1, Math.round(total * 0.5));
@@ -408,13 +339,13 @@ function planQuestionMix(itemCount, requestedType = 'mixed', allowedTypes = MODU
   const share = Math.max(1, Math.floor((total - mix[primary]) / rest.length));
   rest.forEach((type) => { mix[type] = share; });
 
-  // Rounding can overshoot or undershoot; settle the difference on the primary.
+  
   const diff = total - Object.values(mix).reduce((a, b) => a + b, 0);
   mix[primary] = Math.max(1, mix[primary] + diff);
   return mix;
 }
 
-/** Compare answer texts ignoring case, spacing and edge punctuation. */
+
 function normaliseChoice(text) {
   return String(text || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/^[."'(\[]+|[.,;:!?"')\]]+$/g, '').trim();
 }
@@ -461,25 +392,21 @@ function arithmeticKey(questionText, choices = []) {
   return hits.length === 1 ? hits[0].label : '';
 }
 
-/**
- * Normalise and validate one AI-returned question.
- * Returns null when the question cannot be trusted, so bad items are dropped
- * rather than stored and shown to a student.
- */
+
 function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_QUESTION_TYPES) {
   if (!raw || typeof raw !== 'object') return null;
 
   const questionText = String(raw.question_text || '').trim();
   if (questionText.length < 5) return null;
 
-  // A type the assessment is not allowed to use is dropped, not converted: a
-  // Pre-Assessment that quietly accepted a True/False item because the model
-  // felt like writing one would break the Post-Assessment comparison later.
+  
+  
+  
   const type = allowedTypes.includes(raw.question_type) ? raw.question_type : null;
   if (!type) return null;
 
-  // The model must attribute each question to a real handout, otherwise weak-area
-  // reporting would point at nothing. An unknown id is not guessed at.
+  
+  
   const sourceId = Number(raw.source_handout_id);
   const source = allowedHandouts.get(sourceId);
   if (!source) return null;
@@ -497,20 +424,20 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
   };
 
   if (type === 'multiple_choice') {
-    // Reject an item whose choices are baked into the question text — it renders
-    // as the options listed twice, once inside the sentence and once as the real
-    // radio buttons. Observed in a live run.
+    
+    
+    
     if (/\bA[).]\s.{2,}\bB[).]\s/s.test(questionText)) return null;
 
-    // The model often prefixes its own label ("A. Confidentiality..."), which
-    // would render as "A) A. Confidentiality..." once we add the real label.
+    
+    
     const stripLabel = (text) => String(text || '').trim().replace(/^\(?[A-Ea-e][).:]\s+/, '').trim();
 
     let choices = Array.isArray(raw.choices) ? raw.choices.map(stripLabel).filter(Boolean) : [];
     if (choices.length < 2) return null;
 
-    // Reject duplicate options. Observed in practice: the model returned A and C
-    // as the same string, which makes the item unanswerable.
+    
+    
     const seen = new Set();
     const unique = [];
     for (const choice of choices) {
@@ -525,7 +452,7 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
     const labels = ['A', 'B', 'C', 'D', 'E'].slice(0, choices.length);
     base.choices = choices.slice(0, 5).map((text, i) => ({ label: labels[i], text }));
 
-    // Accept either a letter or the full answer text, and store the letter.
+    
     const rawAnswer = String(raw.correct_answer || '').trim();
     let letter = /^[A-E]$/i.test(rawAnswer) ? rawAnswer.toUpperCase() : '';
     if (!letter) {
@@ -535,17 +462,17 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
       if (idx >= 0) letter = base.choices[idx].label;
     }
 
-    // The model also writes the answer out in words (correct_choice_text). The
-    // letter is where a slip happens — "B" written for the third choice — and
-    // that slip is a correct answer marked wrong. When the words name a
-    // different choice, the words win; verifyAnswerKeys then checks it again.
+    
+    
+    
+    
     const answerText = stripLabel(raw.correct_choice_text || '');
     if (answerText) {
       const byText = base.choices.find((c) => normaliseChoice(c.text) === normaliseChoice(answerText));
       if (byText && byText.label !== letter) letter = byText.label;
     }
 
-    // A bare sum is worked out rather than trusted.
+    
     const worked = arithmeticKey(questionText, base.choices);
     if (worked === '') return null;
     if (worked) letter = worked;
@@ -563,7 +490,7 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
     return base;
   }
 
-  // essay — only reachable when the caller allows it
+  
   const rubric = String(raw.answer_rubric || raw.expected_answer || '').trim();
   if (rubric.length < 10) return null;
   base.answer_rubric = rubric;
@@ -571,28 +498,7 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
   return base;
 }
 
-/**
- * Check a batch of generated questions' answer keys before anyone is graded
- * against them.
- *
- * WHY. The questions are written by a model, and a model writing questions
- * sometimes gets its own key wrong, or writes a question with two right answers.
- * Both were found on live: "Which of the following is a negative integer?"
- * offered -2 AND -3 with only -3 accepted, so a student who picked -2 — a
- * correct answer — was marked wrong. Grading itself was exact; the key was not.
- *
- * HOW. A second, independent pass answers every question from the same handout
- * with temperature 0 and is NOT shown the key. It lists every choice that is
- * correct. A question survives only when exactly one choice is correct and it is
- * the key. Anything else — the checker disagrees, finds two right answers, or
- * finds none — is dropped, never "fixed" by guessing; the top-up pass in
- * generateAssessmentFromHandouts writes replacements.
- *
- * If the check itself cannot run (network, malformed reply), the batch is kept
- * as it was: a failed check must not empty an assessment a class is waiting on.
- *
- * @returns {Promise<{kept: object[], rejected: object[], checked: boolean, tokensUsed: number}>}
- */
+
 async function verifyAnswerKeys(questions = [], handout = {}) {
   if (!questions.length) return { kept: [], rejected: [], checked: false, tokensUsed: 0 };
 
@@ -644,7 +550,7 @@ ${lines.join('\n')}`;
   const rejected = [];
   questions.forEach((q, i) => {
     const row = byNumber.get(i + 1);
-    // No verdict for this one: keep it rather than guess.
+    
     if (!row || !Array.isArray(row.correct)) { kept.push(q); return; }
     const found = [...new Set(row.correct.map((value) => String(value || '').trim()).filter(Boolean))];
     const key = String(q.correct_answer || '').trim();
@@ -657,27 +563,12 @@ ${lines.join('\n')}`;
   return { kept, rejected, checked: true, tokensUsed };
 }
 
-/**
- * Generate assessment questions from a subject's handouts.
- *
- * Each handout is presented to the model with its real database id, and every
- * returned question must cite one of those ids. That citation is what powers the
- * weak-area view later ("weak in Module 2 — Handout: Fractions"), so questions
- * that cite an unknown handout are discarded rather than stored unattributed.
- *
- * @param {object} options
- * @param {Array<{handout_id:number, module_id:number, order_number:number, module_title:string, file_original_name:string, extracted_text:string}>} options.handouts
- * @param {string} options.subject
- * @param {string} [options.yearLevel]
- * @param {number} [options.itemCount=30] defaults to the required Pre-Assessment size
- * @param {string} [options.questionType='mixed'] one of the four types, or 'mixed'
- * @returns {Promise<{questions: Array, tokensUsed: number, provider: string, model: string, requested: number, kept: number, topUpUsed: boolean}>}
- */
+
 async function generateAssessmentFromHandouts(options = {}) {
   const {
     handouts = [], subject, yearLevel, itemCount = PRE_ASSESSMENT_ITEM_COUNT, questionType = 'mixed',
-    // Which types this assessment may contain. Defaults to the module set;
-    // the Pre/Post generator passes PRE_POST_QUESTION_TYPES.
+    
+    
     allowedTypes = MODULE_QUESTION_TYPES
   } = options;
 
@@ -691,32 +582,32 @@ async function generateAssessmentFromHandouts(options = {}) {
 
   const allowed = new Map(usable.map((h) => [Number(h.handout_id), h]));
 
-  // One item can be worth ~120 output tokens with its choices, rubric and
-  // explanation, so the ceiling scales with the request instead of sitting at the
-  // 4,000 that only ever had to hold 10 items. A JSON reply that hits the cap comes
-  // back truncated, which surfaces as "invalid JSON" rather than as a length error.
+  
+  
+  
+  
   const tokenBudget = (n) => Math.min(16000, 1200 + n * 240);
 
-  // One call per handout, not one call for all of them.
-  //
-  // The single-call version stated a per-handout quota in the prompt and the model
-  // simply did not honour it: measured runs came back 16/11/3 and 15/2/13 across
-  // three handouts, with the type mix drifting to 10 essays out of 30. A quota a
-  // model may ignore is not a quota. Giving each handout its own call makes the
-  // split structural — each reply can only cite the one handout it was given — and
-  // the calls run concurrently, so N handouts cost roughly the wall time of one.
+  
+  
+  
+  
+  
+  
+  
+  
   const quotas = spreadEvenly(itemCount, usable.length);
   const seen = new Set();
   let tokensUsed = 0;
-  // Items the answer-key check took out (verifyAnswerKeys).
+  
   let rejectedByCheck = 0;
 
-  /** Validate a reply, check its answer key, and keep what survives. */
+  
   const takeChecked = async (rawQuestions, slot) => {
     const fresh = [];
     absorb(rawQuestions, fresh);
-    // Everything written for this handout so far, kept or not, so a top-up is
-    // told not to write it again.
+    
+    
     slot.written.push(...fresh.map((q) => q.question_text));
     const check = await verifyAnswerKeys(fresh, slot.handout);
     tokensUsed += check.tokensUsed;
@@ -731,8 +622,8 @@ async function generateAssessmentFromHandouts(options = {}) {
     for (const raw of Array.isArray(rawQuestions) ? rawQuestions : []) {
       const validated = validateGeneratedQuestion(raw, allowed, allowedTypes);
       if (!validated) continue;
-      // Duplicates are checked across the whole exam, not per handout: two
-      // handouts covering the same ground do produce the same question.
+      
+      
       const key = normalizeQuestionKey(validated.question_text);
       if (seen.has(key)) continue;
       seen.add(key);
@@ -742,10 +633,10 @@ async function generateAssessmentFromHandouts(options = {}) {
 
   const perHandout = usable.map((handout, i) => ({ handout, wanted: quotas[i], questions: [], written: [] }));
 
-  // Ask each handout for a little more than its quota. Validation rejects the
-  // occasional malformed item (identical choices, an answer letter matching no
-  // choice, an essay with no rubric), so asking for exactly N reliably lands under
-  // N — measured 29 of 30 twice. The surplus is trimmed by the balancing step.
+  
+  
+  
+  
   await runWithConcurrency(perHandout.filter((slot) => slot.wanted > 0), 4, async (slot) => {
     const batch = slot.wanted + 2;
     const prompts = buildHandoutPrompts({
@@ -758,15 +649,15 @@ async function generateAssessmentFromHandouts(options = {}) {
       tokensUsed += call.tokensUsed;
       await takeChecked(call.result.questions, slot);
     } catch (error) {
-      // One unreadable handout must not cost the whole assessment.
+      
       console.error(`[aiService] generation failed for handout ${slot.handout.handout_id}:`, error.message);
     }
   });
 
-  // Any handout still short gets a top-up, again in parallel — at most
-  // TOP_UP_ROUNDS of them, and another only for a handout the last one actually
-  // added to: a model that writes nothing new will not on the tenth try either,
-  // and the student may be waiting.
+  
+  
+  
+  
   let short = perHandout.filter((slot) => slot.questions.length < slot.wanted);
   const topUpUsed = short.length > 0;
   for (let round = 1; round <= TOP_UP_ROUNDS && short.length; round++) {
@@ -790,8 +681,8 @@ async function generateAssessmentFromHandouts(options = {}) {
     short = short.filter((slot) => slot.questions.length < slot.wanted && slot.questions.length > before.get(slot));
   }
 
-  // Interleave by handout so the exam alternates sources instead of running three
-  // blocks; a student who gives up halfway has still been measured on every module.
+  
+  
   const candidates = interleaveByHandout(perHandout);
   if (!candidates.length) {
     throw new Error('The AI did not return any usable questions. Please try again.');
@@ -814,29 +705,20 @@ async function generateAssessmentFromHandouts(options = {}) {
   };
 }
 
-/**
- * How freely questions are written. Lower than the 0.7 everything else uses: a
- * question is only useful when its key is right, and a cooler model slips less.
- */
+
 const GENERATION_TEMPERATURE = 0.4;
 
-/**
- * The top-up asks for questions the first pass did NOT write, so it runs warmer.
- * At 0.4 it wrote the first pass's questions again word for word — 9 of 11 on
- * the Grade 5 Reading & Writing handout — and every one was thrown away as a
- * duplicate, leaving that Pre-Assessment at 20 items. Variety is this pass's
- * whole job; its keys are still checked at temperature 0 (verifyAnswerKeys).
- */
+
 const TOP_UP_TEMPERATURE = 0.9;
 const TOP_UP_ROUNDS = 2;
 
-/** Split `total` into `parts` whole numbers that differ by at most one. */
+
 function spreadEvenly(total, parts) {
   const base = Math.floor(total / parts);
   return Array.from({ length: parts }, (_v, i) => base + (i < total % parts ? 1 : 0));
 }
 
-/** Run an async job over items, at most `limit` in flight. */
+
 async function runWithConcurrency(items, limit, job) {
   const queue = [...items];
   const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
@@ -848,7 +730,7 @@ async function runWithConcurrency(items, limit, job) {
   await Promise.all(workers);
 }
 
-/** One from each handout in turn, so the exam does not run in per-handout blocks. */
+
 function interleaveByHandout(slots) {
   const out = [];
   const depth = Math.max(0, ...slots.map((s) => s.questions.length));
@@ -860,18 +742,7 @@ function interleaveByHandout(slots) {
   return out;
 }
 
-/**
- * Choose which `itemCount` of the candidates make the final exam.
- *
- * Taking the first N in arrival order looked fine and was not: the model emits
- * questions in blocks, so a 30-item cut of 36 candidates came back with 11 essays
- * instead of 6, and 3 questions from the last handout instead of 12 — the tail of
- * the reply is always the same handout, so truncation silently starved it. That
- * defeats the weak-area view, which is only as good as its coverage.
- *
- * So the cut respects both quotas first, then relaxes them rather than returning
- * short: a slightly lopsided exam beats a 27-item one.
- */
+
 function selectBalancedQuestions(candidates, itemCount, typeMix, usable) {
   const typeQuota = { ...typeMix };
   const handoutQuota = {};
@@ -895,26 +766,20 @@ function selectBalancedQuestions(candidates, itemCount, typeMix, usable) {
   };
 
   sweep((q) => typeQuota[q.question_type] > 0 && handoutQuota[q.source_handout_id] > 0);
-  sweep((q) => typeQuota[q.question_type] > 0);   // type balance matters more than
-  sweep((q) => handoutQuota[q.source_handout_id] > 0); // even coverage
+  sweep((q) => typeQuota[q.question_type] > 0);   
+  sweep((q) => handoutQuota[q.source_handout_id] > 0); 
   sweep(() => true);
 
-  // Back to the order the model produced them in, which follows the handouts.
+  
   return chosen.sort((a, b) => a.index - b.index).map((c) => c.question);
 }
 
-/** Compare question texts ignoring case, punctuation and spacing. */
+
 function normalizeQuestionKey(text) {
   return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-/**
- * Build the system + user prompts for one handout's batch of questions.
- *
- * One handout per call is what makes the per-handout split reliable: the reply
- * cannot cite a handout it was never shown. Split out from the caller so the
- * top-up pass reuses the identical rules — two copies of this prompt would drift.
- */
+
 function buildHandoutPrompts({
   handout, wanted, questionType, subject, yearLevel,
   allowedTypes = MODULE_QUESTION_TYPES, avoidTexts = []
@@ -923,10 +788,10 @@ function buildHandoutPrompts({
   const mix = planQuestionMix(itemCount, questionType, allowedTypes);
   const mixText = Object.entries(mix).map(([type, n]) => `${n} x ${type}`).join(', ');
 
-  // The answer-key rules are stated only for the types this assessment may
-  // contain. Describing "essay" to a Pre-Assessment generator is an invitation
-  // to produce one, and every essay it produced would be validated away — paid
-  // for, then thrown out.
+  
+  
+  
+  
   const answerRules = {
     multiple_choice: '    * multiple_choice -> the letter of the correct choice ("A", "B", "C" or "D")',
     true_false: '    * true_false      -> exactly "true" or "false"',
@@ -935,7 +800,7 @@ function buildHandoutPrompts({
   const typeList = allowedTypes.map((type) => `"${type}"`).join(', ');
   const answerLines = allowedTypes.map((type) => answerRules[type]).filter(Boolean).join('\n');
 
-  // No assessment has fill-in-the-blank items any more.
+  
   const extraRules = ['- Never write a fill-in-the-blank question. Ask it as multiple_choice instead.'];
   if (allowedTypes.includes('essay')) {
     extraRules.push('- "answer_rubric": for essay ONLY, the key points a correct answer must mention, so it can be graded automatically.');
@@ -992,15 +857,7 @@ ${String(handout.extracted_text).trim()}`;
   return { systemPrompt, userPrompt };
 }
 
-/**
- * Grade an essay/identification answer using AI.
- *
- * @param {Object} options
- * @param {string} options.questionText - The question
- * @param {string} options.rubric - Expected answer or grading rubric
- * @param {string} options.studentAnswer - Student's submitted answer
- * @returns {Promise<{score: number, maxScore: number, feedback: string, tokensUsed: number, provider: string}>}
- */
+
 async function gradeEssayAnswer(options = {}) {
   const { questionText, rubric, studentAnswer } = options;
 
@@ -1031,15 +888,12 @@ Student's answer: ${studentAnswer || '(no answer)'}`;
     }
   }
 
-  // Mock fallback
+  
   const mock = generateMockEssayGrade(questionText, studentAnswer);
   return { ...mock, tokensUsed: 0, provider: 'mock' };
 }
 
-/**
- * Check if the AI service is configured and ready.
- * @returns {{ provider: string, configured: boolean, model: string }}
- */
+
 function getAiStatus() {
   return {
     provider: AI_PROVIDER,
@@ -1057,7 +911,7 @@ module.exports = {
   generateFocusMaterial,
   planQuestionMix,
   validateGeneratedQuestion,
-  // The answer-key check every generated question passes (and scripts/audit-answer-keys.js).
+  
   verifyAnswerKeys,
   arithmeticKey,
   SPEC_QUESTION_TYPES,
@@ -1067,17 +921,11 @@ module.exports = {
   getAiStatus
 };
 
-/**
- * Batch-grade essay answers. Returns array of { isCorrect, score, feedback } for each essay.
- * Uses AI if configured, otherwise falls back to semantic text comparison.
- *
- * @param {Array<{questionText: string, studentAnswer: string, expectedAnswer: string}>} essays
- * @returns {Promise<Array<{isCorrect: boolean, score: number, feedback: string}>>}
- */
+
 async function gradeEssayAnswers(essays = []) {
   if (!essays.length) return [];
 
-  // Try AI batch grading via a single API call
+  
   if (isOpenAIConfigured()) {
     try {
       const systemPrompt = `You are an expert teacher grading student essay answers. For each question, determine if the student's answer conveys the same idea as the expected answer. It does NOT need to be an exact match — if the core idea is similar or correct, mark it as correct.
@@ -1104,19 +952,19 @@ Return a JSON object with a "results" array. Each result must have:
     }
   }
 
-  // Fallback: simple semantic comparison (case-insensitive, keyword overlap)
+  
   return essays.map(e => {
     const student = String(e.studentAnswer || '').trim().toLowerCase();
     const expected = String(e.expectedAnswer || '').trim().toLowerCase();
     if (!student || student.length < 3) return { isCorrect: false, score: 0, feedback: 'No meaningful answer provided.' };
     if (!expected) return { isCorrect: true, score: 1, feedback: 'No expected answer to compare.' };
 
-    // Check if student answer contains the key words from expected answer
+    
     const expectedWords = expected.split(/\s+/).filter(w => w.length > 3);
     const matchingWords = expectedWords.filter(w => student.includes(w));
     const matchRatio = expectedWords.length > 0 ? matchingWords.length / expectedWords.length : 0;
 
-    // 50% keyword overlap = correct
+    
     const isCorrect = matchRatio >= 0.5;
     return {
       isCorrect,
@@ -1126,31 +974,9 @@ Return a JSON object with a "results" array. Each result must have:
   });
 }
 
-// ============================================================================
-// Weak-topic focus material (upgrade Section 6.3)
-// ============================================================================
 
-/**
- * Write focus material for one student's weak topics, from the handouts those
- * topics came from.
- *
- * Called after a Pre-Assessment is graded. It is allowed to fail: the caller
- * (lib/focusHandouts.js) falls back to a template built from the same measured
- * data, so a missing API key costs polish, not the handout.
- *
- * The prompt is deliberately narrow — it is given ONLY the handout text behind
- * the topics the student actually got wrong, so it cannot wander off into
- * material the student has not been taught.
- *
- * @param {object} options
- * @param {string} options.studentName
- * @param {string} options.subject
- * @param {string} [options.yearLevel]
- * @param {number} options.percentage      the Pre-Assessment result
- * @param {Array<{topic:string, correct:number, total:number, percentage:number}>} options.topics
- * @param {Array<{module_title:string, file_original_name:string, extracted_text:string}>} options.sources
- * @returns {Promise<string|null>} plain-text handout, or null when unavailable
- */
+
+
 async function generateFocusMaterial(options = {}) {
   const { studentName, subject, yearLevel, percentage, topics = [], sources = [] } = options;
   if (!isOpenAIConfigured() || !topics.length) return null;
@@ -1159,9 +985,9 @@ async function generateFocusMaterial(options = {}) {
     .map((t, i) => `${i + 1}. ${t.topic} — scored ${t.correct}/${t.total} (${t.percentage}%)`)
     .join('\n');
 
-  // Cap the source text. A whole subject's handouts would blow the context
-  // window, and the first few thousand characters of the RIGHT handout is what
-  // matters here, not completeness.
+  
+  
+  
   const sourceText = sources
     .slice(0, 4)
     .map((source) => `### ${source.module_title}${source.file_original_name ? ` — ${source.file_original_name}` : ''}\n`
