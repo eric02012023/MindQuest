@@ -53,7 +53,8 @@ async function main() {
 
       const tables = [
         'payment_requests', 'payment_entries', 'app_notifications',
-        'assessment_violations', 'focus_handouts'
+        'assessment_violations', 'focus_handouts',
+        'level_modules', 'level_module_sections'
       ];
       const rows = await pool.request().query(
         `SELECT name FROM sys.tables WHERE name IN (${tables.map((t) => `'${t}'`).join(',')}) ORDER BY name`

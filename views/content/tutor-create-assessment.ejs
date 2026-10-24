@@ -10,24 +10,36 @@
   // A module assessment uses Multiple Choice and True or False. Essay and Fill
   // in the Blank are gone; there is no "Question type" to pick either — the
   // assessment's type is read from the questions themselves when it is saved.
+  //
+  // The form belongs to a level module (routes/tutor.js, createAssessmentViewData):
+  // it posts there, and the AI drafts from its lesson at its level.
+  const base = typeof formBase === 'undefined' ? `/tutor/modules/${mod.id}` : formBase;
+  const lm = typeof levelModule === 'undefined' ? null : levelModule;
+  const fromLesson = typeof draftsFromLesson !== 'undefined' && draftsFromLesson;
 %>
+<% if (lm) { %><link rel="stylesheet" href="/css/level-modules.css" /><% } %>
 <section class="page-stack">
   <div class="toolbar-card split">
     <div>
       <h2>Create Assessment</h2>
       <p class="res-subtitle">
         <%= mod.subject_name %> &middot; Module <%= mod.order_number %> — <%= mod.title %>
+        <% if (lm) { %>&middot; <span class="lm-level lm-level-<%= lm.level.toLowerCase() %>"><%= lm.level %></span><% } %>
       </p>
     </div>
-    <a class="btn btn-secondary" href="/tutor/modules/<%= mod.id %>">Cancel</a>
+    <a class="btn btn-secondary" href="<%= base %>">Cancel</a>
   </div>
 
   <%# ---- Draft with AI ----------------------------------------------------- %>
   <section class="panel-card">
     <div class="panel-card-head">
-      <h3>Draft from this module's handouts</h3>
+      <h3><%= fromLesson ? `Draft from the ${lm.level} lesson` : lm ? `Draft for ${lm.level} from the handouts` : "Draft from this module's handouts" %></h3>
       <span class="badge <%= draftableHandouts.length ? 'badge-success' : 'badge-warning' %>">
-        <%= draftableHandouts.length %> readable handout<%= draftableHandouts.length === 1 ? '' : 's' %>
+        <% if (fromLesson) { %>
+          <%= draftableHandouts.length %> lesson part<%= draftableHandouts.length === 1 ? '' : 's' %>
+        <% } else { %>
+          <%= draftableHandouts.length %> readable handout<%= draftableHandouts.length === 1 ? '' : 's' %>
+        <% } %>
       </span>
     </div>
     <p class="table-note">
@@ -41,7 +53,7 @@
         Ask Admin to upload a text handout, or to run "Read with AI" on a scanned one.
       </p>
     <% } else { %>
-      <form method="post" action="/tutor/modules/<%= mod.id %>/draft-assessment" class="stack-form draft-form">
+      <form method="post" action="<%= base %>/draft-assessment" class="stack-form draft-form">
         <div class="draft-row">
           <label>Question type
             <select name="question_type">
@@ -63,7 +75,7 @@
 
   <%# ---- The builder ------------------------------------------------------- %>
   <section class="panel-card">
-    <form id="assessment-form" method="post" action="/tutor/modules/<%= mod.id %>/create-assessment" class="stack-form">
+    <form id="assessment-form" method="post" action="<%= base %>/create-assessment" class="stack-form">
       <label>Assessment title
         <input type="text" name="title" id="assessment-title" value="<%= f.title || '' %>"
                placeholder="e.g. Module <%= mod.order_number %> Activity" required />
@@ -87,7 +99,7 @@
 
       <div class="row-actions">
         <button type="submit" class="btn btn-primary" id="submit-assessment-btn">Create Assessment</button>
-        <a href="/tutor/modules/<%= mod.id %>" class="btn btn-secondary">Cancel</a>
+        <a href="<%= base %>" class="btn btn-secondary">Cancel</a>
       </div>
     </form>
   </section>

@@ -101,6 +101,15 @@ const {
   deleteModule,
   getAllTutorAssessmentsAdmin,
   getStudentResultsAdmin,
+  // Level modules: each module written again for each level (lib/levelModules.js)
+  LEVELS,
+  normalizeLevel,
+  getLevelModulesBySource,
+  getLevelModuleDetail,
+  withLevelModuleStaleFlag,
+  ensureLevelModule,
+  queueLevelModule,
+  getTutorAssessmentsByModule,
   // --- Management upgrade -------------------------------------------------
   getUsersPaged,
   countStudentsNeedingTutor,
@@ -2279,7 +2288,81 @@ function createAdminRouter(role) {
         // so this is where they should see the assessment being built from them —
         // this module's grade's assessment.
         preStatus: await getPreAssessmentStatus(mod.subject_id, mod.grade_level),
-        warmup: getWarmupState(mod.subject_id, mod.grade_level)
+        warmup: getWarmupState(mod.subject_id, mod.grade_level),
+        // The module written for each level (a level not made yet is null),
+        // flagged when its handouts changed after it was written.
+        levelModules: await levelModulesWithStaleFlags(mod.id),
+        levels: LEVELS
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  /** One module's level modules by level, each flagged when its handouts changed since. */
+  async function levelModulesWithStaleFlags(moduleId) {
+    const byLevel = (await getLevelModulesBySource([moduleId])).get(Number(moduleId)) || {};
+    const flagged = {};
+    for (const level of LEVELS) {
+      flagged[level] = byLevel[level] ? await withLevelModuleStaleFlag(byLevel[level]) : null;
+    }
+    return flagged;
+  }
+
+  /**
+   * Write one level of a module — or write it again. Only the main admin: a
+   * second writing replaces the lesson every student of that level reads (their
+   * activities stay). It runs in the background; the page shows its progress.
+   */
+  router.post('/modules/:id/levels/:level/make', async (req, res, next) => {
+    const back = `${basePath}/modules/${Number(req.params.id) || ''}`;
+    try {
+      if (req.session.user.role !== 'admin') {
+        setFlash(req, 'error', 'Only the main admin can write level modules.');
+        return res.redirect(back);
+      }
+      const mod = await getModuleById(Number(req.params.id));
+      if (!mod) {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(`${basePath}/subjects`);
+      }
+      const level = normalizeLevel(req.params.level);
+      if (!level) {
+        setFlash(req, 'error', 'Choose Beginner, Intermediate or Advance.');
+        return res.redirect(back);
+      }
+      const levelModule = await ensureLevelModule(mod.id, level);
+      if (levelModule.status === 'generating') {
+        setFlash(req, 'info', `The ${level} module is being written already.`);
+      } else {
+        queueLevelModule(levelModule.id, { force: true });
+        setFlash(req, 'success', `The ${level} module is being written. It is ready in a minute or two.`);
+      }
+      res.redirect(req.get('Referer') || back);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not write the level module.');
+      res.redirect(back);
+    }
+  });
+
+  // One level module: its lesson, the handouts and its activities (admin and assistant, to view)
+  router.get('/level-modules/:id', async (req, res, next) => {
+    try {
+      const levelModule = await getLevelModuleDetail(Number(req.params.id));
+      if (!levelModule) {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(`${basePath}/subjects`);
+      }
+      const assessments = (await getTutorAssessmentsByModule(levelModule.source.id))
+        .filter((a) => !a.level_module_id || Number(a.level_module_id) === Number(levelModule.id));
+      const shell = await buildShellData(req, {
+        pageTitle: `Module ${levelModule.source.order_number} — ${levelModule.level}`,
+        section: 'subjects',
+        contentView: '../content/level-module-detail',
+        levelModule: await withLevelModuleStaleFlag(levelModule),
+        handouts: await getModuleHandouts(levelModule.source.id),
+        assessments,
+        viewerRole: req.session.user.role,
+        moduleHref: `${basePath}/modules/${levelModule.source.id}`
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }

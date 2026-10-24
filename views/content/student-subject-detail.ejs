@@ -109,10 +109,23 @@
       <p class="table-note">Take the Pre-Assessment first: the Post-Assessment repeats it.</p>
     </section>
   <% } else if (preAssessmentDone) { %>
+    <%# Level modules (lib/levelModules.js): each module written again for the
+        level the Pre-Assessment placed this student at. That is where they read
+        and answer the activities; the office's modules below are to view. A
+        module with no level module for them (their month ended before it was
+        made) opens the office's module, activities and all, as it always did. %>
+    <% const entries = typeof levelEntries === 'undefined' ? [] : (levelEntries || []); %>
+    <% const myLevel = typeof placementLevel === 'undefined' ? null : placementLevel; %>
+    <% const levelOf = new Map(entries.map((entry) => [Number(entry.module.id), entry.levelModule])); %>
+    <link rel="stylesheet" href="/css/level-modules.css" />
     <section class="panel-card">
       <div class="panel-card-head">
-        <h3>Modules</h3>
-        <span class="badge badge-success">Unlocked</span>
+        <h3>Your Modules</h3>
+        <% if (myLevel) { %>
+          <span class="lm-level lm-level-<%= myLevel.toLowerCase() %>"><%= myLevel %></span>
+        <% } else { %>
+          <span class="badge badge-success">Unlocked</span>
+        <% } %>
       </div>
       <p class="table-note">
         Pre-Assessment done &mdash; <%= Number(preAssessmentDone.percentage).toFixed(1) %>%,
@@ -126,28 +139,61 @@
 
       <div class="module-grid">
         <% newModules.forEach((mod) => { %>
+          <% const mine = levelOf.get(Number(mod.id)) || null; %>
           <article class="module-card">
             <div class="module-card-head">
               <span class="module-number">Module <%= mod.order_number %></span>
-              <span class="badge <%= (mod.handouts || []).length ? 'badge-success' : 'badge-warning' %>">
-                <%= (mod.handouts || []).length %> handout<%= (mod.handouts || []).length === 1 ? '' : 's' %>
-              </span>
+              <% if (mine) { %>
+                <span class="lm-level lm-level-<%= mine.level.toLowerCase() %>"><%= mine.level %></span>
+              <% } else { %>
+                <span class="badge <%= (mod.handouts || []).length ? 'badge-success' : 'badge-warning' %>">
+                  <%= (mod.handouts || []).length %> handout<%= (mod.handouts || []).length === 1 ? '' : 's' %>
+                </span>
+              <% } %>
             </div>
             <h4><%= mod.title %></h4>
             <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
 
-            <%# The handout files themselves are NOT listed here. They belong to the
-                module, so they live inside it, under "Learning Handout" on
-                /student/modules/:id — one place to open a module's material
-                instead of two. %>
+            <% if (mine && mine.status !== 'ready') { %>
+              <p class="lm-level-card-meta"><%= mine.status === 'failed' ? 'Lesson not ready yet' : 'Lesson being prepared' %></p>
+            <% } %>
 
             <div class="module-card-foot">
-              <a class="btn btn-secondary btn-sm" href="/student/modules/<%= mod.id %>">Open Module</a>
+              <% if (mine) { %>
+                <a class="btn btn-primary btn-sm" href="/student/level-modules/<%= mine.id %>">Open Module</a>
+              <% } else { %>
+                <a class="btn btn-secondary btn-sm" href="/student/modules/<%= mod.id %>">Open Module</a>
+              <% } %>
             </div>
           </article>
         <% }) %>
       </div>
     </section>
+
+    <% if (newModules.some((mod) => levelOf.get(Number(mod.id)))) { %>
+      <section class="panel-card">
+        <div class="panel-card-head">
+          <h3>Module Handouts</h3>
+          <span class="badge badge-info">View only</span>
+        </div>
+        <div class="module-grid">
+          <% newModules.filter((mod) => levelOf.get(Number(mod.id))).forEach((mod) => { %>
+            <article class="module-card">
+              <div class="module-card-head">
+                <span class="module-number">Module <%= mod.order_number %></span>
+                <span class="badge <%= (mod.handouts || []).length ? 'badge-success' : 'badge-warning' %>">
+                  <%= (mod.handouts || []).length %> handout<%= (mod.handouts || []).length === 1 ? '' : 's' %>
+                </span>
+              </div>
+              <h4><%= mod.title %></h4>
+              <div class="module-card-foot">
+                <a class="btn btn-secondary btn-sm" href="/student/modules/<%= mod.id %>">View</a>
+              </div>
+            </article>
+          <% }) %>
+        </div>
+      </section>
+    <% } %>
 
     <%# --------------------------------------------------------------------
         Post-Assessment (overhaul Phase 8). It opens on its own at 12:01 AM on

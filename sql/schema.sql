@@ -1850,3 +1850,78 @@ BEGIN
     PRINT 'Warning: could not clear submissions.extra_json.visible_password: ' + ERROR_MESSAGE();
   END CATCH
 END;
+
+-- ---------------------------------------------------------------------------
+-- 45. Level modules: every module rewritten for each level.
+--
+-- After the Pre-Assessment a student is Beginner, Intermediate or Advance. The
+-- system writes each of the admin's modules again for that level, from the
+-- module's own handouts, and that is the module the student works in: the
+-- tutor's new activities go inside it and the student answers them there. The
+-- admin's module stays as it was, to view.
+--
+--   level_modules           one per module and level (uq_level_modules_source_level),
+--                           shared by every student of that level — not one per
+--                           student, so the 30 MB database and the AI bill grow
+--                           with the modules, not with the class
+--   level_module_sections   the lesson, one section per handout of the module;
+--                           source_handout_id keeps which handout it was written
+--                           from (no foreign key, like the other source ids)
+--   tutor_assessments.level_module_id
+--                           the level module an activity belongs to. NULL is an
+--                           activity written before level modules: every level
+--                           sees it, inside their own level module.
+--
+-- A removed module is archived, never deleted, so its level modules simply stop
+-- showing; the cascade only matters for a hard delete.
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('dbo.level_modules', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.level_modules (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    source_module_id INT NOT NULL,
+    level NVARCHAR(20) NOT NULL,
+    title NVARCHAR(250) NULL,
+    status NVARCHAR(20) NOT NULL CONSTRAINT df_level_modules_status DEFAULT 'pending',
+    source_fingerprint NVARCHAR(64) NULL,
+    generated_by NVARCHAR(30) NULL,
+    error_message NVARCHAR(500) NULL,
+    attempts INT NOT NULL CONSTRAINT df_level_modules_attempts DEFAULT 0,
+    generated_at DATETIME2 NULL,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_level_modules_source FOREIGN KEY (source_module_id) REFERENCES dbo.modules(id) ON DELETE CASCADE,
+    CONSTRAINT ck_level_modules_level CHECK (level IN ('Beginner', 'Intermediate', 'Advance')),
+    CONSTRAINT ck_level_modules_status CHECK (status IN ('pending', 'generating', 'ready', 'failed')),
+    CONSTRAINT uq_level_modules_source_level UNIQUE (source_module_id, level)
+  );
+END;
+
+IF OBJECT_ID('dbo.level_module_sections', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.level_module_sections (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    level_module_id INT NOT NULL,
+    source_handout_id INT NULL,
+    order_number INT NOT NULL CONSTRAINT df_level_module_sections_order DEFAULT 1,
+    title NVARCHAR(250) NULL,
+    content_text NVARCHAR(MAX) NULL,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_level_module_sections_module FOREIGN KEY (level_module_id) REFERENCES dbo.level_modules(id) ON DELETE CASCADE
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_level_module_sections_module' AND object_id = OBJECT_ID('dbo.level_module_sections'))
+  CREATE INDEX IX_level_module_sections_module ON dbo.level_module_sections(level_module_id, order_number);
+
+IF COL_LENGTH('dbo.tutor_assessments', 'level_module_id') IS NULL
+  ALTER TABLE dbo.tutor_assessments ADD level_module_id INT NULL;
+
+IF COL_LENGTH('dbo.tutor_assessments', 'level_module_id') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_ta_level_module')
+  EXEC sp_executesql N'ALTER TABLE dbo.tutor_assessments
+    ADD CONSTRAINT fk_ta_level_module FOREIGN KEY (level_module_id) REFERENCES dbo.level_modules(id) ON DELETE NO ACTION;';
+
+IF COL_LENGTH('dbo.tutor_assessments', 'level_module_id') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ta_level_module' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
+  EXEC sp_executesql N'CREATE INDEX IX_ta_level_module ON dbo.tutor_assessments(level_module_id) WHERE level_module_id IS NOT NULL;';

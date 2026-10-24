@@ -1,0 +1,84 @@
+<%# File: views/partials/level-lesson.ejs
+    Purpose: The lesson of a level module (lib/levelModules.js) — one part per
+    handout of the module, written for one level.
+
+    The text is plain, laid out by the AI with a small set of marks
+    (services/aiService.js, generateLevelLesson): "## " starts a heading, "- " a
+    list item, "1. " a numbered item, "Answer: " the answer to a check question.
+    Everything is escaped; the marks only choose the element.
+
+    Locals: levelModule (with sections, status, error_message), viewer ('student' | 'staff') %>
+<%
+  const lm = levelModule || {};
+  const parts = lm.sections || [];
+  const forStaff = viewer === 'staff';
+
+  // Plain text -> blocks: { kind: 'heading' | 'para' | 'ul' | 'ol' | 'answer', text | items }
+  const blocksOf = (text) => {
+    const blocks = [];
+    let para = [];
+    const flush = () => {
+      if (para.length) blocks.push({ kind: 'para', text: para.join(' ') });
+      para = [];
+    };
+    const listOf = (kind) => {
+      const last = blocks[blocks.length - 1];
+      if (last && last.kind === kind) return last;
+      const list = { kind, items: [] };
+      blocks.push(list);
+      return list;
+    };
+    String(text || '').split('\n').forEach((raw) => {
+      const line = raw.trim();
+      if (!line) { flush(); return; }
+      let m;
+      if ((m = line.match(/^##\s*(.+)$/))) { flush(); blocks.push({ kind: 'heading', text: m[1] }); return; }
+      if ((m = line.match(/^(?:answer|sagot)\s*:\s*(.*)$/i))) { flush(); blocks.push({ kind: 'answer', text: m[1] }); return; }
+      if ((m = line.match(/^[-*•]\s+(.+)$/))) { flush(); listOf('ul').items.push(m[1]); return; }
+      if ((m = line.match(/^\d+[.)]\s+(.+)$/))) { flush(); listOf('ol').items.push(m[1]); return; }
+      para.push(line);
+    });
+    flush();
+    return blocks;
+  };
+%>
+<% if (!parts.length) { %>
+  <% if (lm.status === 'failed') { %>
+    <p class="lm-state lm-state-failed">
+      <% if (forStaff) { %>
+        Could not be written: <%= lm.error_message || 'no reason was recorded.' %>
+      <% } else { %>
+        This lesson is not ready yet. The handouts of this module have the same material.
+      <% } %>
+    </p>
+  <% } else { %>
+    <p class="lm-state">Being prepared. It appears here in a minute or two.</p>
+  <% } %>
+<% } else { %>
+  <% if (forStaff && lm.error_message) { %>
+    <p class="lm-state lm-state-failed"><%= lm.error_message %></p>
+  <% } %>
+  <div class="lm-lesson">
+    <% parts.forEach((part, index) => { %>
+      <article class="lm-part">
+        <h4 class="lm-part-title">
+          <span class="lm-part-number">Part <%= index + 1 %></span>
+          <%= part.title || `Part ${index + 1}` %>
+        </h4>
+        <% blocksOf(part.content_text).forEach((block) => { %>
+          <% if (block.kind === 'heading') { %>
+            <h5 class="lm-heading"><%= block.text %></h5>
+          <% } else if (block.kind === 'ul') { %>
+            <ul class="lm-list"><% block.items.forEach((item) => { %><li><%= item %></li><% }) %></ul>
+          <% } else if (block.kind === 'ol') { %>
+            <ol class="lm-list"><% block.items.forEach((item) => { %><li><%= item %></li><% }) %></ol>
+          <% } else if (block.kind === 'answer') { %>
+            <details class="lm-answer"><summary>Show answer</summary><p><%= block.text %></p></details>
+          <% } else { %>
+            <p class="lm-para"><%= block.text %></p>
+          <% } %>
+        <% }) %>
+      </article>
+    <% }) %>
+  </div>
+<% } %>

@@ -1,0 +1,170 @@
+/* File: public/css/level-modules.css
+   Purpose: Level modules (lib/levelModules.js) — the level pills, the lesson, and
+   the level cards on the module pages. Loaded by the views that show them, for
+   every role, so the pages look the same to the student, the tutor and the admin. */
+
+.lm-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.lm-level-beginner     { background: rgba(213, 76, 76, .14);  color: #a43030; }
+.lm-level-intermediate { background: rgba(210, 138, 31, .16); color: #8a5a0a; }
+.lm-level-advance      { background: rgba(50, 166, 90, .16);  color: #1a7a3a; }
+
+.lm-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lm-status-ready      { background: rgba(50, 166, 90, .14); color: #1a7a3a; }
+.lm-status-pending,
+.lm-status-generating { background: rgba(34, 120, 200, .12); color: #1f5f99; }
+.lm-status-failed     { background: rgba(213, 76, 76, .12); color: #a43030; }
+.lm-status-none       { background: rgba(120, 120, 120, .12); color: #555; }
+
+/* ---- The lesson ---------------------------------------------------------- */
+.lm-lesson {
+  display: grid;
+  gap: 18px;
+}
+.lm-part {
+  padding: 16px 18px;
+  border: 1px solid rgba(0, 0, 0, .08);
+  border-radius: 14px;
+  background: #fff;
+}
+.lm-part-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+.lm-part-number {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #2f7d32;
+}
+.lm-heading {
+  margin: 14px 0 6px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.lm-para {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+.lm-list {
+  margin: 0 0 10px;
+  padding-left: 22px;
+  line-height: 1.6;
+}
+.lm-answer {
+  margin: 0 0 12px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(47, 125, 50, .07);
+}
+.lm-answer summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2f7d32;
+}
+.lm-answer p {
+  margin: 6px 0 2px;
+  line-height: 1.5;
+}
+.lm-state {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(34, 120, 200, .08);
+  color: #1f4f7a;
+}
+.lm-state-failed {
+  background: rgba(213, 76, 76, .08);
+  color: #8a2a2a;
+}
+
+/* ---- Cards: a module's three levels, and "your module" ------------------- */
+.lm-level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.lm-level-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px 16px;
+  border: 1px solid rgba(0, 0, 0, .08);
+  border-radius: 14px;
+  background: #fff;
+}
+.lm-level-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lm-level-card-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #5b6470;
+}
+.lm-level-card-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #8a2a2a;
+}
+.lm-level-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lm-level-card-actions form {
+  margin: 0;
+}
+
+.lm-level-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.lm-level-chips a {
+  text-decoration: none;
+}
+
+.lm-callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(47, 125, 50, .08);
+  border: 1px solid rgba(47, 125, 50, .2);
+}
+.lm-callout strong {
+  display: block;
+}
+.lm-callout span {
+  font-size: 0.9rem;
+  color: #3c4a3d;
+}

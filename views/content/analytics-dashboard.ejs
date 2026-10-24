@@ -399,9 +399,9 @@
               <span class="mq-count"><%= countOf(a.performance, 'learner') %></span>
             </div>
 
-            <div class="mq-table" style="--mq-cols: minmax(170px, 2fr) 1fr 80px 90px 90px 130px 90px 48px;">
+            <div class="mq-table" style="--mq-cols: minmax(170px, 2fr) 120px 1fr 80px 90px 90px 130px 90px 48px;">
               <div class="mq-head">
-                <span>Learner</span><span>Branch</span><span class="mq-num">Attempts</span>
+                <span>Learner</span><span>Level</span><span>Branch</span><span class="mq-num">Attempts</span>
                 <span class="mq-num">Average</span><span class="mq-num">Best</span>
                 <span>Last attempt</span><span class="mq-num">Flags</span><span></span>
               </div>
@@ -419,6 +419,13 @@
                   <span class="mq-cell mq-cell-primary" data-label="Learner">
                     <a class="mq-name" href="<%= learnerHref(row.student_id) %>"><%= nameOf(row) %></a>
                     <span class="mq-sub"><%= row.student_code %><%= row.grade_level ? ` · ${row.grade_level}` : '' %></span>
+                  </span>
+                  <span class="mq-cell" data-label="Level">
+                    <% if (row.level) { %>
+                      <span class="mq-status mq-status-<%= row.level === 'Advance' ? 'paid' : row.level === 'Intermediate' ? 'partial' : 'unpaid' %>"><%= row.level %></span>
+                    <% } else { %>
+                      <span class="mq-sub">Not yet assessed</span>
+                    <% } %>
                   </span>
                   <span class="mq-cell mq-sub" data-label="Branch"><%= row.branch_name || '—' %></span>
                   <span class="mq-cell mq-num" data-label="Attempts"><%= row.attempts %></span>

@@ -47,6 +47,18 @@
         </label>
       <% } %>
 
+      <% if (has('level')) { %>
+        <label class="mq-field">
+          <span>Level</span>
+          <select name="<%= nameOf('level') %>" data-autosubmit>
+            <option value="all">All levels</option>
+            <% (form.choices.level || []).forEach((level) => { %>
+              <option value="<%= level %>" <%= values.level === level ? 'selected' : '' %>><%= level %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+
       <% if (has('kind')) { %>
         <label class="mq-field">
           <span>Assessment</span>

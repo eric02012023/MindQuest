@@ -1,8 +1,19 @@
 <%# Student Module View — Premium UI with progress ring and accordion sections.
     A subject whose month is over with nothing left to answer is view-only: the
-    handouts open, the activities are listed but no longer offered (viewOnly). %>
+    handouts open, the activities are listed but no longer offered (viewOnly).
+
+    Two pages use it (routes/student.js):
+      - a level module (levelModule): the module written for the student's level —
+        its lesson, the admin's handouts, and the activities, answered here;
+      - the admin's module. When the student has a level module of it
+        (levelModuleLink) it is theirs to view: the handouts, and a way to their
+        level module, where its activities are. Without one it is as it always
+        was, activities included. %>
 <link rel="stylesheet" href="/css/student/module-view.css" />
+<link rel="stylesheet" href="/css/level-modules.css" />
 <% const finishedNote = typeof viewOnly === 'undefined' ? '' : viewOnly; %>
+<% const lessonModule = typeof levelModule === 'undefined' ? null : levelModule; %>
+<% const elsewhere = typeof levelModuleLink === 'undefined' ? null : levelModuleLink; %>
 
 <section class="page-stack module-view-page">
 
@@ -12,14 +23,16 @@
 
   <%# Module Hero Card %>
   <section class="module-hero-card">
-    <div class="module-hero-left">
-      <div class="module-progress-ring" style="--progress: <%= progressPercent %>">
-        <div class="progress-ring-inner">
-          <span class="progress-pct"><%= progressPercent %>%</span>
-          <span class="progress-label">Complete</span>
+    <% if (!elsewhere) { %>
+      <div class="module-hero-left">
+        <div class="module-progress-ring" style="--progress: <%= progressPercent %>">
+          <div class="progress-ring-inner">
+            <span class="progress-pct"><%= progressPercent %>%</span>
+            <span class="progress-label">Complete</span>
+          </div>
         </div>
       </div>
-    </div>
+    <% } %>
     <div class="module-hero-right">
       <div class="module-hero-badges">
         <%# mod.level belongs to the legacy three-level system and is NULL on every
@@ -30,28 +43,66 @@
         <% } else if (mod.level) { %>
           <span class="level-badge-lg <%= String(mod.level).toLowerCase() %>"><%= mod.level %></span>
         <% } %>
+        <% if (lessonModule) { %>
+          <span class="lm-level lm-level-<%= lessonModule.level.toLowerCase() %>"><%= lessonModule.level %></span>
+        <% } %>
         <span class="subject-badge"><%= mod.subject_name %></span>
       </div>
       <h1 class="module-hero-title"><%= mod.title %></h1>
       <% if (mod.description) { %>
         <p class="module-hero-desc"><%= mod.description %></p>
       <% } %>
-      <div class="module-hero-stats">
-        <div class="mh-stat">
-          <span class="mh-stat-num"><%= completedTasks %> / <%= totalTasks %></span>
-          <span class="mh-stat-label">Tasks Done</span>
+      <% if (!elsewhere) { %>
+        <div class="module-hero-stats">
+          <div class="mh-stat">
+            <span class="mh-stat-num"><%= completedTasks %> / <%= totalTasks %></span>
+            <span class="mh-stat-label">Tasks Done</span>
+          </div>
+          <div class="mh-stat">
+            <span class="mh-stat-num"><%= activities.length %></span>
+            <span class="mh-stat-label">Activities</span>
+          </div>
+          <div class="mh-stat">
+            <span class="mh-stat-num"><%= postAssessments.length %></span>
+            <span class="mh-stat-label">Post-Tests</span>
+          </div>
         </div>
-        <div class="mh-stat">
-          <span class="mh-stat-num"><%= activities.length %></span>
-          <span class="mh-stat-label">Activities</span>
-        </div>
-        <div class="mh-stat">
-          <span class="mh-stat-num"><%= postAssessments.length %></span>
-          <span class="mh-stat-label">Post-Tests</span>
-        </div>
-      </div>
+      <% } %>
     </div>
   </section>
+
+  <% if (elsewhere) { %>
+    <section class="lm-callout">
+      <div>
+        <strong>Your <%= elsewhere.level %> module</strong>
+        <span>This module's activities are answered there.</span>
+      </div>
+      <a class="btn btn-primary" href="/student/level-modules/<%= elsewhere.id %>">Open Module</a>
+    </section>
+  <% } %>
+
+  <% if (lessonModule) { %>
+    <section class="module-section">
+      <div class="module-section-header" onclick="toggleSection(this)">
+        <div class="section-header-left">
+          <span class="section-icon">📘</span>
+          <h3>Lesson</h3>
+          <span class="section-count"><%= (lessonModule.sections || []).length %></span>
+        </div>
+        <div class="section-header-right">
+          <% if ((lessonModule.sections || []).length) { %>
+            <span class="section-status done">✓ Ready</span>
+          <% } else { %>
+            <span class="section-status pending"><%= lessonModule.status === 'failed' ? 'Not ready' : 'Being prepared' %></span>
+          <% } %>
+          <span class="section-chevron">▼</span>
+        </div>
+      </div>
+      <div class="module-section-body open">
+        <%- include('../partials/level-lesson', { levelModule: lessonModule, viewer: 'student' }) %>
+      </div>
+    </section>
+  <% } %>
 
   <%# Handout Section
       The files come from `handouts` (module_handouts), which is where Admin
@@ -99,6 +150,7 @@
     </div>
   </section>
 
+  <% if (!elsewhere) { %>
   <%# Activities Section %>
   <section class="module-section">
     <div class="module-section-header" onclick="toggleSection(this)">
@@ -204,6 +256,7 @@
       <% } %>
     </div>
   </section>
+  <% } %>
 
   <a href="/student/subjects/<%= mod.subject_id %>" class="btn btn-secondary" style="margin-top: 10px;">← Back to Subject</a>
 </section>

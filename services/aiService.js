@@ -567,9 +567,9 @@ ${lines.join('\n')}`;
 async function generateAssessmentFromHandouts(options = {}) {
   const {
     handouts = [], subject, yearLevel, itemCount = PRE_ASSESSMENT_ITEM_COUNT, questionType = 'mixed',
-    
-    
-    allowedTypes = MODULE_QUESTION_TYPES
+
+
+    allowedTypes = MODULE_QUESTION_TYPES, level = null
   } = options;
 
   const usable = handouts.filter((h) => String(h.extracted_text || '').trim().length > 50);
@@ -640,7 +640,7 @@ async function generateAssessmentFromHandouts(options = {}) {
   await runWithConcurrency(perHandout.filter((slot) => slot.wanted > 0), 4, async (slot) => {
     const batch = slot.wanted + 2;
     const prompts = buildHandoutPrompts({
-      handout: slot.handout, wanted: batch, questionType, subject, yearLevel, allowedTypes
+      handout: slot.handout, wanted: batch, questionType, subject, yearLevel, level, allowedTypes
     });
     try {
       const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, {
@@ -665,7 +665,7 @@ async function generateAssessmentFromHandouts(options = {}) {
     await runWithConcurrency(short, 4, async (slot) => {
       const batch = Math.max(4, (slot.wanted - slot.questions.length) + 3);
       const prompts = buildHandoutPrompts({
-        handout: slot.handout, wanted: batch, questionType, subject, yearLevel, allowedTypes,
+        handout: slot.handout, wanted: batch, questionType, subject, yearLevel, level, allowedTypes,
         avoidTexts: slot.written
       });
       try {
@@ -780,8 +780,15 @@ function normalizeQuestionKey(text) {
 }
 
 
+const LEVEL_QUESTION_GUIDES = {
+  Beginner: 'Pitch every question at a BEGINNER: recalling and recognising the key facts and terms, one step each, in simple words.',
+  Intermediate: 'Pitch every question at the INTERMEDIATE level: applying the ideas to a short example or situation, not only recalling them.',
+  Advance: 'Pitch every question at the ADVANCE level: reasoning, comparing, and problems that take several steps, so the ideas must be understood and not only remembered.'
+};
+
+
 function buildHandoutPrompts({
-  handout, wanted, questionType, subject, yearLevel,
+  handout, wanted, questionType, subject, yearLevel, level = null,
   allowedTypes = MODULE_QUESTION_TYPES, avoidTexts = []
 }) {
   const itemCount = wanted;
@@ -807,6 +814,7 @@ function buildHandoutPrompts({
   } else {
     extraRules.push('- Never write an essay or open-ended question. Every item must have one exact answer.');
   }
+  if (LEVEL_QUESTION_GUIDES[level]) extraRules.push(`- ${LEVEL_QUESTION_GUIDES[level]}`);
 
   const systemPrompt = `You write assessment questions for a tutorial centre, using ONLY the handout text provided.
 
@@ -845,7 +853,7 @@ ${avoidTexts.map((t) => `- ${t}`).join('\n')}` : ''}`;
     + (handout.file_original_name ? ` (${handout.file_original_name})` : '');
 
   const userPrompt = `Subject: ${subject || 'General'}
-Student level: ${yearLevel || 'General'}
+Student level: ${yearLevel || 'General'}${LEVEL_QUESTION_GUIDES[level] ? `\nLearner level: ${level}` : ''}
 Number of questions: ${itemCount}
 
 HANDOUT
@@ -909,6 +917,9 @@ module.exports = {
   transcribeImage,
   generateAssessmentFromHandouts,
   generateFocusMaterial,
+  generateLevelLesson,
+  cleanLessonText,
+  LEVEL_QUESTION_GUIDES,
   planQuestionMix,
   validateGeneratedQuestion,
   
@@ -1037,4 +1048,80 @@ ${sourceText}`;
     console.error('[aiService] focus material generation failed:', error.message);
     return null;
   }
+}
+
+
+const LEVEL_LESSON_GUIDES = {
+  Beginner: 'This learner is a BEGINNER in this topic. Start from the very basics. Use simple words and short sentences, '
+    + 'explain one idea at a time, step by step, and give two or three easy worked examples.',
+  Intermediate: 'This learner is at the INTERMEDIATE level. Recap the key ideas briefly, then focus on using them: '
+    + 'worked examples that apply the ideas, and the mistakes learners commonly make with them.',
+  Advance: 'This learner is at the ADVANCE level and already knows the basics. Keep the recap short and go deeper: '
+    + 'why and how the ideas work, how they compare with each other, and problems that take several steps.'
+};
+
+
+async function generateLevelLesson(options = {}) {
+  const { handout = {}, level, subject, gradeLevel, moduleTitle } = options;
+  const guide = LEVEL_LESSON_GUIDES[level];
+  if (!guide) throw new Error(`Unknown level "${level}".`);
+  const sourceText = String(handout.extracted_text || '').trim();
+  if (sourceText.length < 50) throw new Error('This handout has no readable text to write a lesson from.');
+  if (!isOpenAIConfigured()) throw new Error('The AI service is not configured, so the lesson cannot be written.');
+
+  const systemPrompt = `You write one lesson of a learning module for a learner at a tutorial centre, using ONLY the handout text provided.
+
+${guide}
+
+Return a JSON object with two keys:
+- "title": a short title for this lesson, under 80 characters
+- "lesson": the lesson as plain text
+
+Lay the lesson out like this:
+- a line starting with "## " for the heading of each part
+- a line starting with "- " for each item of a list
+- an empty line between paragraphs
+End with a part headed "## Check yourself": three short questions on this lesson, each followed on the next line by its answer, starting with "Answer: ".
+
+Rules:
+- Use ONLY facts present in the handout text. Never invent facts, names or numbers the handout does not give.
+- Write in the same language as the handout.
+- Write to the learner ("you"), in words a ${gradeLevel || 'young'} learner understands.
+- Keep it between 250 and 600 words.
+- No other markdown: no bold, no italics, no tables, no code.`;
+
+  const userPrompt = `Subject: ${subject || 'General'}
+Grade: ${gradeLevel || 'General'}
+Level: ${level}
+Module: ${moduleTitle || 'Module'}
+
+HANDOUT
+### ${handout.file_original_name || 'Handout'}
+
+${sourceText.slice(0, 12000)}`;
+
+  const call = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 2000, temperature: 0.4 });
+  const lesson = cleanLessonText(call.result.lesson);
+  if (lesson.length < 200) throw new Error('The AI returned a lesson too short to use.');
+  return {
+    title: String(call.result.title || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    lesson,
+    tokensUsed: call.tokensUsed,
+    provider: call.provider,
+    model: call.model
+  };
+}
+
+
+function cleanLessonText(text) {
+  return String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/`+/g, '')
+    .replace(/^#{1,6}[ \t]*/gm, '## ')
+    .replace(/^[ \t]*[*•][ \t]+/gm, '- ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 9000);
 }

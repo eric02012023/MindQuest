@@ -109,6 +109,52 @@
     </div>
   </section>
 
+  <%# The module written again for each level (lib/levelModules.js). A level
+      appears once a student of it finishes the Pre-Assessment, or when made
+      here; the main admin can have one written again. %>
+  <%
+    const levelRows = typeof levelModules === 'undefined' ? {} : (levelModules || {});
+    const levelNames = typeof levels === 'undefined' ? ['Beginner', 'Intermediate', 'Advance'] : levels;
+    const levelStatus = (row) => !row ? 'Not made yet'
+      : row.status === 'ready' ? (row.is_stale ? 'Ready · handouts changed since' : 'Ready')
+        : row.status === 'failed' ? 'Could not be written' : 'Being written';
+  %>
+  <link rel="stylesheet" href="/css/level-modules.css" />
+  <section class="panel-card">
+    <div class="panel-card-head"><h3>Level Modules</h3></div>
+    <div class="lm-level-grid">
+      <% levelNames.forEach((level) => { %>
+        <% const row = levelRows[level] || null; %>
+        <article class="lm-level-card">
+          <div class="lm-level-card-head">
+            <span class="lm-level lm-level-<%= level.toLowerCase() %>"><%= level %></span>
+            <span class="lm-status lm-status-<%= row ? row.status : 'none' %>"><%= levelStatus(row) %></span>
+          </div>
+          <% if (row) { %>
+            <p class="lm-level-card-meta">
+              <%= Number(row.assessment_count || 0) %> activit<%= Number(row.assessment_count || 0) === 1 ? 'y' : 'ies' %>
+              <% if (Number(row.section_count || 0)) { %>&middot; <%= row.section_count %> lesson part<%= Number(row.section_count) === 1 ? '' : 's' %><% } %>
+            </p>
+            <% if (row.error_message) { %>
+              <p class="lm-level-card-error"><%= row.error_message %></p>
+            <% } %>
+          <% } %>
+          <div class="lm-level-card-actions">
+            <% if (row) { %>
+              <a class="btn btn-secondary btn-sm" href="<%= basePath %>/level-modules/<%= row.id %>">Open</a>
+            <% } %>
+            <% if (currentUser.role === 'admin' && (!row || row.status !== 'generating')) { %>
+              <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/levels/<%= level %>/make"
+                    <% if (row && row.status === 'ready') { %>data-confirm-message="Write the <%= level %> lesson again from this module's handouts? It replaces the lesson students read now. Activities stay."<% } %>>
+                <button class="btn btn-primary btn-sm" type="submit"><%= !row ? 'Make' : row.status === 'ready' ? 'Write Again' : 'Try Again' %></button>
+              </form>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+
   <section class="panel-card">
     <div class="panel-card-head"><h3>Module Settings</h3></div>
     <% if (currentUser.role === 'admin') { %>

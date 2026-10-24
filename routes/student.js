@@ -61,6 +61,12 @@ const {
   moduleTargetsStudent,
   studentGradeOf,
   getModuleById,
+  // Level modules: each module written again for the student's level
+  normalizeLevel,
+  placementLevelOf,
+  prepareStudentLevelModules,
+  getStudentLevelModuleFor,
+  getLevelModuleDetail,
   // --- Management upgrade -------------------------------------------------
   // Merged "Billing Data" (SOA + payment history in one) and the cash Pay flow
   getStudentBillingData,
@@ -330,6 +336,17 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     const gradeLevel = studentGradeOf(studentRecord);
     const preAssessmentDone = await hasCompletedPreAssessment(req.session.user.id, Number(req.params.subjectId), gradeLevel);
     const newModules = await getStudentSubjectModules(req.session.user.id, Number(req.params.subjectId), { month });
+    // Their level modules: every module they can see, written for the level the
+    // Pre-Assessment placed them at (lib/levelModules.js). One missing is made
+    // here and written in the background; the page never waits on the AI.
+    const levelEntries = preAssessmentDone
+      ? await prepareStudentLevelModules(req.session.user.id, Number(req.params.subjectId), {
+        preSubmission: preAssessmentDone, month, modules: newModules
+      }).catch((error) => {
+        console.error('[student] level modules could not be prepared:', error.message);
+        return [];
+      })
+      : [];
     const handoutsReady = gradeLevel
       ? (await getSubjectHandoutTexts(Number(req.params.subjectId), gradeLevel)).length
       : 0;
@@ -352,6 +369,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       resources,
       modules,
       newModules,
+      levelEntries,
+      placementLevel: placementLevelOf(preAssessmentDone),
       preAssessmentDone,
       handoutsReady,
       gradeLevel,
@@ -1248,10 +1267,20 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       assessmentId
     });
 
+    // Their modules, written for the level they were just placed at. Only the
+    // rows are made here; the writing is queued, so the redirect does not wait.
+    const levelEntries = await prepareStudentLevelModules(req.session.user.id, subjectId)
+      .catch((error) => {
+        console.error('[student] level modules could not be prepared:', error.message);
+        return [];
+      });
+    const level = normalizeLevel(result.level);
+
     setFlash(
       req,
       'success',
       `Pre-Assessment submitted. Your level: ${result.level} (${result.percentage}%). Your modules are now unlocked.`
+      + (level && levelEntries.some((entry) => entry.levelModule) ? ` Your ${level} modules are being prepared.` : '')
       + (focus && focus.tutor_id ? ' Your tutor has been sent your focus areas.' : '')
     );
     res.redirect(`/student/results/${result.submissionId}`);
@@ -1395,6 +1424,122 @@ router.get('/results/:submissionId', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/**
+ * The activities a student answers in one place, and how far they are: those
+ * written for every level (outside any level module) and — on a level module's
+ * page — that level module's own. Published ones of their month only; a
+ * tutor's draft is not the student's to see.
+ *
+ * Progress counts the reading (the lesson or the handouts, done by being on the
+ * page — the open is recorded by the caller), the activities and the post-test.
+ * Reading used to be a task that could never be completed, so a module with one
+ * activity, done, still read 50%.
+ */
+async function moduleWorkFor(studentId, mod, month, handouts, options = {}) {
+  const levelModuleId = Number(options.levelModuleId) || null;
+  const assessments = (await getTutorAssessmentsByModule(mod.id))
+    .filter((a) => Number(a.is_published) === 1 && addedInMonth(a.created_at, month))
+    .filter((a) => !a.level_module_id || (!!levelModuleId && Number(a.level_module_id) === levelModuleId));
+  const submissions = await getStudentSubmissions(studentId, mod.subject_id);
+
+  const done = (a) => submissions.some((s) => Number(s.assessment_id) === Number(a.id));
+  const activities = assessments.filter((a) => a.purpose === 'activity');
+  const postAssessments = assessments.filter((a) => a.purpose === 'post');
+  const completedActivities = activities.filter(done);
+  const completedPost = postAssessments.filter(done);
+
+  const readingTask = handouts.length || options.hasLesson ? 1 : 0;
+  const totalTasks = readingTask + activities.length + postAssessments.length;
+  const completedTasks = readingTask + completedActivities.length + completedPost.length;
+  return {
+    assessments,
+    submissions,
+    activities,
+    postAssessments,
+    completedActivities,
+    completedPost,
+    totalTasks,
+    completedTasks,
+    progressPercent: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+  };
+}
+
+/** The admin's module once the student has a level module of it: nothing to answer here. */
+function noModuleWork() {
+  return {
+    assessments: [],
+    submissions: [],
+    activities: [],
+    postAssessments: [],
+    completedActivities: [],
+    completedPost: [],
+    totalTasks: 0,
+    completedTasks: 0,
+    progressPercent: 0
+  };
+}
+
+// Student: one of the admin's modules written for their level (lib/levelModules.js).
+// This is where they read the lesson and answer the module's activities.
+router.get('/level-modules/:id', async (req, res, next) => {
+  try {
+    const studentId = req.session.user.id;
+    const levelModule = await getLevelModuleDetail(Number(req.params.id));
+    if (!levelModule) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect('/student/subjects');
+    }
+    // The admin's module it was written from: every gate of a module holds here.
+    const mod = levelModule.source;
+
+    const assignments = await getStudentAssignments(studentId);
+    const assignment = assignments.find((a) => Number(a.subject_id) === Number(mod.subject_id));
+    if (!assignment) {
+      setFlash(req, 'error', 'You are not enrolled in that subject.');
+      return res.redirect('/student/subjects');
+    }
+    const preDone = await hasCompletedPreAssessment(studentId, mod.subject_id);
+    if (!preDone) {
+      setFlash(req, 'error', 'Please complete the Pre-Assessment for this subject before opening its modules.');
+      return res.redirect(`/student/subjects/${mod.subject_id}`);
+    }
+    if (!moduleTargetsStudent(mod, await getUserById(studentId))) {
+      setFlash(req, 'error', 'This module is not assigned to your year level.');
+      return res.redirect(`/student/subjects/${mod.subject_id}`);
+    }
+    // Their own level's — another level's module is not theirs by its address
+    // either — and part of their month, like any module.
+    const month = monthOf(assignment);
+    if (placementLevelOf(preDone) !== levelModule.level
+        || !addedInMonth(mod.created_at, month) || !addedInMonth(levelModule.created_at, month)) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect(`/student/subjects/${mod.subject_id}`);
+    }
+
+    // Opening it opens the module, for progress, as the admin's module page does.
+    const viewOnly = viewOnlyMessage(assignment);
+    if (!viewOnly) await recordModuleOpen(studentId, mod.id, mod.subject_id);
+
+    const handouts = (await getModuleHandouts(mod.id)).filter((h) => addedInMonth(h.created_at, month));
+    const work = await moduleWorkFor(studentId, mod, month, handouts, {
+      levelModuleId: levelModule.id,
+      hasLesson: levelModule.sections.length > 0
+    });
+
+    const shell = await buildShell(req, {
+      pageTitle: `${mod.title} — ${levelModule.level}`,
+      section: 'subjects',
+      contentView: '../content/student-module-view',
+      mod,
+      ...work,
+      levelModule,
+      handouts,
+      viewOnly
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
 // Student: View module detail page
 router.get('/modules/:moduleId', async (req, res, next) => {
   try {
@@ -1463,27 +1608,12 @@ router.get('/modules/:moduleId', async (req, res, next) => {
     const studentLevel = await getStudentSubjectLevel(studentId, mod.subject_id);
     const handouts = (await getModuleHandouts(mod.id)).filter((h) => addedInMonth(h.created_at, month));
 
-    // Get assessments and submissions for this module — the published ones; a
-    // tutor's draft is not the student's to see.
-    const assessments = (await getTutorAssessmentsByModule(mod.id))
-      .filter((a) => Number(a.is_published) === 1 && addedInMonth(a.created_at, month));
-    const submissions = await getStudentSubmissions(studentId, mod.subject_id);
-
-    // Calculate progress
-    const activities = assessments.filter(a => a.purpose === 'activity');
-    const postAssessments = assessments.filter(a => a.purpose === 'post');
-    const completedActivities = activities.filter(a => submissions.some(s => Number(s.assessment_id) === Number(a.id)));
-    const completedPost = postAssessments.filter(a => submissions.some(s => Number(s.assessment_id) === Number(a.id)));
-
-    // Progress: the handouts, the activities and the post-test. Reading the
-    // handouts is done by being here — the open was recorded above, and it is
-    // what the Post-Assessment's completion check counts too. It used to be
-    // counted as a task that could never be completed, so a module with one
-    // activity, done, still read 50%.
-    const handoutTask = handouts.length ? 1 : 0;
-    const totalTasks = handoutTask + activities.length + postAssessments.length;
-    const completedTasks = handoutTask + completedActivities.length + completedPost.length;
-    const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    // Where this module's activities are answered: inside the student's level
+    // module when they have one — this page is then the admin's module, to view —
+    // and here otherwise, so a student whose month ended before their level
+    // module was made keeps the activities they always had.
+    const levelModule = await getStudentLevelModuleFor(mod.id, placementLevelOf(preDone), month);
+    const work = levelModule ? noModuleWork() : await moduleWorkFor(studentId, mod, month, handouts);
 
     const shell = await buildShell(req, {
       // Overhauled modules have no `level` — that column belongs to the legacy
@@ -1492,15 +1622,9 @@ router.get('/modules/:moduleId', async (req, res, next) => {
       section: 'subjects',
       contentView: '../content/student-module-view',
       mod,
-      assessments,
-      submissions,
-      activities,
-      postAssessments,
-      completedActivities,
-      completedPost,
-      progressPercent,
-      totalTasks,
-      completedTasks,
+      ...work,
+      // Their level module of this one, where its activities now live.
+      levelModuleLink: levelModule,
       studentLevel,
       handouts,
       // A finished subject: its activities are shown, not offered.
@@ -1560,13 +1684,30 @@ async function requireModuleAssessment(req, assessmentId) {
     return { redirectTo: `/student/subjects/${assessment.subject_id}` };
   }
 
-  if (!(await hasCompletedPreAssessment(req.session.user.id, assessment.subject_id, studentGradeOf(student)))) {
+  const preDone = await hasCompletedPreAssessment(req.session.user.id, assessment.subject_id, studentGradeOf(student));
+  if (!preDone) {
     setFlash(req, 'error', 'Please complete the Pre-Assessment for this subject before its module assessments.');
     return { redirectTo: `/student/subjects/${assessment.subject_id}` };
   }
+  // An activity inside a level module is for that level's students only — the
+  // level their Pre-Assessment placed them at — and the level module must be
+  // part of their month, like the module itself.
+  let levelModuleId = null;
+  if (assessment.level_module_id) {
+    const [levelModule] = await query(
+      'SELECT id, level, created_at FROM level_modules WHERE id = ?',
+      [Number(assessment.level_module_id)]
+    );
+    if (!levelModule || normalizeLevel(levelModule.level) !== placementLevelOf(preDone)
+        || !addedInMonth(levelModule.created_at, month)) {
+      setFlash(req, 'error', 'This activity is for another level.');
+      return { redirectTo: `/student/subjects/${assessment.subject_id}` };
+    }
+    levelModuleId = Number(levelModule.id);
+  }
   // A view-only subject has nothing left to answer: the caller refuses a
   // sitting with this (the page still sends a done one to its result first).
-  return { assessment, assignment, mod, viewOnly: viewOnlyMessage(assignment) };
+  return { assessment, assignment, mod, levelModuleId, viewOnly: viewOnlyMessage(assignment) };
 }
 
 // Student: Take a tutor assessment (activity or post)
@@ -1585,7 +1726,9 @@ router.get('/tutor-assessments/:id', async (req, res, next) => {
     }
     if (gate.viewOnly) {
       setFlash(req, 'error', gate.viewOnly);
-      return res.redirect(`/student/modules/${assessment.module_id}`);
+      return res.redirect(gate.levelModuleId
+        ? `/student/level-modules/${gate.levelModuleId}`
+        : `/student/modules/${assessment.module_id}`);
     }
 
     const shell = await buildShell(req, {

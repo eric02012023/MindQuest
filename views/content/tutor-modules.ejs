@@ -5,6 +5,7 @@
     builds assessments on top of them. %>
 <%# The page header card that used to sit here repeated the title already in the
     topbar and described what the subject panels below already show. %>
+<link rel="stylesheet" href="/css/level-modules.css" />
 <section class="page-stack">
   <% if (!(subjectsWithModules || []).length) { %>
     <section class="panel-card">
@@ -41,6 +42,19 @@
                 <span class="target-chip"><%= mod.grade_level || 'Not set' %></span>
               </div>
             </div>
+
+            <%# The levels this module has been written for (lib/levelModules.js). %>
+            <% const written = ['Beginner', 'Intermediate', 'Advance'].filter((level) => (mod.levelModules || {})[level]); %>
+            <% if (written.length) { %>
+              <div class="module-card-targets">
+                <strong>Level modules</strong>
+                <div class="lm-level-chips">
+                  <% written.forEach((level) => { %>
+                    <a class="lm-level lm-level-<%= level.toLowerCase() %>" href="/tutor/level-modules/<%= mod.levelModules[level].id %>"><%= level %></a>
+                  <% }) %>
+                </div>
+              </div>
+            <% } %>
 
             <div class="module-card-foot">
               <span class="module-card-meta">

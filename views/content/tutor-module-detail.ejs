@@ -1,6 +1,15 @@
 <%# File: views/content/tutor-module-detail.ejs
     Purpose: One module as the tutor sees it — Admin's handouts (readable, not
-    editable) and the assessments the tutor has built on them. %>
+    editable), the module written for each level (lib/levelModules.js), where
+    the tutor writes activities now, and every assessment on the module. %>
+<%
+  const levelRows = typeof levelModules === 'undefined' ? {} : (levelModules || {});
+  const levelNames = typeof levels === 'undefined' ? ['Beginner', 'Intermediate', 'Advance'] : levels;
+  const statusText = (row) => !row ? 'Not made yet'
+    : row.status === 'ready' ? 'Ready'
+      : row.status === 'failed' ? 'Could not be written' : 'Being written';
+%>
+<link rel="stylesheet" href="/css/level-modules.css" />
 <section class="page-stack">
   <div class="toolbar-card split">
     <div>
@@ -10,7 +19,7 @@
         &middot; <%= mod.grade_level || 'no grade level set' %>
       </p>
     </div>
-    <a class="btn btn-primary" href="/tutor/modules/<%= mod.id %>/create-assessment">Create Assessment</a>
+    <a class="btn btn-secondary" href="/tutor/modules">Back to Modules</a>
   </div>
 
   <% if (mod.description) { %>
@@ -18,6 +27,43 @@
       <p class="module-card-desc"><%= mod.description %></p>
     </section>
   <% } %>
+
+  <%# ---- Level modules: where the activities are written --------------------- %>
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Level Modules</h3>
+    </div>
+    <div class="lm-level-grid">
+      <% levelNames.forEach((level) => { %>
+        <% const row = levelRows[level] || null; %>
+        <article class="lm-level-card">
+          <div class="lm-level-card-head">
+            <span class="lm-level lm-level-<%= level.toLowerCase() %>"><%= level %></span>
+            <span class="lm-status lm-status-<%= row ? row.status : 'none' %>"><%= statusText(row) %></span>
+          </div>
+          <% if (row) { %>
+            <p class="lm-level-card-meta">
+              <%= Number(row.assessment_count || 0) %> activit<%= Number(row.assessment_count || 0) === 1 ? 'y' : 'ies' %>
+              <% if (Number(row.section_count || 0)) { %>&middot; <%= row.section_count %> lesson part<%= Number(row.section_count) === 1 ? '' : 's' %><% } %>
+            </p>
+            <% if (row.status === 'failed' && row.error_message) { %>
+              <p class="lm-level-card-error"><%= row.error_message %></p>
+            <% } %>
+          <% } %>
+          <div class="lm-level-card-actions">
+            <% if (row) { %>
+              <a class="btn btn-primary btn-sm" href="/tutor/level-modules/<%= row.id %>">Open</a>
+            <% } %>
+            <% if (!row || row.status === 'failed') { %>
+              <form method="post" action="/tutor/modules/<%= mod.id %>/levels/<%= level %>/make">
+                <button class="btn btn-secondary btn-sm" type="submit"><%= row ? 'Try again' : 'Make' %></button>
+              </form>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
 
   <%# ---- Handouts (Admin's, read-only) ------------------------------------ %>
   <section class="panel-card">
@@ -66,13 +112,14 @@
 
 
     <% if (!assessments.length) { %>
-      <p class="empty-state">No assessments yet. "Create Assessment" builds one by hand, or drafts it from the handouts above.</p>
+      <p class="empty-state">No assessments yet.</p>
     <% } else { %>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Title</th>
+              <th>Level</th>
               <th>Kind</th>
               <th>Type</th>
               <th>Items</th>
@@ -86,6 +133,13 @@
             <% assessments.forEach((a) => { %>
               <tr>
                 <td><strong><%= a.title %></strong></td>
+                <td>
+                  <% if (a.level_module_level) { %>
+                    <span class="lm-level lm-level-<%= String(a.level_module_level).toLowerCase() %>"><%= a.level_module_level %></span>
+                  <% } else { %>
+                    Every level
+                  <% } %>
+                </td>
                 <td>
                   <span class="badge badge-<%= a.assessment_kind === 'pre_assessment' ? 'info' : a.assessment_kind === 'post_assessment' ? 'success' : 'warning' %>">
                     <%= a.assessment_kind === 'pre_assessment' ? 'Pre-Assessment'

@@ -56,6 +56,16 @@ const {
   // Post-Assessment (Phase 8): opens on each student's last enrollment day
   getSubjectPrePostComparison,
   getSubjectPostReadiness,
+  // Level modules: each module written again for each level; activities go in them
+  LEVELS,
+  normalizeLevel,
+  getLevelModulesBySource,
+  getLevelModuleDetail,
+  withLevelModuleStaleFlag,
+  getPlacementLevels,
+  ensureLevelModule,
+  queueLevelModule,
+  levelModuleWantsBuild,
   // --- Management upgrade -------------------------------------------------
   // Auto weak-topic focus material, flagged for this tutor
   getFocusHandoutsForTutor,
@@ -890,7 +900,13 @@ router.get('/modules', async (req, res, next) => {
       // getSubjectModules, not the legacy getModulesBySubject: this is the
       // overhaul's shape — order_number, target year levels, handout and
       // assessment counts — and it is not capped at three levels per subject.
-      subjectsWithModules.push({ ...s, modules: await getSubjectModules(s.subject_id) });
+      const modules = await getSubjectModules(s.subject_id);
+      // Each module's level modules, where the tutor writes activities now.
+      const levels = await getLevelModulesBySource(modules.map((mod) => mod.id));
+      subjectsWithModules.push({
+        ...s,
+        modules: modules.map((mod) => ({ ...mod, levelModules: levels.get(Number(mod.id)) || {} }))
+      });
     }
     const shell = await buildShell(req, {
       pageTitle: 'Modules & Assessments',
@@ -914,11 +930,215 @@ router.get('/modules/:id', async (req, res, next) => {
       contentView: '../content/tutor-module-detail',
       mod,
       handouts: await getModuleHandouts(mod.id),
-      assessments: await getTutorAssessmentsByModule(mod.id)
+      assessments: await getTutorAssessmentsByModule(mod.id),
+      // Its three level modules (a level not made yet is null).
+      levelModules: (await getLevelModulesBySource([mod.id])).get(Number(mod.id)) || {},
+      levels: LEVELS
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
 });
+
+/**
+ * Make one level of a module that does not exist yet, or one whose writing
+ * failed: it is written in the background and the module page says so. A ready
+ * one is not written again from here — that replaces what the students read,
+ * so it is the admin's to decide (routes/adminFactory.js).
+ */
+router.post('/modules/:id/levels/:level/make', async (req, res, next) => {
+  const back = `/tutor/modules/${Number(req.params.id) || ''}`;
+  try {
+    const mod = await resolveTutorModule(req, req.params.id);
+    if (!mod) return res.redirect('/tutor/modules');
+    const level = normalizeLevel(req.params.level);
+    if (!level) {
+      setFlash(req, 'error', 'Choose Beginner, Intermediate or Advance.');
+      return res.redirect(back);
+    }
+    const levelModule = await ensureLevelModule(mod.id, level);
+    if (levelModule.status === 'ready') {
+      setFlash(req, 'info', `The ${level} module is already written.`);
+    } else if (levelModule.status === 'failed' || levelModuleWantsBuild(levelModule)) {
+      queueLevelModule(levelModule.id, { force: levelModule.status === 'failed' });
+      setFlash(req, 'success', `The ${level} module is being written. It is ready in a minute or two.`);
+    }
+    res.redirect(back);
+  } catch (error) { failBack(req, res, error, back); }
+});
+
+/**
+ * A level module the tutor may work in: it exists, its module is live, and the
+ * module's subject is one the tutor is assigned to (as resolveTutorModule).
+ */
+async function resolveTutorLevelModule(req, levelModuleId) {
+  const levelModule = await getLevelModuleDetail(Number(levelModuleId));
+  if (!levelModule) {
+    setFlash(req, 'error', 'Module not found.');
+    return null;
+  }
+  const assigned = await getTutorAssignedSubjects(req.session.user.id);
+  if (!assigned.some((a) => Number(a.subject_id) === Number(levelModule.source.subject_id))) {
+    setFlash(req, 'error', 'That module belongs to a subject you are not assigned to.');
+    return null;
+  }
+  return levelModule;
+}
+
+/**
+ * The activities a student of this level answers inside it: its own, and those
+ * written before level modules, which every level answers.
+ */
+async function levelModuleActivities(levelModule) {
+  return (await getTutorAssessmentsByModule(levelModule.source.id))
+    .filter((a) => !a.level_module_id || Number(a.level_module_id) === Number(levelModule.id));
+}
+
+// Tutor: one level module — its lesson, the admin's handouts, and its activities
+router.get('/level-modules/:id', async (req, res, next) => {
+  try {
+    const levelModule = await resolveTutorLevelModule(req, req.params.id);
+    if (!levelModule) return res.redirect('/tutor/modules');
+    const shell = await buildShell(req, {
+      pageTitle: `Module ${levelModule.source.order_number} — ${levelModule.level}`,
+      section: 'modules',
+      contentView: '../content/level-module-detail',
+      levelModule: await withLevelModuleStaleFlag(levelModule),
+      handouts: await getModuleHandouts(levelModule.source.id),
+      assessments: await levelModuleActivities(levelModule),
+      viewerRole: 'tutor',
+      moduleHref: `/tutor/modules/${levelModule.source.id}`
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Tutor: the activity builder, for one level module
+router.get('/level-modules/:id/create-assessment', async (req, res, next) => {
+  try {
+    const levelModule = await resolveTutorLevelModule(req, req.params.id);
+    if (!levelModule) return res.redirect('/tutor/modules');
+    const shell = await buildShell(req, await createAssessmentViewData(req, levelModule.source, { levelModule }));
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+/**
+ * Draft a level module's activity with AI: from its lesson, pitched at its
+ * level (services/aiService.js, LEVEL_QUESTION_GUIDES). Before the lesson is
+ * written it drafts from the module's handouts, at the same level. Each question
+ * keeps the handout its part was written from, so the weak-topic reports read
+ * it like any other. Nothing is saved: the tutor reviews and presses Create.
+ */
+router.post('/level-modules/:id/draft-assessment', async (req, res, next) => {
+  try {
+    const levelModule = await resolveTutorLevelModule(req, req.params.id);
+    if (!levelModule) return res.redirect('/tutor/modules');
+    const mod = levelModule.source;
+    const backToForm = `/tutor/level-modules/${levelModule.id}/create-assessment`;
+
+    const itemCount = Math.min(
+      TUTOR_ASSESSMENT_MAX_ITEMS,
+      Math.max(TUTOR_ASSESSMENT_MIN_ITEMS, Number(req.body.item_count) || 10)
+    );
+    const questionType = SPEC_QUESTION_TYPES.includes(req.body.question_type) ? req.body.question_type : 'mixed';
+
+    const lessonTexts = levelModule.sections
+      .filter((section) => Number(section.source_handout_id) && String(section.content_text || '').trim())
+      .map((section) => ({
+        handout_id: Number(section.source_handout_id),
+        extracted_text: section.content_text,
+        file_original_name: section.title,
+        module_id: mod.id,
+        order_number: mod.order_number,
+        module_title: mod.title
+      }));
+    const sources = lessonTexts.length ? lessonTexts : await getModuleHandoutTexts(mod.id);
+    if (!sources.length) {
+      setFlash(req, 'error', 'This module has no lesson or handout with readable text yet, so there is nothing to draft from.');
+      return res.redirect(backToForm);
+    }
+
+    let generated;
+    try {
+      generated = await generateAssessmentFromHandouts({
+        handouts: sources,
+        subject: mod.subject_name,
+        yearLevel: mod.grade_level,
+        level: levelModule.level,
+        itemCount,
+        questionType
+      });
+    } catch (error) {
+      setFlash(req, 'error', `Could not draft the assessment: ${error.message}`);
+      return res.redirect(backToForm);
+    }
+
+    setFlash(req, 'success', `Drafted ${generated.questions.length} question(s) for ${levelModule.level}. Review and edit them, then press Create Assessment.`);
+    const shell = await buildShell(req, await createAssessmentViewData(req, mod, {
+      levelModule,
+      draftQuestions: generated.questions,
+      form: {
+        title: String(req.body.title || '').trim() || `${mod.title} — ${levelModule.level} Activity`,
+        instructions: String(req.body.instructions || '').trim(),
+        question_type: questionType,
+        item_count: itemCount
+      }
+    }));
+    res.render('shells/dashboard', shell);
+  } catch (error) { failBack(req, res, error, `/tutor/level-modules/${Number(req.params.id) || ''}`); }
+});
+
+// Tutor: save a new activity inside one level module (JSON payload, as the module builder)
+router.post('/level-modules/:id/create-assessment', async (req, res, next) => {
+  try {
+    const levelModule = await resolveTutorLevelModule(req, req.params.id);
+    if (!levelModule) return res.redirect('/tutor/modules');
+    const mod = levelModule.source;
+    const backToForm = `/tutor/level-modules/${levelModule.id}/create-assessment`;
+
+    const parsedQuestions = parseBuilderQuestions(req.body);
+    if (!parsedQuestions) {
+      setFlash(req, 'error', 'A title and at least one question are required.');
+      return res.redirect(backToForm);
+    }
+
+    await createTutorAssessment({
+      subject_id: mod.subject_id,
+      // The admin's module it was written from: every guard and report that
+      // reads an activity's module keeps working. level_module_id is what
+      // limits it to this level's students.
+      module_id: mod.id,
+      level_module_id: levelModule.id,
+      tutor_id: req.session.user.id,
+      title: String(req.body.title).trim(),
+      instructions: String(req.body.instructions || '').trim(),
+      purpose: 'activity',
+      assessment_kind: 'tutor_assessment',
+      item_count: parsedQuestions.length,
+      questions: parsedQuestions
+    });
+
+    setFlash(req, 'success', `Assessment "${String(req.body.title).trim()}" created and published to your ${levelModule.level} students.`);
+    res.redirect(`/tutor/level-modules/${levelModule.id}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not create assessment.');
+    res.redirect(`/tutor/level-modules/${Number(req.params.id) || ''}`);
+  }
+});
+
+/**
+ * The builder's posted questions: the JSON blob the page serialises, or null
+ * when there is no title or no question to save.
+ */
+function parseBuilderQuestions(body = {}) {
+  const { title, questions } = body;
+  if (!title || !String(title).trim() || !questions || !questions.length) return null;
+  let parsed = questions;
+  if (typeof questions === 'string') {
+    try { parsed = JSON.parse(questions); } catch (_e) { return null; }
+  }
+  return Array.isArray(parsed) && parsed.length ? parsed : null;
+}
 
 // --------------------------------------------------------------------------
 // Check the answers on one module assessment.
@@ -942,9 +1162,14 @@ router.get('/modules/:id/assessments/:assessmentId/submissions', async (req, res
 
     // This tutor's own students in the subject — and only those the module is
     // aimed at, since a student whose year level cannot see the module cannot
-    // answer its assessment either. Anyone who DID answer is kept regardless.
-    const submissions = (await getSubmissionsByAssessment(assessment.id, { tutorId: req.session.user.id }))
-      .filter((row) => row.submission_id || moduleTargetsStudent(mod, row));
+    // answer its assessment either. An activity inside a level module is owed
+    // only by the students that level is for. Anyone who DID answer is kept
+    // regardless.
+    const rows = await getSubmissionsByAssessment(assessment.id, { tutorId: req.session.user.id });
+    const forLevel = assessment.level_module_id ? normalizeLevel(assessment.level_module_level) : null;
+    const placements = forLevel ? await getPlacementLevels(mod.subject_id, rows) : null;
+    const submissions = rows.filter((row) => row.submission_id
+      || (moduleTargetsStudent(mod, row) && (!forLevel || placements.get(Number(row.student_id)) === forLevel)));
     const shell = await buildShell(req, {
       pageTitle: `${assessment.title} — Answers`,
       section: 'modules',
@@ -957,24 +1182,34 @@ router.get('/modules/:id/assessments/:assessmentId/submissions', async (req, res
   } catch (error) { next(error); }
 });
 
-// Tutor: Render assessment creation form
-router.get('/modules/:id/create-assessment', async (req, res, next) => {
-  try {
-    const mod = await resolveTutorModule(req, req.params.id);
-    if (!mod) return res.redirect('/tutor/modules');
-
-    const shell = await buildShell(req, await createAssessmentViewData(req, mod));
-    res.render('shells/dashboard', shell);
-  } catch (error) { next(error); }
-});
+/**
+ * The admin's module is to view now: a new activity is written inside one of
+ * its level modules, where only that level's students meet it (the routes
+ * above). These addresses stay — a bookmark, a tab left open — and send the
+ * tutor to the module, whose level modules are listed there.
+ */
+function toLevelModules(req, res) {
+  setFlash(req, 'info', 'Activities are written inside a level module now: open Beginner, Intermediate or Advance on this module.');
+  res.redirect(`/tutor/modules/${Number(req.params.id) || ''}`);
+}
+router.get('/modules/:id/create-assessment', toLevelModules);
+router.post('/modules/:id/draft-assessment', toLevelModules);
+router.post('/modules/:id/create-assessment', toLevelModules);
 
 /**
  * The create-assessment form's data, shared by the empty form and the AI-drafted
  * one. `draftQuestions` prefills the builder; the tutor still edits and saves it
  * themselves, so the AI drafts but never publishes.
+ *
+ * The form belongs to one level module (extra.levelModule): it posts there, and
+ * drafts from its lesson — or, before the lesson is written, from the handouts.
  */
 async function createAssessmentViewData(req, mod, extra = {}) {
   const handouts = await getModuleHandouts(mod.id);
+  const levelModule = extra.levelModule || null;
+  const lessonParts = levelModule
+    ? (levelModule.sections || []).filter((part) => String(part.content_text || '').trim())
+    : [];
   return {
     pageTitle: 'Create Assessment',
     section: 'modules',
@@ -983,7 +1218,10 @@ async function createAssessmentViewData(req, mod, extra = {}) {
     handouts,
     // Drafting needs text, and a scanned handout nobody has run "Read with AI" on
     // has none. Say so on the button rather than failing after the click.
-    draftableHandouts: handouts.filter((h) => h.extracted_at && h.extracted_text),
+    draftableHandouts: lessonParts.length ? lessonParts : handouts.filter((h) => h.extracted_at && h.extracted_text),
+    draftsFromLesson: lessonParts.length > 0,
+    formBase: levelModule ? `/tutor/level-modules/${levelModule.id}` : `/tutor/modules/${mod.id}`,
+    levelModule,
     minItems: TUTOR_ASSESSMENT_MIN_ITEMS,
     maxItems: TUTOR_ASSESSMENT_MAX_ITEMS,
     draftQuestions: null,
@@ -991,109 +1229,6 @@ async function createAssessmentViewData(req, mod, extra = {}) {
     ...extra
   };
 }
-
-/**
- * Draft this module's assessment with AI (spec Section 4a, optional path).
- *
- * Reuses Phase 5's generator scoped to one module's handouts — no second
- * generator, no second prompt. The result is rendered back into the builder
- * rather than saved: the tutor reviews, edits and presses Create themselves.
- */
-router.post('/modules/:id/draft-assessment', async (req, res, next) => {
-  try {
-    const mod = await resolveTutorModule(req, req.params.id);
-    if (!mod) return res.redirect('/tutor/modules');
-
-    const itemCount = Math.min(
-      TUTOR_ASSESSMENT_MAX_ITEMS,
-      Math.max(TUTOR_ASSESSMENT_MIN_ITEMS, Number(req.body.item_count) || 10)
-    );
-    const questionType = SPEC_QUESTION_TYPES.includes(req.body.question_type) ? req.body.question_type : 'mixed';
-
-    const handoutTexts = await getModuleHandoutTexts(mod.id);
-    if (!handoutTexts.length) {
-      setFlash(req, 'error', 'This module has no handout with readable text yet, so there is nothing to draft from.');
-      return res.redirect(`/tutor/modules/${mod.id}/create-assessment`);
-    }
-
-    let generated;
-    try {
-      generated = await generateAssessmentFromHandouts({
-        handouts: handoutTexts,
-        subject: mod.subject_name,
-        itemCount,
-        questionType
-      });
-    } catch (error) {
-      setFlash(req, 'error', `Could not draft the assessment: ${error.message}`);
-      return res.redirect(`/tutor/modules/${mod.id}/create-assessment`);
-    }
-
-    setFlash(req, 'success', `Drafted ${generated.questions.length} question(s). Review and edit them, then press Create Assessment.`);
-    const shell = await buildShell(req, await createAssessmentViewData(req, mod, {
-      draftQuestions: generated.questions,
-      form: {
-        title: String(req.body.title || '').trim() || `${mod.title} — Assessment`,
-        instructions: String(req.body.instructions || '').trim(),
-        question_type: questionType,
-        item_count: itemCount
-      }
-    }));
-    res.render('shells/dashboard', shell);
-  } catch (error) { failBack(req, res, error, `/tutor/modules/${Number(req.params.id) || ''}`); }
-});
-
-// Tutor: Submit new assessment (JSON payload)
-router.post('/modules/:id/create-assessment', async (req, res, next) => {
-  try {
-    const mod = await resolveTutorModule(req, req.params.id);
-    if (!mod) return res.redirect('/tutor/modules');
-
-    const { title, instructions, questions } = req.body;
-    const backToForm = `/tutor/modules/${mod.id}/create-assessment`;
-
-    if (!title || !questions || !questions.length) {
-      setFlash(req, 'error', 'A title and at least one question are required.');
-      return res.redirect(backToForm);
-    }
-
-    let parsedQuestions = questions;
-    if (typeof questions === 'string') {
-      try { parsedQuestions = JSON.parse(questions); } catch (_e) {
-        setFlash(req, 'error', 'Invalid question data format.');
-        return res.redirect(backToForm);
-      }
-    }
-    if (!Array.isArray(parsedQuestions) || !parsedQuestions.length) {
-      setFlash(req, 'error', 'A title and at least one question are required.');
-      return res.redirect(backToForm);
-    }
-
-    await createTutorAssessment({
-      subject_id: mod.subject_id,
-      module_id: mod.id,
-      tutor_id: req.session.user.id,
-      title: String(title).trim(),
-      instructions: String(instructions || '').trim(),
-      // `purpose` is the legacy column and its CHECK allows pre/activity/post.
-      // A tutor's own assessment is always an activity now; pre and post are
-      // generated at subject level, so offering them here would have produced a
-      // second, competing "Pre-Assessment" for the same subject.
-      purpose: 'activity',
-      assessment_kind: 'tutor_assessment',
-      // No "Question type" to pick any more: the assessment's type is read
-      // from the questions it actually holds (createTutorAssessment).
-      item_count: parsedQuestions.length,
-      questions: parsedQuestions
-    });
-
-    setFlash(req, 'success', `Assessment "${title}" created and published to your students.`);
-    res.redirect(`/tutor/modules/${mod.id}`);
-  } catch (error) {
-    setFlash(req, 'error', error.message || 'Could not create assessment.');
-    res.redirect(`/tutor/modules/${req.params.id}`);
-  }
-});
 
 // Tutor: View student results
 //

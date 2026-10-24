@@ -757,3 +757,75 @@ five-day close and the view-only rule of the release above.
 - While the month runs nothing is held back — taking the Post-Assessment on the
   last day does not make the subject view-only. Enrolled again (Student Bill →
   Re-enroll), the student has a new month and everything shows again.
+
+### This release: level modules — every module written for each level
+
+Applied automatically by `sql/schema.sql` (section 45) on the next boot; nothing
+to run by hand. Uses the `OPENAI_API_KEY` already on Render.
+
+**What a student sees**
+- After the Pre-Assessment a student is Beginner, Intermediate or Advance. Each
+  of their grade's modules is written again for that level, from the module's
+  own handouts (one lesson part per handout), and that is the module they work
+  in: **Your Modules** on the subject page, each with its level. The office's
+  modules stay under **Module Handouts**, to view.
+- The lesson is written in the background, never while a student waits: the
+  card says "Lesson being prepared" for a minute or two. Its activities can be
+  answered meanwhile, and the handouts are there too.
+- An activity written before level modules is every level's: each student meets
+  it inside their own level module. An activity written in a level module is for
+  that level only — not shown to, not counted against, and refused by its
+  address to the other levels.
+- The level is the one the Pre-Assessment gave. Later activities still move the
+  classification on record (Analytics), but not the modules a student works in.
+- The month rule holds: a level module made after a student's month ended is not
+  theirs, and they keep the office's module with its activities as before. The
+  five test students' month (15 Sep – 15 Oct) is over, so to see level modules
+  use a student whose month is running.
+
+**Tutors**
+- Modules & Assessments → a module shows its **Level Modules** (Beginner,
+  Intermediate, Advance) with their state. A level not made yet can be made from
+  there; one that failed can be tried again.
+- A new activity is written inside a level module: **Create Assessment** there,
+  and **Draft with AI** drafts from that level's lesson, pitched at that level.
+  The office's module no longer takes new activities (its old addresses send the
+  tutor to the module).
+- **Check Answers** on a level's activity lists only that level's students as
+  still owing it.
+
+**Admin and Assistant Admin**
+- A module's page shows its three level modules: Ready, Being written, Could not
+  be written (with the reason), or Not made yet — and "handouts changed since"
+  once a handout is added, removed or re-read after a lesson was written. The
+  main admin can **Make**, **Try Again** or **Write Again** (it replaces the
+  lesson students read; activities stay). An assistant views.
+- A lesson is never rewritten by itself when handouts change: the tutor's
+  activities were written against it.
+
+**Analytics & Reports → Learner performance** (admin, assistant, tutor)
+- A **Level** filter (Beginner, Intermediate, Advance) and a Level column: each
+  learner's latest classification — in the chosen subject, and for a tutor in the
+  subjects they teach — the same figure the Level spread chart counts.
+
+**Cost and size.** One AI call per handout per level, once: the placements on
+live at the time of writing need 23 level modules. Lessons are stored as text,
+about 10 KB per handout per level — every module at every level would be under
+3 MB of the 30 MB database.
+
+**If it has to be rolled back.** The old code ignores the new tables and the new
+`tutor_assessments.level_module_id` column, so rolling the code back (Render →
+Deploys → Rollback) needs nothing restored. Activities written inside level
+modules would then show to every level of their module until it is deployed
+again.
+
+To verify after the deploy:
+
+```bash
+node scripts/apply-schema.js --check     # parses cleanly
+npm test                                 # includes scripts/test-level-modules.js
+```
+
+Then log in as a student who has taken a Pre-Assessment and whose month is
+running: **Your Modules** lists their level's modules; within a couple of
+minutes the lesson is there. As admin, the module's page shows that level Ready.
