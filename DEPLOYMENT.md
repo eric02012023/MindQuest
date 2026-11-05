@@ -872,6 +872,12 @@ removed), and three new npm packages: `pdf-lib`, `@pdf-lib/fontkit` and
 - Admin: Assessment Monitoring → a student's name. The main admin checks, edits
   and opens, and can mark a module passed for a broken case. An assistant views
   their branch's students.
+- **Reset Pre-Assessment** (main admin, on that same page, per subject): the
+  student can take the Pre-Assessment again, and a new learning path starts from
+  it. It removes their Pre-Assessment result in the subject, its focus areas,
+  their classification there, their learning path with the assessments written
+  for them and every take, and an opened Post-Assessment. Activities they answered
+  and the level modules stay. Refused once the Post-Assessment is taken.
 
 **Turning it off.** `LEARNING_PATHS=off` starts no new path: students then get
 the old way. Paths already started keep working.

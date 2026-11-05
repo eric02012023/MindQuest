@@ -3161,6 +3161,20 @@ function createAdminRouter(role) {
     } catch (error) { failBack(req, res, error, monitoringOf(studentId)); }
   });
 
+  // Main admin: let a student take a subject's Pre-Assessment again (a new
+  // learning path follows). Refused once their Post-Assessment is taken.
+  router.post('/students/:studentId/subjects/:subjectId/pre/reset', async (req, res) => {
+    const studentId = Number(req.params.studentId);
+    const subjectId = Number(req.params.subjectId);
+    try {
+      if (refuseUnlessMainAdmin(req, res, monitoringOf(studentId))) return;
+      if (!(await requireMonitoredStudent(req, res, studentId))) return;
+      await paths.resetPreAssessmentFor(studentId, subjectId);
+      setFlash(req, 'success', 'The Pre-Assessment was reset. The student can take it again, and their learning path starts from it.');
+      res.redirect(monitoringOf(studentId));
+    } catch (error) { failBack(req, res, error, monitoringOf(studentId)); }
+  });
+
   router.get('/path-attempts/:attemptId', async (req, res, next) => {
     try {
       const page = await paths.attemptPageData(Number(req.params.attemptId));

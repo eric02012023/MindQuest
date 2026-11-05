@@ -39,6 +39,7 @@ const db = {
   submissions: [],      // existing tutor_assessment_submissions rows
   takesUpdate: true,    // whether the takes_used UPDATE finds its row
   nextLocked: null,     // the id unlockNext opens, or null when none is left
+  reset: null,          // what resetPreAssessmentFor reads, when set
   insertId: 900
 };
 
@@ -46,6 +47,14 @@ function answer(text, params = []) {
   const sql = String(text).replace(/\s+/g, ' ').trim();
   db.statements.push({ sql, params });
   if (sql.startsWith('INSERT')) return { insertId: ++db.insertId };
+  if (db.reset) {
+    if (sql.startsWith('SELECT sub.id FROM tutor_assessment_submissions sub') && sql.includes("'pre_assessment'")) return db.reset.pre;
+    if (sql.startsWith('SELECT TOP 1 sub.id FROM tutor_assessment_submissions sub') && sql.includes("'post_assessment'")) return db.reset.post;
+    if (sql.startsWith('SELECT id, post_assessment_id FROM learning_paths')) return db.reset.paths;
+    if (sql.startsWith('SELECT id, assessment_id FROM learning_path_modules')) return db.reset.modules;
+    if (sql.startsWith('SELECT id FROM tutor_assessments WHERE id IN')) return db.reset.personal;
+    if (sql.startsWith('SELECT id FROM focus_handouts')) return db.reset.focus;
+  }
   if (sql.includes('FROM learning_path_modules lpm JOIN learning_paths lp')) return db.pathModule ? [db.pathModule] : [];
   if (sql.startsWith('SELECT ta.*, s.name AS subject_name FROM tutor_assessments ta')) return db.assessment ? [db.assessment.header] : [];
   if (sql.startsWith('SELECT q.*, m.order_number AS source_order_number')) return db.assessment ? db.assessment.questions : [];
@@ -299,6 +308,43 @@ async function main() {
     { source_module_id: 61, source_handout_id: 97, source_module_title: 'Energy', is_correct: 0 }
   ]);
   ok('grouped per handout, with the share right', topics.length === 1 && topics[0].correct === 1 && topics[0].total === 3 && topics[0].is_weak === true);
+
+  console.log('\n== resetting a Pre-Assessment (main admin) ==');
+  const resetFails = async () => { try { await paths.resetPreAssessmentFor(5, 2); return ''; } catch (e) { return e.message; } };
+  db.reset = { pre: [], post: [], paths: [], modules: [], personal: [], focus: [] };
+  ok('nothing to reset: refused', /no Pre-Assessment/.test(await resetFails()));
+  db.reset = { pre: [{ id: 70 }], post: [{ id: 81 }], paths: [], modules: [], personal: [], focus: [] };
+  db.statements = [];
+  ok('the Post-Assessment taken: refused, so the before-and-after is kept', /can no longer be reset/.test(await resetFails()));
+  ok('…and nothing was deleted', !db.statements.some((s) => s.sql.startsWith('DELETE')));
+  db.reset = {
+    pre: [{ id: 70 }],
+    post: [],
+    paths: [{ id: 3, post_assessment_id: 90 }],
+    modules: [{ id: 11, assessment_id: 77 }, { id: 12, assessment_id: null }],
+    personal: [{ id: 77 }, { id: 90 }],
+    focus: [{ id: 5 }]
+  };
+  db.statements = [];
+  const done = await paths.resetPreAssessmentFor(5, 2);
+  const deletes = db.statements.filter((s) => s.sql.startsWith('DELETE')).map((s) => s.sql);
+  const at = (prefix) => deletes.findIndex((s) => s.startsWith(prefix));
+  ok('it reports what it removed', done.removedSubmissions === 1 && done.removedPaths === 1 && done.removedAssessments === 2, JSON.stringify(done));
+  ok('every take goes before the assessments it belongs to',
+    at('DELETE FROM tutor_assessment_attempts') >= 0 && at('DELETE FROM tutor_assessment_attempts') < at('DELETE FROM tutor_assessments'));
+  ok('answers go before the questions they point at',
+    at('DELETE FROM tutor_student_answers') < at('DELETE FROM tutor_assessment_questions'));
+  ok('only the student\'s own assessments are deleted',
+    deletes.some((s) => s.startsWith('DELETE FROM tutor_assessments WHERE id IN') && s.includes('for_student_id = ?')));
+  const preDelete = deletes.findIndex((s) => s.startsWith('DELETE FROM tutor_assessment_submissions WHERE id IN'));
+  ok('focus areas and violations go before the Pre-Assessment result',
+    at('DELETE FROM focus_handouts') < preDelete && deletes.findIndex((s) => s.includes('assessment_violations WHERE submission_id')) < preDelete);
+  ok('the classification and an opened Post go too',
+    deletes.some((s) => s.startsWith('DELETE FROM student_subject_levels')) && deletes.some((s) => s.startsWith('DELETE FROM post_openings')));
+  ok('the path goes (its modules with it)', deletes.some((s) => s.startsWith('DELETE FROM learning_paths')));
+  ok('activities and level modules are not touched',
+    !deletes.some((s) => /level_modules|student_module_reads/.test(s)));
+  db.reset = null;
 
   console.log(`\n${failures ? `${failures} FAILURE(S)` : 'Learning paths hold: every page kept, a pass opens the next module, a retake waits for the tutor.'}`);
   process.exit(failures ? 1 : 0);

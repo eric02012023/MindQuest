@@ -26,12 +26,24 @@
 
   <% entries.forEach((entry) => { %>
     <% const view = entry.view; %>
+    <% const preTaken = view ? true : !!(entry.completion && entry.completion.preDone); %>
+    <% const postTaken = view
+         ? (view.path.post_status === 'taken' || !!(view.post && view.post.submission_id))
+         : !!(entry.completion && entry.completion.postTaken); %>
     <section class="panel-card">
       <div class="panel-card-head">
         <h3><%= entry.subjectName %></h3>
-        <% if (view) { %>
-          <span class="lm-level lm-level-<%= String(view.path.placement_level || 'beginner').toLowerCase() %>"><%= view.path.placement_level %></span>
-        <% } %>
+        <div class="lpm-head-actions">
+          <% if (view) { %>
+            <span class="lm-level lm-level-<%= String(view.path.placement_level || 'beginner').toLowerCase() %>"><%= view.path.placement_level %></span>
+          <% } %>
+          <% if (isMainAdmin && preTaken && !postTaken) { %>
+            <form method="post" action="<%= basePath %>/students/<%= student.id %>/subjects/<%= entry.subjectId %>/pre/reset"
+                  data-confirm-message="Reset the <%= entry.subjectName %> Pre-Assessment of <%= studentLabel %>? Their Pre-Assessment result, focus areas, learning path and the assessments written for them in this subject are removed, and they can take the Pre-Assessment again. Activities they answered stay.">
+              <button type="submit" class="btn btn-secondary btn-sm">Reset Pre-Assessment</button>
+            </form>
+          <% } %>
+        </div>
       </div>
 
       <% if (!view) { %>
@@ -235,6 +247,8 @@
 </section>
 
 <style>
+  .lpm-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .lpm-head-actions form { margin: 0; }
   .lpm-table td { vertical-align: top; }
   .lpm-table .module-card-meta { display: block; margin-top: 2px; }
   .lpm-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
