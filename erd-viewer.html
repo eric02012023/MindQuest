@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MindQuest ERD - High-Res Diagram Viewer & Downloader</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background-color: #12121e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    background: #1a1a2e;
+    border-bottom: 1px solid #2d2d44;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    z-index: 100;
+  }
+  .title-group h1 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .title-group p {
+    font-size: 11px;
+    color: #8b8b9e;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  button {
+    background: #252538;
+    color: #fff;
+    border: 1px solid #3e3e5c;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+  }
+  button:hover {
+    background: #343450;
+    border-color: #5c5c8a;
+  }
+  button.primary {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    border-color: #6366f1;
+  }
+  button.primary:hover {
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    filter: brightness(1.1);
+  }
+  #loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 16px;
+    color: #9d9db5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #2e2e44;
+    border-top: 3px solid #7c3aed;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  #diagram-container {
+    flex: 1;
+    width: 100%;
+    height: calc(100vh - 65px);
+    position: relative;
+    overflow: hidden;
+  }
+  #erd-output {
+    width: 100%;
+    height: 100%;
+  }
+  #erd-output svg {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #10b981;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+    z-index: 1000;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-group">
+    <h1>📊 MindQuest Database ERD</h1>
+    <p>38 Tables & Relationships | Use Mouse Wheel to Zoom, Click & Drag to Pan</p>
+  </div>
+  <div class="actions">
+    <button onclick="resetZoom()">🔄 Reset Zoom</button>
+    <button onclick="downloadSVG()">📥 Download SVG (Vector/HD)</button>
+    <button class="primary" onclick="downloadPNG()">💾 Download PNG (High-Res Image)</button>
+  </div>
+</header>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Rendering ERD diagram... Sandali lang po...</span>
+</div>
+
+<div id="diagram-container">
+  <div id="erd-output"></div>
+</div>
+
+<div id="toast" class="toast">Downloaded successfully!</div>
+
+<script>
+const mermaidCode = `erDiagram
+
+    branches {
+        INT id PK
+        NVARCHAR name UK
+        BIT is_archived
+        DATETIME2 created_at
+    }
+
+    subjects {
+        INT id PK
+        NVARCHAR name UK
+        NVARCHAR category
+        NVARCHAR image_path
+        BIT is_archived
+    }
+
+    users {
+        INT id PK
+        NVARCHAR user_id UK
+        NVARCHAR role
+        INT branch_id FK
+        INT assistant_scope_branch_id FK
+        NVARCHAR password_hash
+        NVARCHAR first_name
+        NVARCHAR last_name
+        NVARCHAR email
+        NVARCHAR education_level_group
+        INT accepted_submission_id FK
+        NVARCHAR status
+        BIT is_archived
+    }
+
+    submissions {
+        INT id PK
+        NVARCHAR submission_type
+        INT branch_id FK
+        NVARCHAR first_name
+        NVARCHAR last_name
+        NVARCHAR email
+        NVARCHAR status
+        BIT archived
+    }
+
+    notifications {
+        INT id PK
+        INT submission_id FK
+        NVARCHAR title
+        BIT is_read
+    }
+
+    user_subject_assignments {
+        INT id PK
+        INT student_id FK
+        INT tutor_id FK
+        INT subject_id FK
+        INT branch_id FK
+        INT accepted_by FK
+        NVARCHAR time_slot
+        NVARCHAR preferred_days
+        DATE start_date
+        DATE end_date
+        BIT is_archived
+    }
+
+    attendance {
+        INT id PK
+        INT student_id FK
+        INT tutor_id FK
+        INT subject_id FK
+        DATE attendance_date
+        NVARCHAR status
+    }
+
+    billing {
+        INT id PK
+        INT student_id FK "UNIQUE"
+        DECIMAL full_bill
+        DECIMAL partial_payment
+        DECIMAL for_settlement
+        NVARCHAR payment_status
+        INT posted_by FK
+    }
+
+    payment_history {
+        INT id PK
+        INT billing_id FK
+        INT student_id FK
+        DECIMAL amount
+        INT recorded_by FK
+    }
+
+    payment_entries {
+        INT id PK
+        INT billing_id FK
+        INT student_id FK
+        INT sequence_no
+        DECIMAL amount
+        NVARCHAR payment_method
+        INT recorded_by FK
+        INT payment_request_id FK
+        BIT is_locked
+    }
+
+    payment_requests {
+        INT id PK
+        INT student_id FK
+        INT billing_id FK
+        INT branch_id FK
+        DECIMAL amount
+        NVARCHAR status
+        INT processed_by FK
+    }
+
+    soa_posts {
+        INT id PK
+        INT billing_id FK
+        INT student_id FK
+        INT branch_id FK
+        INT created_by FK
+    }
+
+    online_payments {
+        INT id PK
+        INT student_id FK
+        INT billing_id FK
+        DECIMAL amount
+        NVARCHAR status
+        NVARCHAR checkout_url
+    }
+
+    subject_resources {
+        INT id PK
+        INT subject_id FK
+        INT tutor_id FK
+        INT assigned_student_id FK
+        INT source_resource_id FK
+        NVARCHAR title
+        NVARCHAR module_origin
+        NVARCHAR difficulty_level
+        BIT is_archived
+    }
+
+    modules {
+        INT id PK
+        INT subject_id FK
+        NVARCHAR level
+        NVARCHAR title
+        NVARCHAR grade_level
+        INT uploaded_by FK
+        BIT is_archived
+    }
+
+    module_reads {
+        INT id PK
+        INT student_id FK
+        INT resource_id FK
+        INT subject_id FK
+        DATETIME2 read_at
+    }
+
+    messages {
+        INT id PK
+        INT sender_id FK
+        INT receiver_id FK
+        NVARCHAR body
+        BIT is_seen
+    }
+
+    assessments {
+        INT id PK
+        NVARCHAR title
+        NVARCHAR assessment_type
+        INT branch_id FK
+        INT assigned_student_id FK
+        INT created_by FK
+        INT subject_id FK
+        INT assigned_by_tutor_id FK
+        INT cycle_id FK
+        NVARCHAR assessment_origin
+    }
+
+    assessment_questions {
+        INT id PK
+        INT assessment_id FK
+        NVARCHAR question_text
+        NVARCHAR correct_answer
+        NVARCHAR question_type
+    }
+
+    assessment_results {
+        INT id PK
+        INT assessment_id FK
+        INT student_id FK
+        INT score
+        DECIMAL percentage
+        NVARCHAR level
+        INT attempt_id FK
+    }
+
+    assessment_templates {
+        INT id PK
+        INT subject_id FK
+        NVARCHAR title
+        NVARCHAR assessment_type
+        INT created_by FK
+        BIT is_archived
+    }
+
+    assessment_template_questions {
+        INT id PK
+        INT template_id FK
+        NVARCHAR question_text
+        NVARCHAR correct_answer
+    }
+
+    assessment_attempts {
+        INT id PK
+        INT assessment_id FK
+        INT student_id FK
+        INT attempt_number
+        DECIMAL percentage
+        NVARCHAR level
+        BIT is_auto_submitted
+    }
+
+    student_assessment_answers {
+        INT id PK
+        INT attempt_id FK
+        INT question_id FK
+        NVARCHAR student_answer
+        BIT is_correct
+    }
+
+    assessment_anti_cheat_logs {
+        INT id PK
+        INT assessment_id FK
+        INT student_id FK
+        INT attempt_id FK
+        NVARCHAR event_type
+    }
+
+    assessment_requests {
+        INT id PK
+        INT student_id FK
+        INT tutor_id FK
+        INT subject_id FK
+        INT resource_id FK
+        NVARCHAR status
+    }
+
+    tutor_assessments {
+        INT id PK
+        INT subject_id FK
+        INT module_id FK
+        INT tutor_id FK
+        NVARCHAR title
+        NVARCHAR purpose
+        NVARCHAR grade_level
+        BIT is_archived
+    }
+
+    tutor_assessment_questions {
+        INT id PK
+        INT assessment_id FK
+        NVARCHAR question_text
+        NVARCHAR question_type
+        NVARCHAR correct_answer
+    }
+
+    tutor_question_options {
+        INT id PK
+        INT question_id FK
+        NVARCHAR option_label
+        NVARCHAR option_text
+    }
+
+    tutor_assessment_submissions {
+        INT id PK
+        INT assessment_id FK
+        INT student_id FK
+        INT score
+        DECIMAL percentage
+        BIT is_auto_submitted
+        INT violation_count
+    }
+
+    tutor_student_answers {
+        INT id PK
+        INT submission_id FK
+        INT question_id FK
+        NVARCHAR student_answer
+        BIT is_correct
+    }
+
+    assessment_violations {
+        INT id PK
+        INT assessment_id FK
+        INT student_id FK
+        INT submission_id FK
+        NVARCHAR violation_type
+    }
+
+    student_learning_cycles {
+        INT id PK
+        INT student_id FK
+        INT subject_id FK
+        INT resource_id FK
+        INT assessment_id FK
+        INT attempt_id FK
+        NVARCHAR status
+    }
+
+    student_subject_levels {
+        INT id PK
+        INT student_id FK
+        INT subject_id FK
+        NVARCHAR level
+        INT pre_assessment_id FK
+    }
+
+    ai_generation_logs {
+        INT id PK
+        NVARCHAR generation_type
+        INT student_id FK
+        INT subject_id FK
+        INT resource_id FK
+        INT assessment_id FK
+    }
+
+    otps {
+        INT id PK
+        INT user_id FK
+        NVARCHAR otp_code
+        DATETIME2 expires_at
+        INT failed_attempts
+    }
+
+    email_otps {
+        INT id PK
+        NVARCHAR email
+        NVARCHAR purpose
+        DATETIME2 expires_at
+    }
+
+    trusted_devices {
+        INT id PK
+        INT user_id FK
+        NVARCHAR device_token
+        NVARCHAR device_fingerprint
+    }
+
+    tutor_year_levels {
+        INT id PK
+        INT tutor_id FK
+        NVARCHAR year_level
+    }
+
+    subject_enrollment_requests {
+        INT id PK
+        INT student_id FK
+        INT subject_id FK
+        INT branch_id FK
+        NVARCHAR status
+        INT decided_by FK
+    }
+
+    tutor_schedule_applications {
+        INT id PK
+        INT student_id FK
+        INT tutor_id FK
+        INT subject_id FK
+        INT branch_id FK
+        NVARCHAR time_slot
+        NVARCHAR preferred_days
+        NVARCHAR status
+    }
+
+    focus_handouts {
+        INT id PK
+        INT student_id FK
+        INT subject_id FK
+        INT tutor_id FK
+        INT submission_id FK
+        INT assessment_id FK
+        NVARCHAR title
+    }
+
+    app_notifications {
+        INT id PK
+        NVARCHAR notification_type
+        NVARCHAR title
+        INT recipient_user_id FK
+        INT branch_id FK
+        INT read_by FK
+        BIT is_read
+    }
+
+    assistant_rosters {
+        INT id PK
+        INT assistant_id FK
+        INT member_id FK
+        INT branch_id FK
+        NVARCHAR member_role
+    }
+
+    assistant_admin_profiles {
+        INT id PK
+        NVARCHAR first_name
+        NVARCHAR last_name
+        INT user_id FK
+        INT created_by FK
+        BIT is_archived
+    }
+
+    branches ||--o{ users : "branch_id"
+    branches ||--o{ submissions : "branch_id"
+    branches ||--o{ user_subject_assignments : "branch_id"
+    branches ||--o{ soa_posts : "branch_id"
+    branches ||--o{ payment_requests : "branch_id"
+    branches ||--o{ app_notifications : "branch_id"
+    branches ||--o{ assistant_rosters : "branch_id"
+    branches ||--o{ subject_enrollment_requests : "branch_id"
+
+    users ||--o{ user_subject_assignments : "student_id / tutor_id"
+    users ||--o{ attendance : "student_id / tutor_id"
+    users ||--|| billing : "student_id"
+    users ||--o{ messages : "sender_id / receiver_id"
+    users ||--o{ otps : "user_id"
+    users ||--o{ trusted_devices : "user_id"
+    users ||--o{ tutor_year_levels : "tutor_id"
+
+    submissions ||--o{ notifications : "submission_id"
+    users ||--o| submissions : "accepted_submission_id"
+
+    subjects ||--o{ user_subject_assignments : "subject_id"
+    subjects ||--o{ attendance : "subject_id"
+    subjects ||--o{ subject_resources : "subject_id"
+    subjects ||--o{ modules : "subject_id"
+    subjects ||--o{ assessments : "subject_id"
+    subjects ||--o{ assessment_templates : "subject_id"
+    subjects ||--o{ tutor_assessments : "subject_id"
+    subjects ||--o{ student_subject_levels : "subject_id"
+    subjects ||--o{ student_learning_cycles : "subject_id"
+    subjects ||--o{ subject_enrollment_requests : "subject_id"
+    subjects ||--o{ focus_handouts : "subject_id"
+
+    billing ||--o{ payment_history : "billing_id"
+    billing ||--o{ payment_entries : "billing_id"
+    billing ||--o{ soa_posts : "billing_id"
+    billing ||--o{ online_payments : "billing_id"
+    billing ||--o{ payment_requests : "billing_id"
+
+    payment_requests ||--o| payment_entries : "payment_request_id"
+
+    subject_resources ||--o{ module_reads : "resource_id"
+    subject_resources ||--o| subject_resources : "source_resource_id"
+
+    modules ||--o{ tutor_assessments : "module_id"
+
+    assessments ||--o{ assessment_questions : "assessment_id"
+    assessments ||--o{ assessment_results : "assessment_id"
+    assessments ||--o{ assessment_attempts : "assessment_id"
+    assessments ||--o{ assessment_anti_cheat_logs : "assessment_id"
+
+    assessment_templates ||--o{ assessment_template_questions : "template_id"
+    assessment_attempts ||--o{ student_assessment_answers : "attempt_id"
+    assessment_questions ||--o{ student_assessment_answers : "question_id"
+
+    tutor_assessments ||--o{ tutor_assessment_questions : "assessment_id"
+    tutor_assessments ||--o{ tutor_assessment_submissions : "assessment_id"
+    tutor_assessments ||--o{ assessment_violations : "assessment_id"
+
+    tutor_assessment_questions ||--o{ tutor_question_options : "question_id"
+    tutor_assessment_questions ||--o{ tutor_student_answers : "question_id"
+
+    tutor_assessment_submissions ||--o{ tutor_student_answers : "submission_id"
+    tutor_assessment_submissions ||--o{ assessment_violations : "submission_id"
+    tutor_assessment_submissions ||--o{ focus_handouts : "submission_id"
+`;
+
+let panZoomInstance = null;
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    darkMode: true,
+    background: '#12121e',
+    primaryColor: '#1e293b',
+    primaryTextColor: '#f8fafc',
+    primaryBorderColor: '#475569',
+    lineColor: '#64748b',
+    secondaryColor: '#0f172a',
+    tertiaryColor: '#1e1b4b'
+  },
+  er: {
+    diagramPadding: 20,
+    layoutDirection: 'TB',
+    minEntityWidth: 100,
+    minEntityHeight: 75,
+    entityPadding: 15,
+    stroke: '#64748b',
+    fill: '#1e293b',
+    fontSize: 12
+  }
+});
+
+async function renderDiagram() {
+  try {
+    const { svg } = await mermaid.render('mindquest-svg', mermaidCode);
+    document.getElementById('erd-output').innerHTML = svg;
+    document.getElementById('loading').style.display = 'none';
+
+    // Enable pan & zoom
+    const svgElem = document.querySelector('#erd-output svg');
+    if (svgElem) {
+      panZoomInstance = svgPanZoom(svgElem, {
+        zoomEnabled: true,
+        controlIconsEnabled: true,
+        fit: true,
+        center: true,
+        minZoom: 0.1,
+        maxZoom: 15
+      });
+    }
+  } catch (err) {
+    console.error('Mermaid render error:', err);
+    document.getElementById('loading').innerHTML = '<span style="color:#ef4444">Failed to render diagram: ' + err.message + '</span>';
+  }
+}
+
+function resetZoom() {
+  if (panZoomInstance) {
+    panZoomInstance.reset();
+  }
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+function downloadSVG() {
+  const svg = document.querySelector('#erd-output svg');
+  if (!svg) return alert('Diagram not ready yet!');
+
+  // Clone and clean for export
+  const clone = svg.cloneNode(true);
+  clone.removeAttribute('style');
+  const svgData = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'MindQuest-ERD.svg';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('✅ SVG downloaded! (Vector format - can be scaled infinitely without blur)');
+}
+
+function downloadPNG() {
+  const svg = document.querySelector('#erd-output svg');
+  if (!svg) return alert('Diagram not ready yet!');
+
+  showToast('⏳ Generating High-Res PNG...');
+
+  // Reset zoom temporarily to get full viewBox
+  const oldZoom = panZoomInstance ? panZoomInstance.getZoom() : 1;
+  const oldPan = panZoomInstance ? panZoomInstance.getPan() : { x: 0, y: 0 };
+  if (panZoomInstance) panZoomInstance.reset();
+
+  setTimeout(() => {
+    const clone = svg.cloneNode(true);
+    const viewBox = svg.viewBox.baseVal;
+    const width = viewBox.width || svg.getBoundingClientRect().width || 2400;
+    const height = viewBox.height || svg.getBoundingClientRect().height || 1800;
+
+    // Use high scale multiplier for extreme crispness
+    const scale = 2.5;
+    const canvas = document.createElement('canvas');
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    const ctx = canvas.getContext('2d');
+
+    // Fill dark background
+    ctx.fillStyle = '#12121e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const svgData = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+
+    img.onload = function() {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+
+      canvas.toBlob((pngBlob) => {
+        const pngUrl = URL.createObjectURL(pngBlob);
+        const a = document.createElement('a');
+        a.href = pngUrl;
+        a.download = 'MindQuest-ERD.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(pngUrl);
+        showToast('✅ High-Res PNG downloaded!');
+      }, 'image/png');
+    };
+    img.src = url;
+  }, 100);
+}
+
+window.addEventListener('DOMContentLoaded', renderDiagram);
+</script>
+
+</body>
+</html>

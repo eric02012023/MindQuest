@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MindQuest Database ERD – Print Version</title>
+<style>
+  @page { size: A4 portrait; margin: 6mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+
+  .no-print {
+    margin-bottom: 14px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .no-print button {
+    background: linear-gradient(135deg, #0f3460, #533483);
+    color: #fff; border: none; padding: 10px 24px;
+    border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .no-print button:hover { box-shadow: 0 4px 15px rgba(83,52,131,0.5); }
+  .no-print label { color: #aaa; font-size: 13px; }
+  .no-print select { background: #0f3460; color: #fff; border: 1px solid #533483; padding: 4px 8px; border-radius: 4px; }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    background: #fff;
+    color: #000;
+    padding: 6mm;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    overflow: hidden;
+  }
+
+  .page-title {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 1px;
+  }
+  .page-sub {
+    text-align: center;
+    font-size: 8px;
+    color: #666;
+    margin-bottom: 5px;
+  }
+
+  .domains {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    margin-bottom: 4px;
+  }
+
+  .domain {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .domain-header {
+    font-size: 7px;
+    font-weight: 700;
+    text-align: center;
+    padding: 2px 3px;
+    color: #fff;
+  }
+  .domain-tables {
+    padding: 2px;
+  }
+
+  .tbl {
+    border: 1px solid #ddd;
+    border-radius: 2px;
+    margin-bottom: 2px;
+    background: #fafafa;
+  }
+  .tbl-name {
+    font-size: 6.5px;
+    font-weight: 700;
+    background: #f0f0f0;
+    padding: 1px 3px;
+    border-bottom: 1px solid #ddd;
+  }
+  .tbl-cols {
+    font-size: 5.5px;
+    padding: 1px 3px;
+    color: #444;
+    line-height: 1.35;
+  }
+  .tbl-cols .pk { color: #d32f2f; font-weight: 700; }
+  .tbl-cols .fk { color: #1565c0; }
+  .tbl-cols .uk { color: #2e7d32; }
+
+  /* Domain colors */
+  .d-users .domain-header   { background: #1565c0; }
+  .d-subjects .domain-header { background: #2e7d32; }
+  .d-admin-assess .domain-header { background: #e65100; }
+  .d-tutor-assess .domain-header { background: #6a1b9a; }
+  .d-billing .domain-header  { background: #c62828; }
+  .d-ai .domain-header       { background: #00838f; }
+  .d-msg .domain-header      { background: #4527a0; }
+  .d-mgmt .domain-header     { background: #37474f; }
+
+  /* Relationship section */
+  .rel-section {
+    margin-top: 3px;
+  }
+  .rel-title {
+    font-size: 8px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 2px;
+    color: #333;
+  }
+  .rel-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    font-size: 5.8px;
+    color: #333;
+  }
+  .rel-group {
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    padding: 2px 3px;
+  }
+  .rel-group-title {
+    font-weight: 700;
+    font-size: 6px;
+    margin-bottom: 1px;
+    padding-bottom: 1px;
+    border-bottom: 1px solid #eee;
+  }
+  .rel-line {
+    line-height: 1.4;
+  }
+  .rel-line .from { color: #1565c0; font-weight: 600; }
+  .rel-line .arrow { color: #999; }
+  .rel-line .to { color: #c62828; font-weight: 600; }
+  .rel-line .via { color: #666; font-style: italic; }
+
+  .footer {
+    text-align: center;
+    font-size: 6px;
+    color: #999;
+    margin-top: 3px;
+    border-top: 1px solid #eee;
+    padding-top: 2px;
+  }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .no-print { display: none !important; }
+    .page {
+      box-shadow: none;
+      width: 100%;
+      min-height: auto;
+      padding: 4mm;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button onclick="window.print()">🖨️ Print / Save as PDF</button>
+  <label>Tip: Sa Print dialog, piliin "A4" o "Letter" size, tapos "Portrait" orientation.</label>
+</div>
+
+<div class="page">
+  <div class="page-title">MindQuest Tutorial Center — Entity Relationship Diagram</div>
+  <div class="page-sub">Database: mindquestdb • Engine: Microsoft SQL Server (Somee.com) • 38 Tables • Source: schema.sql</div>
+
+  <div class="domains">
+
+    <!-- ===== USERS & AUTH ===== -->
+    <div class="domain d-users">
+      <div class="domain-header">👤 USERS &amp; AUTH</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">branches</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="uk">name UK</span>, is_archived</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">users</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="uk">user_id UK</span>, role, <span class="fk">branch_id FK→branches</span>, <span class="fk">assistant_scope_branch_id FK→branches</span>, password_hash, first_name, last_name, email, education_level_group, <span class="fk">accepted_submission_id FK→submissions</span>, status, is_archived</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">submissions</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, submission_type, <span class="fk">branch_id FK→branches</span>, first_name, last_name, email, status, archived</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">otps</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">user_id FK→users</span>, purpose, otp_code, expires_at, failed_attempts</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">email_otps</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, email, purpose, otp_hash, expires_at</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">trusted_devices</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">user_id FK→users</span>, device_token, device_fingerprint, expires_at</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SUBJECTS & MODULES ===== -->
+    <div class="domain d-subjects">
+      <div class="domain-header">📚 SUBJECTS &amp; MODULES</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">subjects</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="uk">name UK</span>, category, image_path</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">user_subject_assignments</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">tutor_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, <span class="fk">branch_id FK→branches</span>, time_slot, preferred_days, start_date, end_date</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">modules</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">subject_id FK→subjects</span>, level, title, grade_level, <span class="fk">uploaded_by FK→users</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">subject_resources</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">subject_id FK→subjects</span>, <span class="fk">tutor_id FK→users</span>, title, module_origin, difficulty_level, <span class="fk">assigned_student_id FK→users</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">module_reads</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">resource_id FK→subject_resources</span>, <span class="fk">subject_id FK→subjects</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">subject_enrollment_requests</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, <span class="fk">branch_id FK→branches</span>, status</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">tutor_schedule_applications</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id</span>, <span class="fk">tutor_id</span>, <span class="fk">subject_id</span>, time_slot, preferred_days, status</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">tutor_year_levels</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">tutor_id FK→users</span>, year_level</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ADMIN ASSESSMENTS ===== -->
+    <div class="domain d-admin-assess">
+      <div class="domain-header">📝 ADMIN ASSESSMENTS</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">assessments</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, title, assessment_type, <span class="fk">branch_id FK→branches</span>, <span class="fk">assigned_student_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, assessment_origin</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_questions</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assessment_id FK→assessments</span>, question_text, correct_answer, question_type, points</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_results</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assessment_id FK→assessments</span>, <span class="fk">student_id FK→users</span>, score, percentage, level, <span class="fk">attempt_id</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_templates</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">subject_id FK→subjects</span>, title, assessment_type, <span class="fk">created_by FK→users</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_template_questions</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">template_id FK→assessment_templates</span>, question_text, correct_answer</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_attempts</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assessment_id FK→assessments</span>, <span class="fk">student_id FK→users</span>, attempt_number, percentage, level</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">student_assessment_answers</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">attempt_id FK→assessment_attempts</span>, <span class="fk">question_id FK→assessment_questions</span>, student_answer, is_correct</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_anti_cheat_logs</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assessment_id FK→assessments</span>, <span class="fk">student_id FK→users</span>, <span class="fk">attempt_id FK→assessment_attempts</span>, event_type</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_requests</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">tutor_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, status</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TUTOR ASSESSMENTS ===== -->
+    <div class="domain d-tutor-assess">
+      <div class="domain-header">🎓 TUTOR ASSESSMENTS</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">tutor_assessments</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">subject_id FK→subjects</span>, <span class="fk">module_id FK→modules</span>, <span class="fk">tutor_id FK→users</span>, title, purpose, grade_level</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">tutor_assessment_questions</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assessment_id FK→tutor_assessments</span>, question_text, question_type, correct_answer, points</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">tutor_question_options</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">question_id FK→tutor_assessment_questions</span>, option_label, option_text</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">tutor_assessment_submissions</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assessment_id FK→tutor_assessments</span>, <span class="fk">student_id FK→users</span>, score, percentage, is_auto_submitted, violation_count</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">tutor_student_answers</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">submission_id FK→tutor_assessment_submissions</span>, <span class="fk">question_id FK→tutor_assessment_questions</span>, student_answer, is_correct</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assessment_violations</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assessment_id FK→tutor_assessments</span>, <span class="fk">student_id FK→users</span>, <span class="fk">submission_id FK→tutor_assessment_submissions</span>, violation_type</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== BILLING & PAYMENTS ===== -->
+    <div class="domain d-billing">
+      <div class="domain-header">💰 BILLING &amp; PAYMENTS</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">billing</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users (UNIQUE)</span>, full_bill, partial_payment, for_settlement, payment_status, <span class="fk">posted_by FK→users</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">payment_entries</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">billing_id FK→billing</span>, <span class="fk">student_id FK→users</span>, sequence_no, amount, payment_method, <span class="fk">payment_request_id FK→payment_requests</span>, is_locked</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">payment_requests</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">billing_id FK→billing</span>, <span class="fk">branch_id FK→branches</span>, amount, status, <span class="fk">processed_by FK→users</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">payment_history</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">billing_id FK→billing</span>, <span class="fk">student_id FK→users</span>, amount, <span class="fk">recorded_by FK→users</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">online_payments</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">billing_id FK→billing</span>, amount, status, checkout_url</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">soa_posts</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">billing_id FK→billing</span>, <span class="fk">student_id FK→users</span>, <span class="fk">branch_id FK→branches</span>, <span class="fk">created_by FK→users</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== AI & LEARNING ===== -->
+    <div class="domain d-ai">
+      <div class="domain-header">🤖 AI &amp; LEARNING</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">student_learning_cycles</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, <span class="fk">resource_id FK→subject_resources</span>, <span class="fk">assessment_id FK→assessments</span>, status</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">student_subject_levels</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, level, percentage</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">ai_generation_logs</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, generation_type, <span class="fk">student_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, ai_provider, ai_model, tokens_used, success</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">focus_handouts</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, <span class="fk">tutor_id FK→users</span>, <span class="fk">submission_id FK→tutor_assessment_submissions</span>, title, weak_topics_json</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MESSAGING & NOTIFICATIONS ===== -->
+    <div class="domain d-msg">
+      <div class="domain-header">📬 MESSAGING &amp; NOTIFS</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">messages</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">sender_id FK→users</span>, <span class="fk">receiver_id FK→users</span>, body, file_path, is_seen</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">notifications</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">submission_id FK→submissions</span>, title, message, is_read</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">app_notifications</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, notification_type, title, <span class="fk">recipient_user_id FK→users</span>, <span class="fk">branch_id FK→branches</span>, severity, is_read</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ADMIN MANAGEMENT ===== -->
+    <div class="domain d-mgmt">
+      <div class="domain-header">⚙️ ADMIN MANAGEMENT</div>
+      <div class="domain-tables">
+        <div class="tbl">
+          <div class="tbl-name">attendance</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">student_id FK→users</span>, <span class="fk">tutor_id FK→users</span>, <span class="fk">subject_id FK→subjects</span>, attendance_date, status</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assistant_rosters</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, <span class="fk">assistant_id FK→users</span>, <span class="fk">member_id FK→users</span>, <span class="fk">branch_id FK→branches</span>, member_role</div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-name">assistant_admin_profiles</div>
+          <div class="tbl-cols"><span class="pk">id PK</span>, first_name, last_name, <span class="fk">user_id FK→users</span>, <span class="fk">created_by FK→users</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /domains -->
+
+  <!-- ===== RELATIONSHIP KEY ===== -->
+  <div class="rel-section">
+    <div class="rel-title">🔗 Foreign Key Relationships Legend</div>
+    <div style="font-size:6px; text-align:center; color:#666; margin-bottom:2px;">
+      <span class="pk" style="color:#d32f2f;font-weight:700;">■ PK</span> = Primary Key &nbsp;|&nbsp;
+      <span class="fk" style="color:#1565c0;font-weight:700;">■ FK</span> = Foreign Key &nbsp;|&nbsp;
+      <span class="uk" style="color:#2e7d32;font-weight:700;">■ UK</span> = Unique Key &nbsp;|&nbsp;
+      Arrow notation: <strong>FK→target_table</strong> shows where each FK points
+    </div>
+    <div style="font-size:5.5px; text-align:center; color:#888; line-height:1.5;">
+      <strong>Central Hub Tables:</strong> <span style="color:#1565c0;font-weight:700;">users</span> (referenced by 30+ FKs), 
+      <span style="color:#2e7d32;font-weight:700;">subjects</span> (12+ FKs), 
+      <span style="color:#1565c0;font-weight:700;">branches</span> (10+ FKs), 
+      <span style="color:#c62828;font-weight:700;">billing</span> (5 FKs).
+      <br>
+      All FK→target references are shown inline per column. Color coding: 
+      <span style="color:#1565c0;">blue = foreign key</span>, 
+      <span style="color:#d32f2f;">red = primary key</span>, 
+      <span style="color:#2e7d32;">green = unique key</span>.
+    </div>
+  </div>
+
+  <div class="footer">
+    MindQuest Tutorial Center © 2026 — Database: mindquestdb.mssql.somee.com — Generated from sql/schema.sql
+  </div>
+</div><!-- /page -->
+
+</body>
+</html>
