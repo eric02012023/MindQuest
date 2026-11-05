@@ -6,6 +6,8 @@
       <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
         <% if (isPre) { %>
           <span class="pill partial">Pre-Assessment</span>
+        <% } else if (typeof pillLabel !== 'undefined' && pillLabel) { %>
+          <span class="pill"><%= pillLabel %></span>
         <% } else { %>
           <span class="pill"><%= assessment.purpose === 'post' ? 'Post-Assessment' : 'Activity' %></span>
         <% } %>
@@ -35,7 +37,9 @@
 
     <%# The confirmation is the app's own dialog (public/js/main.js), not the
         browser's confirm() box, and it says how many questions are blank. %>
-    <form method="post" action="<%= isPre ? `/student/subjects/${subjectId}/pre-assessment` : `/student/tutor-assessments/${assessment.id}/submit` %>" id="assessment-form"
+    <% const submitTo = (typeof formAction !== 'undefined' && formAction) ? formAction
+         : isPre ? `/student/subjects/${subjectId}/pre-assessment` : `/student/tutor-assessments/${assessment.id}/submit`; %>
+    <form method="post" action="<%= submitTo %>" id="assessment-form"
           data-confirm-title="Submit your answers?"
           data-confirm-message="Are you sure you want to submit? You cannot change your answers after submission."
           data-confirm-ok="Submit"
@@ -63,7 +67,7 @@
                 <% (q.options || []).forEach(opt => { %>
                   <label class="mcq-option">
                     <input type="radio" name="answer_<%= q.id %>" value="<%= opt.option_label %>" required />
-                    <span class="mcq-label"><%= opt.option_label %></span>
+                    <span class="mcq-label"><%= opt.display_label || opt.option_label %></span>
                     <span class="mcq-text"><%= opt.option_text %></span>
                   </label>
                 <% }) %>
@@ -105,7 +109,7 @@
         <button type="submit" class="btn btn-primary btn-lg">
           Submit Assessment
         </button>
-        <a href="/student/subjects/<%= subjectId %>" class="btn btn-secondary">Cancel</a>
+        <a href="<%= (typeof cancelHref !== 'undefined' && cancelHref) ? cancelHref : `/student/subjects/${subjectId}` %>" class="btn btn-secondary">Cancel</a>
       </div>
     </form>
   </section>

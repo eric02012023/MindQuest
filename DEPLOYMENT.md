@@ -829,3 +829,70 @@ npm test                                 # includes scripts/test-level-modules.j
 Then log in as a student who has taken a Pre-Assessment and whose month is
 running: **Your Modules** lists their level's modules; within a couple of
 minutes the lesson is there. As admin, the module's page shows that level Ready.
+
+### This release: learning paths — each student's own modules, and a Post-Assessment the tutor opens
+
+Schema section 46, applied at boot (new tables and one new column, nothing
+removed), and three new npm packages: `pdf-lib`, `@pdf-lib/fontkit` and
+`dejavu-fonts-ttf`. No new environment variable is needed.
+
+**A student who takes the Pre-Assessment from now on** (`lib/learningPaths.js`)
+- Every module of their grade becomes their own. The office's handout pages are
+  kept whole, nothing removed or rewritten, and pages are added right after the
+  page that teaches what they got wrong on that module's Pre-Assessment items
+  (`lib/modulePdf.js`). The module opens as one PDF; the added lessons are also
+  on the module page.
+- Module 1 is open. Each next module opens when they pass the one before —
+  Intermediate (51%) or better — on an assessment written for them from their
+  own module.
+- That assessment waits for their tutor (or the main admin) to check it, edit it
+  if needed, and open it. The student sees only their score. Below Intermediate,
+  the tutor opens another take, shown in a new order. The tutor and the admin
+  see every take and its answers.
+- After the last module, a Post-Assessment is written from their own modules —
+  the same number of questions per module as their Pre-Assessment — and is
+  checked and opened the same way.
+- A student who sat the Pre-Assessment before this keeps the way they had:
+  level modules, every module open.
+
+**The Post-Assessment no longer opens by itself on the last day** (every student)
+- The tutor opens it for each student, once their modules are finished, from the
+  subject page's Post-Assessment list (a learning path: from the student's
+  Learning Path page). The main admin can open it from Assessment Monitoring.
+- Every Post-Assessment that had already opened by itself and is not taken yet
+  stays open. It is recorded once, at the first boot (`post_openings`, marked
+  `post-openings-backfill` in `app_markers`): 14 on live when this was written.
+
+**Where it is**
+- Student: the subject page lists their modules as Open, Locked or Passed. Each
+  opens to its PDF, the lessons added for them, the module's assessment (score
+  only) and the tutor's activities.
+- Tutor: My Students → a student → Learning Path. The subject page's
+  Post-Assessment list links it, and opens a Post-Assessment.
+- Admin: Assessment Monitoring → a student's name. The main admin checks, edits
+  and opens, and can mark a module passed for a broken case. An assistant views
+  their branch's students.
+
+**Turning it off.** `LEARNING_PATHS=off` starts no new path: students then get
+the old way. Paths already started keep working.
+
+**Cost and size.** Per student per subject: one AI call per module for the added
+lessons, one assessment per module when it opens, and one Post-Assessment — a few
+cents with gpt-4o-mini. About 50 KB of the database per student per subject; the
+PDF is put together when it is opened and never stored.
+
+**If it has to be rolled back.** The old code ignores the new tables and
+`tutor_assessments.for_student_id`, but it would show a student's own module
+assessments to the whole module and open every Post-Assessment on its last day
+again. Archive them first:
+`UPDATE tutor_assessments SET is_archived = 1 WHERE for_student_id IS NOT NULL`.
+
+To verify after the deploy:
+
+```bash
+node scripts/apply-schema.js --check     # parses cleanly
+npm test                                 # includes scripts/test-learning-paths.js
+```
+
+`SELECT * FROM app_markers` lists `post-openings-backfill` once the new code has
+booted.

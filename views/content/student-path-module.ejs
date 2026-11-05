@@ -1,0 +1,149 @@
+<%# File: views/content/student-path-module.ejs
+    Purpose: The student's own copy of a module on their learning path
+    (lib/learningPaths.js): the module as one PDF with their added pages, the
+    lessons added for them, the module's assessment (score only), and the
+    tutor's activities.
+    Locals: row (learning_path_modules row + take_state), mod, assignment,
+            activities, submissions, attempts, viewOnly %>
+<% const number = row.order_number || row.position; %>
+<% const state = row.take_state; %>
+<% const lastTake = attempts.length ? attempts[attempts.length - 1] : null; %>
+<% const pct = (value) => `${Number(value || 0).toFixed(1)}%`; %>
+<section class="page-stack">
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h2>Module <%= number %>: <%= row.module_title %></h2>
+      <span class="badge <%= row.status === 'passed' ? 'badge-success' : 'badge-info' %>"><%= row.status === 'passed' ? 'Passed' : 'Open' %></span>
+    </div>
+    <p><strong>Subject:</strong> <%= assignment.subject_name %></p>
+    <% if (row.additions_status === 'pending' || row.additions_status === 'generating') { %>
+      <p class="table-note">Your added lessons are being prepared. Until they are ready, the module opens with its own pages only.</p>
+    <% } %>
+    <div class="pm-actions">
+      <a class="btn btn-primary" href="/student/path-modules/<%= row.id %>/pdf" target="_blank" rel="noopener">Open Module (PDF)</a>
+      <a class="btn btn-secondary" href="/student/subjects/<%= row.subject_id %>">Back to subject</a>
+    </div>
+  </section>
+
+  <% if (row.additions.length) { %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Added for You</h3>
+        <span class="badge badge-info"><%= row.additions.length %></span>
+      </div>
+      <div class="list-stack">
+        <% row.additions.forEach((addition) => { %>
+          <article class="list-card pm-addition">
+            <div>
+              <strong><%= addition.title %></strong>
+              <span class="module-card-meta">After page <%= addition.after_page %></span>
+              <div class="pm-addition-text">
+                <% String(addition.text || '').split(/\n/).forEach((line) => { %>
+                  <% const text = line.trim(); %>
+                  <% if (!text) { %>
+                  <% } else if (/^[-•*]\s+/.test(text)) { %>
+                    <p class="pm-bullet">&bull; <%= text.replace(/^[-•*]\s+/, '') %></p>
+                  <% } else if (/^(answer|sagot)\s*:/i.test(text)) { %>
+                    <p><strong><%= text.split(':')[0] %>:</strong><%= text.slice(text.indexOf(':') + 1) %></p>
+                  <% } else { %>
+                    <p><%= text %></p>
+                  <% } %>
+                <% }) %>
+              </div>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Module Assessment</h3>
+      <% if (state === 'passed') { %>
+        <span class="badge badge-success">Passed</span>
+      <% } else if (state === 'can_take') { %>
+        <span class="badge badge-success">Open</span>
+      <% } else if (state === 'waiting_retake') { %>
+        <span class="badge badge-warning">Not passed yet</span>
+      <% } else if (state === 'waiting_tutor') { %>
+        <span class="badge badge-info">Waiting for your tutor</span>
+      <% } else { %>
+        <span class="badge badge-info">Being prepared</span>
+      <% } %>
+    </div>
+
+    <% if (state === 'can_take') { %>
+      <% if (viewOnly) { %>
+        <p class="lock-note"><%= viewOnly %></p>
+      <% } else { %>
+        <a class="btn btn-primary" href="/student/path-modules/<%= row.id %>/assessment">
+          <%= attempts.length ? `Take Again (Take ${attempts.length + 1})` : 'Take Assessment' %>
+        </a>
+      <% } %>
+    <% } else if (state === 'waiting_retake') { %>
+      <p class="table-note">Intermediate (51%) passes. Your tutor opens your next take when you are ready.</p>
+    <% } else if (state === 'waiting_tutor') { %>
+      <p class="table-note">Your tutor opens this assessment when you are ready for it.</p>
+    <% } else if (state === 'preparing') { %>
+      <p class="table-note">Your assessment for this module is being written.</p>
+    <% } %>
+
+    <% if (attempts.length) { %>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Take</th><th>Score</th><th>Level</th><th>Submitted</th></tr></thead>
+          <tbody>
+            <% attempts.forEach((attempt) => { %>
+              <tr>
+                <td><%= attempt.attempt_number %></td>
+                <td><%= Number(attempt.score) %>/<%= Number(attempt.total_points) %> (<%= pct(attempt.percentage) %>)</td>
+                <td><span class="res-level res-level-<%= String(attempt.level || 'beginner').toLowerCase() %>"><%= attempt.level %></span></td>
+                <td><%= formatDateTime(attempt.submitted_at) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Activities</h3>
+      <span class="badge badge-info"><%= activities.length %></span>
+    </div>
+    <% if (!activities.length) { %>
+      <p class="empty-state">No activities in this module yet.</p>
+    <% } else { %>
+      <div class="list-stack">
+        <% activities.forEach((activity) => { %>
+          <% const done = (submissions || []).find((s) => Number(s.assessment_id) === Number(activity.id)); %>
+          <article class="list-card">
+            <div>
+              <strong><%= activity.title %></strong>
+              <% if (done) { %>
+                <span class="badge badge-success">Done &middot; <%= pct(done.percentage) %></span>
+              <% } %>
+            </div>
+            <div>
+              <% if (done) { %>
+                <a class="btn btn-secondary btn-sm" href="/student/results/<%= done.id %>">View Result</a>
+              <% } else if (!viewOnly) { %>
+                <a class="btn btn-primary btn-sm" href="/student/tutor-assessments/<%= activity.id %>">Answer</a>
+              <% } %>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+</section>
+
+<style>
+  .pm-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .pm-addition .module-card-meta { display: block; margin-top: 2px; }
+  .pm-addition-text { margin-top: 10px; display: grid; gap: 6px; }
+  .pm-addition-text p { margin: 0; line-height: 1.55; }
+  .pm-addition-text .pm-bullet { padding-left: 14px; text-indent: -10px; }
+</style>

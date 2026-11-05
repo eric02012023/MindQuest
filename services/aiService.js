@@ -569,7 +569,7 @@ async function generateAssessmentFromHandouts(options = {}) {
     handouts = [], subject, yearLevel, itemCount = PRE_ASSESSMENT_ITEM_COUNT, questionType = 'mixed',
 
 
-    allowedTypes = MODULE_QUESTION_TYPES, level = null
+    allowedTypes = MODULE_QUESTION_TYPES, level = null, focus = null
   } = options;
 
   const usable = handouts.filter((h) => String(h.extracted_text || '').trim().length > 50);
@@ -640,7 +640,7 @@ async function generateAssessmentFromHandouts(options = {}) {
   await runWithConcurrency(perHandout.filter((slot) => slot.wanted > 0), 4, async (slot) => {
     const batch = slot.wanted + 2;
     const prompts = buildHandoutPrompts({
-      handout: slot.handout, wanted: batch, questionType, subject, yearLevel, level, allowedTypes
+      handout: slot.handout, wanted: batch, questionType, subject, yearLevel, level, allowedTypes, focus
     });
     try {
       const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, {
@@ -666,7 +666,7 @@ async function generateAssessmentFromHandouts(options = {}) {
       const batch = Math.max(4, (slot.wanted - slot.questions.length) + 3);
       const prompts = buildHandoutPrompts({
         handout: slot.handout, wanted: batch, questionType, subject, yearLevel, level, allowedTypes,
-        avoidTexts: slot.written
+        avoidTexts: slot.written, focus
       });
       try {
         const call = await callOpenAI(prompts.systemPrompt, prompts.userPrompt, {
@@ -789,7 +789,7 @@ const LEVEL_QUESTION_GUIDES = {
 
 function buildHandoutPrompts({
   handout, wanted, questionType, subject, yearLevel, level = null,
-  allowedTypes = MODULE_QUESTION_TYPES, avoidTexts = []
+  allowedTypes = MODULE_QUESTION_TYPES, avoidTexts = [], focus = null
 }) {
   const itemCount = wanted;
   const mix = planQuestionMix(itemCount, questionType, allowedTypes);
@@ -815,6 +815,7 @@ function buildHandoutPrompts({
     extraRules.push('- Never write an essay or open-ended question. Every item must have one exact answer.');
   }
   if (LEVEL_QUESTION_GUIDES[level]) extraRules.push(`- ${LEVEL_QUESTION_GUIDES[level]}`);
+  if (focus) extraRules.push(`- ${String(focus).trim()}`);
 
   const systemPrompt = `You write assessment questions for a tutorial centre, using ONLY the handout text provided.
 
@@ -918,6 +919,7 @@ module.exports = {
   generateAssessmentFromHandouts,
   generateFocusMaterial,
   generateLevelLesson,
+  generateModuleAdditions,
   cleanLessonText,
   LEVEL_QUESTION_GUIDES,
   planQuestionMix,
@@ -1124,4 +1126,111 @@ function cleanLessonText(text) {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, 9000);
+}
+
+/** Most added lessons one module gets for one learner. */
+const MAX_ADDITIONS = 4;
+
+/** Characters of module text sent to the AI, all pages together. */
+const ADDITION_SOURCE_CHARS = 28000;
+
+/**
+ * Lessons added to ONE learner's copy of a module: one for each idea behind the
+ * Pre-Assessment questions they got wrong in it, each placed after the module
+ * page that teaches it. The module's own pages are never rewritten — these are
+ * extra pages only.
+ *
+ * @param {object} options
+ * @param {Array<{num: number, text: string}>} options.pages  the module's pages, in order
+ * @param {number} [options.pageCount]   pages in the PDF, when their text could not be read
+ * @param {string} [options.fallbackText] the handout's stored text, for a scanned PDF
+ * @param {Array<{question_text: string, correct_text: string, explanation?: string}>} options.missed
+ * @returns {Promise<{additions: Array<{after_page: number, title: string, text: string}>, tokensUsed: number}>}
+ */
+async function generateModuleAdditions(options = {}) {
+  const {
+    pages = [], pageCount = 0, fallbackText = '', missed = [],
+    level, subject, gradeLevel, moduleTitle
+  } = options;
+  if (!missed.length) return { additions: [], tokensUsed: 0 };
+  if (!isOpenAIConfigured()) throw new Error('The AI service is not configured, so the added lessons cannot be written.');
+
+  const readable = pages.filter((page) => String(page.text || '').trim().length > 0);
+  const totalPages = Math.max(pages.length, Number(pageCount) || 0);
+  let sourceText;
+  if (readable.length) {
+    const perPage = Math.max(600, Math.min(2500, Math.floor(ADDITION_SOURCE_CHARS / readable.length)));
+    sourceText = readable
+      .map((page) => `=== Page ${page.num} ===\n${String(page.text).trim().slice(0, perPage)}`)
+      .join('\n\n');
+  } else {
+    const text = String(fallbackText || '').trim();
+    if (text.length < 50) throw new Error('This module has no readable text to add lessons to.');
+    sourceText = `=== Pages 1 to ${totalPages || 1} (which page each part is on is not known) ===\n${text.slice(0, ADDITION_SOURCE_CHARS)}`;
+  }
+
+  const guide = LEVEL_LESSON_GUIDES[level] || LEVEL_LESSON_GUIDES.Beginner;
+  const systemPrompt = `You add teaching to ONE learner's own copy of a learning module at a tutorial centre.
+The module's pages stay exactly as they are: you never remove, shorten, correct or rewrite them.
+You only write ADDED LESSONS that teach the ideas behind the questions this learner got wrong,
+and you say after which page each added lesson belongs.
+
+${guide}
+
+Return a JSON object with one key, "additions": an array of 1 to ${MAX_ADDITIONS} objects, each with
+- "after_page": the number of the module page that teaches the idea; the lesson is inserted right after that page${readable.length ? '' : `. The page of each part is not known, so use ${totalPages || 1}`}
+- "title": a short title for the added lesson, under 70 characters
+- "text": the added lesson as plain text
+- "covers": the numbers of the missed questions this lesson teaches
+
+Write each "text" like this:
+- start by naming the idea the learner missed, in one or two sentences
+- explain it step by step, one idea at a time, with the module's own words, facts and examples
+- give one or two worked examples taken from the module's content
+- end with a line "Try these:" and two short practice questions, each followed on the next line by its answer, starting with "Answer: "
+- a line starting with "- " for each item of a list, and an empty line between paragraphs
+
+Rules:
+- Use ONLY facts present in the module pages. Never invent facts, names or numbers the module does not give.
+- Teach the idea. Do not copy the missed questions word for word.
+- Group missed questions about the same idea into one added lesson. Every missed question must be covered by one lesson.
+- Write in the same language as the module, to the learner ("you"), in words a ${gradeLevel || 'young'} learner understands.
+- Each "text" between 120 and 400 words.
+- No markdown: no bold, no italics, no tables, no code.`;
+
+  const missedList = missed.map((q, i) => {
+    const lines = [`${i + 1}. ${String(q.question_text || '').trim()}`];
+    if (q.correct_text) lines.push(`   Correct answer: ${String(q.correct_text).trim()}`);
+    if (q.explanation) lines.push(`   Why: ${String(q.explanation).trim()}`);
+    return lines.join('\n');
+  }).join('\n');
+
+  const userPrompt = `Subject: ${subject || 'General'}
+Grade: ${gradeLevel || 'General'}
+Level: ${level || 'Beginner'}
+Module: ${moduleTitle || 'Module'}
+
+QUESTIONS THIS LEARNER GOT WRONG ON THE PRE-ASSESSMENT
+${missedList}
+
+MODULE PAGES
+${sourceText}`;
+
+  const call = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 3500, temperature: 0.4 });
+  const raw = Array.isArray(call.result && call.result.additions) ? call.result.additions : [];
+  const lastPage = Math.max(1, totalPages || (readable.length ? readable[readable.length - 1].num : 1));
+  const additions = raw
+    .map((item) => {
+      const text = cleanLessonText(item && item.text).replace(/^## /gm, '');
+      const page = Math.round(Number(item && item.after_page));
+      return {
+        after_page: Number.isFinite(page) ? Math.min(Math.max(1, page), lastPage) : lastPage,
+        title: String((item && item.title) || '').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Added lesson',
+        text
+      };
+    })
+    .filter((item) => item.text.length >= 80)
+    .slice(0, MAX_ADDITIONS);
+  if (!additions.length) throw new Error('The AI returned no added lesson that could be used.');
+  return { additions, tokensUsed: call.tokensUsed || 0 };
 }

@@ -105,6 +105,8 @@ function attendanceLogFilters(source = {}) {
   };
 }
 const { todayDate } = require('../lib/utils');
+// Learning paths: each student's own modules, assessments the tutor checks and opens.
+const paths = require('../lib/learningPaths');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
 const { TUTOR_ASSESSMENT_MIN_ITEMS, TUTOR_ASSESSMENT_MAX_ITEMS } = require('../config/assessmentDefaults');
 
@@ -260,6 +262,199 @@ router.get('/students/:studentId', async (req, res, next) => {
       studentAssessments,
       studentAssessmentHistory,
       generatedModules
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// ---------------------------------------------------------------------------
+// Learning paths (lib/learningPaths.js): a student's own modules, the
+// assessments written for them that this tutor checks and opens, and their
+// Post-Assessment.
+// ---------------------------------------------------------------------------
+
+/** True when this tutor teaches the student the subject; otherwise flashes and redirects. */
+async function requireMyStudent(req, res, studentId, subjectId) {
+  if (studentId && subjectId && await tutorTeachesStudentIn(req.session.user.id, Number(studentId), Number(subjectId))) {
+    return true;
+  }
+  setFlash(req, 'error', 'That student is not one of yours in this subject.');
+  res.redirect('/tutor/students');
+  return false;
+}
+
+function pathPageOf(studentId, subjectId) {
+  return `/tutor/students/${Number(studentId)}/path/${Number(subjectId)}`;
+}
+
+router.get('/students/:studentId/path/:subjectId', async (req, res, next) => {
+  try {
+    const studentId = Number(req.params.studentId);
+    const subjectId = Number(req.params.subjectId);
+    if (!(await requireMyStudent(req, res, studentId, subjectId))) return;
+    const { query: dbQuery } = require('../config/db');
+    const [student, subjectRows] = await Promise.all([
+      getUserById(studentId),
+      dbQuery('SELECT id, name FROM subjects WHERE id = ?', [subjectId])
+    ]);
+    if (!student || !subjectRows.length) {
+      setFlash(req, 'error', 'Student not found.');
+      return res.redirect('/tutor/students');
+    }
+    const entries = await paths.managePageEntries(studentId, [{ subject_id: subjectId, subject_name: subjectRows[0].name }]);
+    const shell = await buildShell(req, {
+      pageTitle: `${student.first_name} ${student.last_name || ''} — ${subjectRows[0].name}`,
+      section: 'students',
+      contentView: '../content/learning-path-manage',
+      student,
+      entries,
+      canAct: true,
+      isMainAdmin: false,
+      backHref: `/tutor/students/${studentId}`
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.get('/path-modules/:id/pdf', async (req, res, next) => {
+  try {
+    const row = await paths.getPathModuleById(Number(req.params.id));
+    if (!row) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect('/tutor/students');
+    }
+    if (!(await requireMyStudent(req, res, row.student_id, row.subject_id))) return;
+    const pdf = await paths.buildModulePdf(row);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdf.bytes.length);
+    res.setHeader('Content-Disposition', `inline; filename="${paths.pdfFileName(row)}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf.bytes);
+  } catch (error) { next(error); }
+});
+
+// Open a module's assessment for the student: the first take, or the next one.
+router.post('/path-modules/:id/open', async (req, res) => {
+  try {
+    const row = await paths.getPathModuleById(Number(req.params.id));
+    if (!row) throw new Error('Module not found.');
+    if (!(await requireMyStudent(req, res, row.student_id, row.subject_id))) return;
+    const result = await paths.openModuleAssessment(row.id, req.session.user.id);
+    setFlash(req, 'success', result.opened === 'retake'
+      ? `Take ${result.take} is open for the student.`
+      : 'The assessment is open for the student.');
+    res.redirect(pathPageOf(row.student_id, row.subject_id));
+  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+});
+
+// Try a failed piece of writing again: the added lessons, or the assessment.
+router.post('/path-modules/:id/retry', async (req, res) => {
+  try {
+    const row = await paths.getPathModuleById(Number(req.params.id));
+    if (!row) throw new Error('Module not found.');
+    if (!(await requireMyStudent(req, res, row.student_id, row.subject_id))) return;
+    paths.retry(row.additions_status === 'failed' ? 'additions' : 'assessment', row.id)
+      .catch((error) => console.error('[tutor] retry failed:', error.message));
+    setFlash(req, 'success', 'It is being written again. This takes a minute or two.');
+    res.redirect(pathPageOf(row.student_id, row.subject_id));
+  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+});
+
+// Check — and, until it is opened, edit — an assessment written for one student.
+router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
+  try {
+    const page = await paths.editPageData(Number(req.params.assessmentId));
+    if (!page) {
+      setFlash(req, 'error', 'Assessment not found.');
+      return res.redirect('/tutor/students');
+    }
+    if (!(await requireMyStudent(req, res, page.studentId, page.subjectId))) return;
+    const shell = await buildShell(req, {
+      pageTitle: page.assessment.title,
+      section: 'students',
+      contentView: '../content/learning-path-edit',
+      ...page,
+      saveAction: `/tutor/path-assessments/${page.assessment.id}/edit`,
+      backHref: pathPageOf(page.studentId, page.subjectId)
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+router.post('/path-assessments/:assessmentId/edit', async (req, res) => {
+  const assessmentId = Number(req.params.assessmentId);
+  try {
+    const page = await paths.editPageData(assessmentId);
+    if (!page) throw new Error('Assessment not found.');
+    if (!(await requireMyStudent(req, res, page.studentId, page.subjectId))) return;
+    const result = await paths.replaceDraftQuestions(assessmentId, paths.readPostedQuestions(req.body), req.session.user.id);
+    setFlash(req, 'success', `${result.count} question${result.count === 1 ? '' : 's'} saved.`);
+    res.redirect(`/tutor/path-assessments/${assessmentId}/edit`);
+  } catch (error) { failBack(req, res, error, `/tutor/path-assessments/${assessmentId}/edit`); }
+});
+
+// Open a learning path's Post-Assessment for the student.
+router.post('/paths/:pathId/post/open', async (req, res) => {
+  try {
+    const path = await paths.getPathById(Number(req.params.pathId));
+    if (!path) throw new Error('Learning path not found.');
+    if (!(await requireMyStudent(req, res, path.student_id, path.subject_id))) return;
+    await paths.openPathPost(path.id, req.session.user.id);
+    setFlash(req, 'success', 'The Post-Assessment is open for the student.');
+    res.redirect(pathPageOf(path.student_id, path.subject_id));
+  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+});
+
+router.post('/paths/:pathId/post/retry', async (req, res) => {
+  try {
+    const path = await paths.getPathById(Number(req.params.pathId));
+    if (!path) throw new Error('Learning path not found.');
+    if (!(await requireMyStudent(req, res, path.student_id, path.subject_id))) return;
+    paths.retry('post', path.id).catch((error) => console.error('[tutor] retry failed:', error.message));
+    setFlash(req, 'success', 'The Post-Assessment is being written again. This takes a minute or two.');
+    res.redirect(pathPageOf(path.student_id, path.subject_id));
+  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+});
+
+// A student without a learning path: open their Post-Assessment once their
+// modules are finished. It no longer opens by itself on the month's last day.
+router.post('/students/:studentId/subjects/:subjectId/post/open', async (req, res) => {
+  const studentId = Number(req.params.studentId);
+  const subjectId = Number(req.params.subjectId);
+  try {
+    if (!(await requireMyStudent(req, res, studentId, subjectId))) return;
+    if (await paths.getCurrentPath(studentId, subjectId)) {
+      throw new Error('This student is on a learning path: open their Post-Assessment from it.');
+    }
+    const { getStudentSubjectCompletion } = require('../lib/data');
+    const completion = await getStudentSubjectCompletion(studentId, subjectId);
+    if (!completion.preDone) throw new Error('The student has not taken the Pre-Assessment yet.');
+    if (completion.postTaken) throw new Error('The student has taken the Post-Assessment already.');
+    if (!completion.isComplete) {
+      throw new Error('The Post-Assessment opens once the student has opened every module and answered every activity.');
+    }
+    await paths.openPostForStudent(studentId, subjectId, req.session.user.id);
+    setFlash(req, 'success', 'The Post-Assessment is open for the student.');
+    res.redirect(req.get('Referer') || pathPageOf(studentId, subjectId));
+  } catch (error) { failBack(req, res, error, pathPageOf(studentId, subjectId)); }
+});
+
+// One take of a module assessment, answer by answer.
+router.get('/path-attempts/:attemptId', async (req, res, next) => {
+  try {
+    const page = await paths.attemptPageData(Number(req.params.attemptId));
+    if (!page) {
+      setFlash(req, 'error', 'That take was not found.');
+      return res.redirect('/tutor/students');
+    }
+    if (!(await requireMyStudent(req, res, page.studentId, page.subjectId))) return;
+    const shell = await buildShell(req, {
+      pageTitle: page.submission.title,
+      section: 'students',
+      contentView: '../content/student-assessment-breakdown',
+      submission: page.submission,
+      weakAreas: page.weakAreas,
+      viewerRole: 'tutor'
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -452,8 +647,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       // student did on the generated Pre-Assessment.
       modules: await getSubjectModules(req.params.subjectId),
       preResults: onlyMine(await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' })),
-      // Post-Assessment (Phase 8): when each student's opens (the last day of
-      // their enrollment), and pre-vs-post once taken.
+      // Post-Assessment (Phase 8): where each student stands — the tutor opens
+      // it per student — and pre-vs-post once taken.
       comparisons: onlyMine(await getSubjectPrePostComparison(req.params.subjectId)),
       readiness: await getSubjectPostReadiness(req.params.subjectId, { studentIds: [...myStudentIds] })
     });
@@ -484,13 +679,13 @@ router.post('/subjects/:subjectId/modules/:resourceId/publish-assessment', retir
 // --------------------------------------------------------------------------
 // The old "Create Post Assessment" button.
 //
-// There is nothing for the tutor to create any more: each student's
-// Post-Assessment opens by itself at 12:01 AM on the last day of their
-// enrollment, as a copy of the exact Pre-Assessment they took. The address
-// stays so a stale page's button explains that instead of 404ing.
+// There is nothing for the tutor to create: each student's Post-Assessment is
+// opened for them, one student at a time, from the subject page (or their
+// learning path) once they finish their modules. The address stays so a stale
+// page's button explains that instead of 404ing.
 // --------------------------------------------------------------------------
 router.post('/subjects/:subjectId/create-post-assessment', (req, res) => {
-  setFlash(req, 'info', 'The Post-Assessment opens automatically for each student at 12:01 AM on the last day of their enrollment. There is nothing to create.');
+  setFlash(req, 'info', 'Open each student\'s Post-Assessment from the Post-Assessment list on this page once they finish their modules. There is nothing to create.');
   res.redirect(`/tutor/subjects/${Number(req.params.subjectId) || ''}`);
 });
 

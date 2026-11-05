@@ -146,11 +146,11 @@
   <%# ------------------------------------------------------------------------
       Post-Assessment (overhaul Phase 8, acceptance item 12).
 
-      There is nothing to create or open: each student's Post-Assessment opens
-      by itself at 12:01 AM on the last day of THEIR enrollment in the subject,
-      stays open until they take it, and it is a copy of the exact
-      Pre-Assessment that student took — same questions, same answers — so the
-      before-and-after compares like with like.
+      The tutor opens each student's Post-Assessment once they finish their
+      modules; it no longer opens by itself on the month's last day. A student
+      on a learning path (lib/learningPaths.js) has one written from their own
+      modules, checked and opened from their learning path. Any other student
+      sits a copy of the exact Pre-Assessment they took.
       ------------------------------------------------------------------------ %>
   <section class="panel-card">
     <div class="panel-card-head">
@@ -170,6 +170,7 @@
               <th>Pre</th>
               <th>Post</th>
               <th>Change</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -180,7 +181,13 @@
                   <strong><%= r.first_name %> <%= r.last_name || '' %></strong>
                   <span class="module-card-meta"><%= r.student_code %></span>
                 </td>
-                <td><%= r.modulesOpened %>/<%= r.modulesTotal %></td>
+                <td>
+                  <% if (r.path) { %>
+                    <%= r.path.passed %>/<%= r.path.total %> passed
+                  <% } else { %>
+                    <%= r.modulesOpened %>/<%= r.modulesTotal %>
+                  <% } %>
+                </td>
                 <td><%= r.assessmentsDone %>/<%= r.assessmentsTotal %></td>
                 <td>
                   <% if (cmp.pre_submission_id) { %>
@@ -198,10 +205,10 @@
                     <span class="module-card-meta">open now</span>
                   <% } else if (r.postStatus === 'needs_pre') { %>
                     <span class="module-card-meta">needs the Pre-Assessment first</span>
-                  <% } else if (r.postOpensAt) { %>
-                    <span class="module-card-meta">opens <%= formatDateTime(r.postOpensAt) %></span>
+                  <% } else if (r.path && r.path.postStatus === 'draft') { %>
+                    <span class="module-card-meta">ready to check</span>
                   <% } else { %>
-                    <span class="module-card-meta">&mdash;</span>
+                    <span class="module-card-meta">not open</span>
                   <% } %>
                 </td>
                 <td>
@@ -214,6 +221,22 @@
                         <span class="prepost-move"><%= cmp.pre_level %> &rarr; <%= cmp.post_level %></span>
                       <% } %>
                     </span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (r.path) { %>
+                    <a class="btn btn-secondary btn-sm" href="/tutor/students/<%= r.id %>/path/<%= subjectId %>">Learning Path</a>
+                    <% if (r.path.toCheck) { %><span class="module-card-meta"><%= r.path.toCheck %> to check</span><% } %>
+                    <% if (r.path.retakeDue) { %><span class="module-card-meta">needs another take</span><% } %>
+                  <% } else if (r.preDone && !r.postTaken && r.postStatus !== 'open') { %>
+                    <% if (r.isComplete) { %>
+                      <form method="post" action="/tutor/students/<%= r.id %>/subjects/<%= subjectId %>/post/open"
+                            data-confirm-message="Open the Post-Assessment for <%= r.first_name %> <%= r.last_name || '' %>?">
+                        <button type="submit" class="btn btn-primary btn-sm">Open Post</button>
+                      </form>
+                    <% } else { %>
+                      <span class="module-card-meta">modules not finished</span>
+                    <% } %>
                   <% } %>
                 </td>
               </tr>

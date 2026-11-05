@@ -1925,3 +1925,206 @@ IF COL_LENGTH('dbo.tutor_assessments', 'level_module_id') IS NOT NULL
 IF COL_LENGTH('dbo.tutor_assessments', 'level_module_id') IS NOT NULL
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ta_level_module' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
   EXEC sp_executesql N'CREATE INDEX IX_ta_level_module ON dbo.tutor_assessments(level_module_id) WHERE level_module_id IS NOT NULL;';
+
+-- ---------------------------------------------------------------------------
+-- 46. Learning paths: each student's own copy of their grade's modules.
+--
+-- For a student who takes the Pre-Assessment after this shipped. Every module of
+-- their grade becomes THEIR module: the office's handout pages kept whole, with
+-- pages added that teach what they got wrong on that module's Pre-Assessment
+-- items. Module 1 is open; each next module opens when they pass the one before
+-- (Intermediate or better) on an assessment written for them, which their tutor
+-- or the main admin checks and opens. After the last module a Post-Assessment
+-- written from their own modules is checked and opened the same way.
+--
+--   learning_paths              one per Pre-Assessment sitting (uq_learning_paths_pre)
+--   learning_path_modules       the modules of a path, in order, with their state
+--   tutor_assessments.for_student_id
+--                               the one student a generated assessment is for;
+--                               NULL is every assessment shared as before. No
+--                               foreign key on purpose: a cleanup that cleared it
+--                               would share one student's assessment with the class.
+--   tutor_assessment_attempts   every take of an assessment a student may retake,
+--   tutor_assessment_attempt_answers  and its answers (assessment_attempts is the
+--                               retired assessments' table, a different thing)
+--   tutor_assessment_edits      who changed an assessment before it was opened
+--   post_openings               a Post-Assessment opened for one student. It no
+--                               longer opens by itself on the month's last day:
+--                               the tutor or the main admin opens it.
+--   app_markers                 one-time steps, so each runs exactly once
+-- ---------------------------------------------------------------------------
+IF COL_LENGTH('dbo.tutor_assessments', 'for_student_id') IS NULL
+  ALTER TABLE dbo.tutor_assessments ADD for_student_id INT NULL;
+
+IF COL_LENGTH('dbo.tutor_assessments', 'for_student_id') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ta_for_student' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
+  EXEC sp_executesql N'CREATE INDEX IX_ta_for_student ON dbo.tutor_assessments(for_student_id) WHERE for_student_id IS NOT NULL;';
+
+IF OBJECT_ID('dbo.learning_paths', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.learning_paths (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    student_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    grade_level NVARCHAR(30) NULL,
+    pre_submission_id INT NOT NULL,
+    pre_assessment_id INT NULL,
+    placement_level NVARCHAR(20) NOT NULL,
+    post_status NVARCHAR(20) NOT NULL CONSTRAINT df_learning_paths_post_status DEFAULT 'waiting',
+    post_assessment_id INT NULL,
+    post_attempts INT NOT NULL CONSTRAINT df_learning_paths_post_attempts DEFAULT 0,
+    post_error NVARCHAR(500) NULL,
+    post_opened_by INT NULL,
+    post_opened_at DATETIME2 NULL,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_learning_paths_student FOREIGN KEY (student_id) REFERENCES dbo.users(id),
+    CONSTRAINT ck_learning_paths_level CHECK (placement_level IN ('Beginner', 'Intermediate', 'Advance')),
+    CONSTRAINT ck_learning_paths_post_status CHECK (post_status IN ('waiting', 'pending', 'generating', 'draft', 'open', 'taken', 'failed')),
+    CONSTRAINT uq_learning_paths_pre UNIQUE (pre_submission_id)
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_learning_paths_student' AND object_id = OBJECT_ID('dbo.learning_paths'))
+  CREATE INDEX IX_learning_paths_student ON dbo.learning_paths(student_id, subject_id);
+
+IF OBJECT_ID('dbo.learning_path_modules', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.learning_path_modules (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    path_id INT NOT NULL,
+    module_id INT NOT NULL,
+    position INT NOT NULL,
+    status NVARCHAR(20) NOT NULL CONSTRAINT df_lpm_status DEFAULT 'locked',
+    additions_status NVARCHAR(20) NOT NULL CONSTRAINT df_lpm_additions_status DEFAULT 'pending',
+    additions_json NVARCHAR(MAX) NULL,
+    additions_attempts INT NOT NULL CONSTRAINT df_lpm_additions_attempts DEFAULT 0,
+    additions_error NVARCHAR(500) NULL,
+    pre_correct INT NULL,
+    pre_total INT NULL,
+    assessment_id INT NULL,
+    assessment_status NVARCHAR(20) NOT NULL CONSTRAINT df_lpm_assessment_status DEFAULT 'waiting',
+    assessment_attempts INT NOT NULL CONSTRAINT df_lpm_assessment_attempts DEFAULT 0,
+    assessment_error NVARCHAR(500) NULL,
+    takes_opened INT NOT NULL CONSTRAINT df_lpm_takes_opened DEFAULT 0,
+    takes_used INT NOT NULL CONSTRAINT df_lpm_takes_used DEFAULT 0,
+    last_percentage DECIMAL(5,2) NULL,
+    opened_by INT NULL,
+    opened_at DATETIME2 NULL,
+    unlocked_at DATETIME2 NULL,
+    passed_at DATETIME2 NULL,
+    passed_by INT NULL,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_lpm_path FOREIGN KEY (path_id) REFERENCES dbo.learning_paths(id) ON DELETE CASCADE,
+    CONSTRAINT ck_lpm_status CHECK (status IN ('locked', 'open', 'passed', 'removed')),
+    CONSTRAINT ck_lpm_additions_status CHECK (additions_status IN ('pending', 'generating', 'ready', 'none', 'failed')),
+    CONSTRAINT ck_lpm_assessment_status CHECK (assessment_status IN ('waiting', 'pending', 'generating', 'draft', 'open', 'passed', 'failed')),
+    CONSTRAINT uq_lpm_path_module UNIQUE (path_id, module_id)
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_lpm_assessment' AND object_id = OBJECT_ID('dbo.learning_path_modules'))
+  CREATE INDEX IX_lpm_assessment ON dbo.learning_path_modules(assessment_id);
+
+IF OBJECT_ID('dbo.tutor_assessment_attempts', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_assessment_attempts (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    assessment_id INT NOT NULL,
+    student_id INT NOT NULL,
+    attempt_number INT NOT NULL,
+    score DECIMAL(10,2) NOT NULL,
+    total_points DECIMAL(10,2) NOT NULL,
+    percentage DECIMAL(5,2) NOT NULL,
+    level NVARCHAR(20) NULL,
+    started_at DATETIME2 NULL,
+    submitted_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    time_spent_seconds INT NULL,
+    CONSTRAINT fk_taa_student FOREIGN KEY (student_id) REFERENCES dbo.users(id),
+    CONSTRAINT uq_taa_attempt UNIQUE (assessment_id, student_id, attempt_number)
+  );
+END;
+
+IF OBJECT_ID('dbo.tutor_assessment_attempt_answers', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_assessment_attempt_answers (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    attempt_id INT NOT NULL,
+    question_id INT NOT NULL,
+    student_answer NVARCHAR(MAX) NULL,
+    correct_answer NVARCHAR(500) NULL,
+    is_correct BIT NOT NULL CONSTRAINT df_taaa_correct DEFAULT 0,
+    points_earned DECIMAL(10,2) NOT NULL CONSTRAINT df_taaa_points DEFAULT 0,
+    CONSTRAINT fk_taaa_attempt FOREIGN KEY (attempt_id) REFERENCES dbo.tutor_assessment_attempts(id) ON DELETE CASCADE
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_taaa_attempt' AND object_id = OBJECT_ID('dbo.tutor_assessment_attempt_answers'))
+  CREATE INDEX IX_taaa_attempt ON dbo.tutor_assessment_attempt_answers(attempt_id);
+
+IF OBJECT_ID('dbo.tutor_assessment_edits', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.tutor_assessment_edits (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    assessment_id INT NOT NULL,
+    edited_by INT NULL,
+    summary NVARCHAR(500) NULL,
+    edited_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE())
+  );
+END;
+
+IF OBJECT_ID('dbo.post_openings', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.post_openings (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    student_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    opened_by INT NULL,
+    note NVARCHAR(200) NULL,
+    opened_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_post_openings_student FOREIGN KEY (student_id) REFERENCES dbo.users(id),
+    CONSTRAINT uq_post_openings_student_subject UNIQUE (student_id, subject_id)
+  );
+END;
+
+IF OBJECT_ID('dbo.app_markers', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.app_markers (
+    name NVARCHAR(100) NOT NULL PRIMARY KEY,
+    done_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE())
+  );
+END;
+
+-- One time only: every student the Post-Assessment had ALREADY opened for by
+-- itself (their month's last day has come, the Pre-Assessment is done, the Post
+-- is not taken yet) keeps it open, so nobody loses a Post they could take.
+IF OBJECT_ID('dbo.app_markers', 'U') IS NOT NULL AND OBJECT_ID('dbo.post_openings', 'U') IS NOT NULL
+  EXEC sp_executesql N'
+    IF NOT EXISTS (SELECT 1 FROM dbo.app_markers WHERE name = ''post-openings-backfill'')
+    BEGIN
+      INSERT INTO dbo.post_openings (student_id, subject_id, opened_by, note)
+      SELECT x.student_id, x.subject_id, NULL, ''Opened on the last day of the month''
+        FROM (
+          SELECT usa.student_id, usa.subject_id,
+                 ROW_NUMBER() OVER (PARTITION BY usa.student_id, usa.subject_id ORDER BY usa.id DESC) AS rn,
+                 COALESCE(usa.end_date,
+                          DATEADD(month, 1, usa.start_date),
+                          DATEADD(month, 1, CAST(COALESCE(usa.enrolled_at, usa.created_at) AS date))) AS last_day
+            FROM dbo.user_subject_assignments usa
+           WHERE usa.is_archived = 0
+        ) x
+       WHERE x.rn = 1
+         AND x.last_day <= CAST(DATEADD(hour, 8, GETUTCDATE()) AS date)
+         AND EXISTS (SELECT 1 FROM dbo.tutor_assessment_submissions s
+                       JOIN dbo.tutor_assessments a ON a.id = s.assessment_id
+                      WHERE s.student_id = x.student_id AND a.subject_id = x.subject_id
+                        AND a.assessment_kind = ''pre_assessment'')
+         AND NOT EXISTS (SELECT 1 FROM dbo.tutor_assessment_submissions s
+                       JOIN dbo.tutor_assessments a ON a.id = s.assessment_id
+                      WHERE s.student_id = x.student_id AND a.subject_id = x.subject_id
+                        AND a.assessment_kind = ''post_assessment'')
+         AND NOT EXISTS (SELECT 1 FROM dbo.post_openings p
+                      WHERE p.student_id = x.student_id AND p.subject_id = x.subject_id);
+      INSERT INTO dbo.app_markers (name) VALUES (''post-openings-backfill'');
+    END';

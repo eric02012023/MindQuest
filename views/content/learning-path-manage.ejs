@@ -1,0 +1,246 @@
+<%# File: views/content/learning-path-manage.ejs
+    Purpose: One student's learning paths for their tutor and the admin
+    (lib/learningPaths.js): each module with its added lessons, its assessment
+    and every take, and the Post-Assessment — with what can be done next.
+    Locals: student, entries [{ subjectId, subjectName, view, completion }],
+            basePath, canAct, isMainAdmin, backHref %>
+<% const pct = (value) => `${Number(value || 0).toFixed(1)}%`; %>
+<% const studentLabel = [student.first_name, student.last_name].filter(Boolean).join(' '); %>
+<section class="page-stack">
+  <div class="panel-card">
+    <div class="panel-card-head">
+      <h2><%= studentLabel %></h2>
+      <a class="btn btn-secondary btn-sm" href="<%= backHref %>">Back</a>
+    </div>
+    <p><strong>Student ID:</strong> <%= student.user_id || '-' %></p>
+    <% if (student.grade_level || student.year_level) { %>
+      <p><strong>Grade:</strong> <%= student.grade_level || student.year_level %></p>
+    <% } %>
+  </div>
+
+  <% if (!entries.length) { %>
+    <section class="panel-card">
+      <p class="empty-state">No subjects to show.</p>
+    </section>
+  <% } %>
+
+  <% entries.forEach((entry) => { %>
+    <% const view = entry.view; %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3><%= entry.subjectName %></h3>
+        <% if (view) { %>
+          <span class="lm-level lm-level-<%= String(view.path.placement_level || 'beginner').toLowerCase() %>"><%= view.path.placement_level %></span>
+        <% } %>
+      </div>
+
+      <% if (!view) { %>
+        <% const c = entry.completion; %>
+        <% if (!c || !c.preDone) { %>
+          <p class="table-note">Pre-Assessment not taken yet.</p>
+        <% } else { %>
+          <p class="table-note">
+            Pre-Assessment taken before learning paths &middot;
+            modules opened <%= c.modulesOpened %>/<%= c.modulesTotal %> &middot;
+            activities <%= c.assessmentsDone %>/<%= c.assessmentsTotal %>
+          </p>
+          <div class="lpm-post">
+            <strong>Post-Assessment:</strong>
+            <% if (c.postTaken) { %>
+              <span class="badge badge-success">Taken &middot; <%= pct(c.postSubmission.percentage) %></span>
+              <a href="<%= basePath %>/results/<%= c.postSubmission.id %>">View Result</a>
+            <% } else if (c.postStatus === 'open') { %>
+              <span class="badge badge-success">Open</span>
+            <% } else { %>
+              <span class="badge badge-info">Not open</span>
+              <% if (canAct && (c.isComplete || isMainAdmin)) { %>
+                <form method="post" action="<%= basePath %>/students/<%= student.id %>/subjects/<%= entry.subjectId %>/post/open"
+                      data-confirm-message="Open the Post-Assessment for <%= studentLabel %>?">
+                  <button type="submit" class="btn btn-primary btn-sm">Open Post-Assessment</button>
+                </form>
+              <% } else if (canAct) { %>
+                <span class="module-card-meta">Opens once every module is opened and every activity answered.</span>
+              <% } %>
+            <% } %>
+          </div>
+        <% } %>
+      <% } else { %>
+        <% const pre = view.path; %>
+        <p class="table-note">
+          <%= view.passed %> of <%= view.total %> module<%= view.total === 1 ? '' : 's' %> passed
+        </p>
+
+        <div class="table-wrap">
+          <table class="lpm-table">
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th>Status</th>
+                <th>Added Lessons</th>
+                <th>Assessment</th>
+                <th>Takes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% view.modules.forEach((m) => { %>
+                <% const number = m.order_number || m.position; %>
+                <tr>
+                  <td>
+                    <strong>Module <%= number %></strong>
+                    <span class="module-card-meta"><%= m.module_title %></span>
+                  </td>
+                  <td>
+                    <% if (m.status === 'passed') { %>
+                      <span class="badge badge-success">Passed</span>
+                      <% if (m.passed_by) { %><span class="module-card-meta">marked by the admin</span><% } %>
+                    <% } else if (m.status === 'open') { %>
+                      <span class="badge badge-info">Open</span>
+                    <% } else { %>
+                      <span class="badge badge-warning">Locked</span>
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (m.additions_status === 'ready') { %>
+                      <%= m.added_count %> added
+                      <% if (m.pre_total) { %><span class="module-card-meta">Pre: <%= m.pre_correct %>/<%= m.pre_total %> right</span><% } %>
+                    <% } else if (m.additions_status === 'none') { %>
+                      None needed
+                      <% if (m.pre_total) { %><span class="module-card-meta">Pre: <%= m.pre_correct %>/<%= m.pre_total %> right</span><% } %>
+                    <% } else if (m.additions_status === 'failed') { %>
+                      <span class="badge badge-warning">Not written</span>
+                      <span class="module-card-meta"><%= m.additions_error || '' %></span>
+                    <% } else { %>
+                      Being written
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (m.status === 'locked') { %>
+                      &mdash;
+                    <% } else if (m.assessment_status === 'passed' || (m.status === 'passed' && m.assessment_id)) { %>
+                      Passed<% if (m.last_percentage !== null && m.last_percentage !== undefined) { %> &middot; <%= pct(m.last_percentage) %><% } %>
+                    <% } else if (m.assessment_status === 'draft') { %>
+                      <span class="badge badge-warning">Ready to check</span>
+                    <% } else if (m.take_state === 'can_take') { %>
+                      <span class="badge badge-success">Open</span>
+                      <span class="module-card-meta">take <%= Number(m.takes_used) + 1 %></span>
+                    <% } else if (m.take_state === 'waiting_retake') { %>
+                      <span class="badge badge-warning">Needs another take</span>
+                    <% } else if (m.assessment_status === 'failed') { %>
+                      <span class="badge badge-warning">Not written</span>
+                      <span class="module-card-meta"><%= m.assessment_error || '' %></span>
+                    <% } else if (m.status === 'passed') { %>
+                      &mdash;
+                    <% } else { %>
+                      Being written
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (!m.attempts.length) { %>
+                      &mdash;
+                    <% } %>
+                    <% m.attempts.forEach((attempt) => { %>
+                      <a class="lpm-take" href="<%= basePath %>/path-attempts/<%= attempt.id %>">
+                        <%= attempt.attempt_number %>: <%= pct(attempt.percentage) %>
+                      </a>
+                    <% }) %>
+                  </td>
+                  <td class="lpm-actions">
+                    <% if (m.status !== 'locked') { %>
+                      <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= m.id %>/pdf" target="_blank" rel="noopener">View Module</a>
+                    <% } %>
+                    <% if (m.assessment_id && (m.assessment_status === 'draft' || m.status === 'open' || m.status === 'passed')) { %>
+                      <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-assessments/<%= m.assessment_id %>/edit">
+                        <%= canAct && m.assessment_status === 'draft' ? 'Check / Edit' : 'View Questions' %>
+                      </a>
+                    <% } %>
+                    <% if (canAct && m.assessment_status === 'draft') { %>
+                      <form method="post" action="<%= basePath %>/path-modules/<%= m.id %>/open"
+                            data-confirm-message="Open the Module <%= number %> assessment for <%= studentLabel %>? It can no longer be edited after that.">
+                        <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+                      </form>
+                    <% } %>
+                    <% if (canAct && m.take_state === 'waiting_retake') { %>
+                      <form method="post" action="<%= basePath %>/path-modules/<%= m.id %>/open"
+                            data-confirm-message="Open take <%= Number(m.takes_used) + 1 %> of the Module <%= number %> assessment for <%= studentLabel %>?">
+                        <button type="submit" class="btn btn-primary btn-sm">Open Next Take</button>
+                      </form>
+                    <% } %>
+                    <% if (canAct && (m.additions_status === 'failed' || (m.assessment_status === 'failed' && !m.assessment_id))) { %>
+                      <form method="post" action="<%= basePath %>/path-modules/<%= m.id %>/retry">
+                        <button type="submit" class="btn btn-secondary btn-sm">Try Again</button>
+                      </form>
+                    <% } %>
+                    <% if (isMainAdmin && m.status === 'open') { %>
+                      <form method="post" action="<%= basePath %>/path-modules/<%= m.id %>/pass"
+                            data-confirm-message="Count Module <%= number %> as passed for <%= studentLabel %> without the assessment? The next module opens.">
+                        <button type="submit" class="btn btn-secondary btn-sm">Mark as Passed</button>
+                      </form>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+
+              <tr class="lpm-post-row">
+                <td><strong>Post-Assessment</strong></td>
+                <td>
+                  <% if (pre.post_status === 'taken') { %>
+                    <span class="badge badge-success">Taken</span>
+                  <% } else if (pre.post_status === 'open') { %>
+                    <span class="badge badge-success">Open</span>
+                  <% } else if (pre.post_status === 'draft') { %>
+                    <span class="badge badge-warning">Ready to check</span>
+                  <% } else if (pre.post_status === 'failed') { %>
+                    <span class="badge badge-warning">Not written</span>
+                  <% } else if (pre.post_status === 'waiting') { %>
+                    <span class="badge badge-info">After every module</span>
+                  <% } else { %>
+                    <span class="badge badge-info">Being written</span>
+                  <% } %>
+                </td>
+                <td colspan="2">
+                  <% if (pre.post_status === 'failed') { %><span class="module-card-meta"><%= pre.post_error || '' %></span><% } %>
+                  <% if (view.post && view.post.item_count) { %><%= view.post.item_count %> questions<% } %>
+                </td>
+                <td>
+                  <% if (view.post && view.post.submission_id) { %>
+                    <a href="<%= basePath %>/results/<%= view.post.submission_id %>"><%= pct(view.post.percentage) %></a>
+                  <% } else { %>&mdash;<% } %>
+                </td>
+                <td class="lpm-actions">
+                  <% if (pre.post_assessment_id) { %>
+                    <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-assessments/<%= pre.post_assessment_id %>/edit">
+                      <%= canAct && pre.post_status === 'draft' ? 'Check / Edit' : 'View Questions' %>
+                    </a>
+                  <% } %>
+                  <% if (canAct && pre.post_status === 'draft') { %>
+                    <form method="post" action="<%= basePath %>/paths/<%= pre.id %>/post/open"
+                          data-confirm-message="Open the Post-Assessment for <%= studentLabel %>? It can no longer be edited after that.">
+                      <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+                    </form>
+                  <% } %>
+                  <% if (canAct && pre.post_status === 'failed') { %>
+                    <form method="post" action="<%= basePath %>/paths/<%= pre.id %>/post/retry">
+                      <button type="submit" class="btn btn-secondary btn-sm">Try Again</button>
+                    </form>
+                  <% } %>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+  <% }) %>
+</section>
+
+<style>
+  .lpm-table td { vertical-align: top; }
+  .lpm-table .module-card-meta { display: block; margin-top: 2px; }
+  .lpm-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+  .lpm-actions form { margin: 0; }
+  .lpm-take { display: inline-block; margin-right: 8px; white-space: nowrap; }
+  .lpm-post { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .lpm-post form { margin: 0; }
+  .lpm-post-row td { border-top: 2px solid var(--border, #d7e2ea); }
+</style>

@@ -149,7 +149,7 @@
       <% rows.forEach((r) => { %>
         <div class="mq-row">
           <span class="mq-cell mq-cell-primary" data-label="Student">
-            <span class="mq-name"><%= titleCaseName(r.first_name) %> <%= titleCaseName(r.last_name || '') %></span>
+            <a class="mq-name" href="<%= basePath %>/assessment-monitoring/students/<%= r.student_id %>"><%= titleCaseName(r.first_name) %> <%= titleCaseName(r.last_name || '') %></a>
             <% if (r.student_code) { %><span class="mq-sub"><%= r.student_code %></span><% } %>
           </span>
           <span class="mq-cell mq-cell-primary" data-label="Assessment">
@@ -158,7 +158,7 @@
           </span>
           <span class="mq-cell mq-cell-stack" data-label="Level &amp; type">
             <span class="mq-status mq-status-<%= levelStatus(r.level) %>"><%= r.level || '—' %></span>
-            <span class="mq-chip"><%= purposeLabel(r.purpose || r.assessment_kind) %></span>
+            <span class="mq-chip"><%= r.assessment_kind === 'tutor_assessment' && r.purpose === 'post' ? 'Module' : purposeLabel(r.purpose || r.assessment_kind) %></span>
           </span>
           <span class="mq-cell mq-cell-stack" data-label="Score">
             <strong><%= r.score %>/<%= r.total_points %></strong>

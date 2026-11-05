@@ -86,6 +86,11 @@
           <div class="mq-chip-list">
             <% subjects.forEach((sub) => { %><span class="mq-subject-chip"><%= sub.subject_name %></span><% }) %>
           </div>
+          <div class="mq-chip-list" style="margin-top: 10px;">
+            <% subjects.forEach((sub) => { %>
+              <a class="btn btn-secondary btn-sm" href="/tutor/students/<%= student.id %>/path/<%= sub.subject_id %>">Learning Path: <%= sub.subject_name %></a>
+            <% }) %>
+          </div>
         <% } %>
       </div>
     </section>

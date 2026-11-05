@@ -95,18 +95,13 @@
       <% } %>
     </section>
 
-    <%# The Post-Assessment repeats the Pre-Assessment, so it waits for it — even
-        once the last day has come and it is open. %>
+    <%# The Post-Assessment is compared with the Pre-Assessment, so it waits for it. %>
     <section class="panel-card">
       <div class="panel-card-head">
         <h3>Post-Assessment</h3>
-        <% if (completion.postWindowOpen) { %>
-          <span class="badge badge-success">Open now</span>
-        <% } else { %>
-          <span class="badge badge-info"><%= completion.postOpensAt ? `Opens ${formatDate(completion.postOpensAt)}` : 'Not open yet' %></span>
-        <% } %>
+        <span class="badge badge-info">Not open yet</span>
       </div>
-      <p class="table-note">Take the Pre-Assessment first: the Post-Assessment repeats it.</p>
+      <p class="table-note">Take the Pre-Assessment first: the Post-Assessment is compared with it.</p>
     </section>
   <% } else if (preAssessmentDone) { %>
     <%# Level modules (lib/levelModules.js): each module written again for the
@@ -117,7 +112,70 @@
     <% const entries = typeof levelEntries === 'undefined' ? [] : (levelEntries || []); %>
     <% const myLevel = typeof placementLevel === 'undefined' ? null : placementLevel; %>
     <% const levelOf = new Map(entries.map((entry) => [Number(entry.module.id), entry.levelModule])); %>
+    <% const lp = typeof learningPath === 'undefined' ? null : learningPath; %>
     <link rel="stylesheet" href="/css/level-modules.css" />
+    <% if (lp) { %>
+    <%# A learning path (lib/learningPaths.js): their own copy of every module,
+        each opened when they pass the one before. %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Your Modules</h3>
+        <span class="lm-level lm-level-<%= String(lp.path.placement_level || 'beginner').toLowerCase() %>"><%= lp.path.placement_level %></span>
+      </div>
+      <p class="table-note">
+        Pre-Assessment done &mdash; <%= Number(preAssessmentDone.percentage).toFixed(1) %>%,
+        <%= preAssessmentDone.level %>.
+        <a href="/student/results/<%= preAssessmentDone.id %>">View your result and topic breakdown</a>
+        &middot; <%= lp.passed %> of <%= lp.total %> module<%= lp.total === 1 ? '' : 's' %> passed
+      </p>
+
+      <% if (!lp.modules.length) { %>
+        <p class="empty-state">No modules in this subject yet.</p>
+      <% } %>
+
+      <div class="module-grid">
+        <% lp.modules.forEach((m, index) => { %>
+          <% const before = index > 0 ? lp.modules[index - 1] : null; %>
+          <article class="module-card<%= m.status === 'locked' ? ' lp-locked' : '' %>">
+            <div class="module-card-head">
+              <span class="module-number">Module <%= m.order_number || m.position %></span>
+              <% if (m.status === 'passed') { %>
+                <span class="badge badge-success">Passed</span>
+              <% } else if (m.status === 'open') { %>
+                <span class="badge badge-info">Open</span>
+              <% } else { %>
+                <span class="badge badge-warning">Locked</span>
+              <% } %>
+            </div>
+            <h4><%= m.module_title %></h4>
+            <% if (m.additions_status === 'pending' || m.additions_status === 'generating') { %>
+              <p class="lm-level-card-meta">Added lessons being prepared</p>
+            <% } else if (m.added_count) { %>
+              <p class="lm-level-card-meta"><%= m.added_count %> lesson<%= m.added_count === 1 ? '' : 's' %> added for you</p>
+            <% } else if (m.additions_status === 'none' && Number(m.pre_total) > 0) { %>
+              <p class="lm-level-card-meta">Nothing added: all its Pre-Assessment items were right</p>
+            <% } %>
+            <% if (m.status === 'open') { %>
+              <p class="lm-level-card-meta">
+                <%= m.take_state === 'can_take' ? 'Assessment open'
+                  : m.take_state === 'waiting_retake' ? 'Not passed yet — waiting for your next take'
+                  : m.take_state === 'waiting_tutor' ? 'Assessment waiting for your tutor'
+                  : 'Assessment being prepared' %>
+              </p>
+            <% } %>
+            <div class="module-card-foot">
+              <% if (m.status === 'locked') { %>
+                <span class="module-card-meta">Opens when you pass Module <%= before ? (before.order_number || before.position) : '' %></span>
+              <% } else { %>
+                <a class="btn btn-primary btn-sm" href="/student/path-modules/<%= m.id %>">Open Module</a>
+              <% } %>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+    <style>.lp-locked { opacity: .72; }</style>
+    <% } else { %>
     <section class="panel-card">
       <div class="panel-card-head">
         <h3>Your Modules</h3>
@@ -194,12 +252,13 @@
         </div>
       </section>
     <% } %>
+    <% } %>
 
     <%# --------------------------------------------------------------------
-        Post-Assessment (overhaul Phase 8). It opens on its own at 12:01 AM on
-        the LAST DAY of this student's enrolment in the subject, and not before,
-        and stays open until they take it. The same rule is enforced
-        server-side on the route; this only says when.
+        Post-Assessment (overhaul Phase 8). It opens when the student's tutor —
+        or the main admin — opens it for them, once they have finished their
+        modules, and stays open until they take it. The same rule is enforced
+        server-side on the route; this only says where they stand.
         -------------------------------------------------------------------- %>
     <section class="panel-card">
       <div class="panel-card-head">
@@ -209,9 +268,7 @@
         <% } else if (completion.postStatus === 'open') { %>
           <span class="badge badge-success">Open now</span>
         <% } else { %>
-          <span class="badge badge-info">
-            <%= completion.postOpensAt ? `Opens ${formatDate(completion.postOpensAt)}` : 'Not open yet' %>
-          </span>
+          <span class="badge badge-info">Not open yet</span>
         <% } %>
       </div>
 
@@ -246,22 +303,25 @@
 
       <% } else if (completion.postStatus === 'open') { %>
         <p class="table-note">
-          Your enrollment in <%= assignment.subject_name %> has reached its last day<%= completion.postOpensAt ? ` (${formatDate(completion.postOpensAt)})` : '' %>,
-          so the Post-Assessment is open. It repeats your Pre-Assessment, so you and your tutor can see how much you have improved.
+          Your tutor opened your Post-Assessment.
+          <%= lp ? 'Its questions come from your own modules,' : 'It repeats your Pre-Assessment,' %>
+          so you and your tutor can see how much you have improved.
         </p>
         <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/post-assessment">Start Post-Assessment</a>
 
-      <% } else { %>
+      <% } else if (lp) { %>
         <p class="table-note">
-          <% if (completion.postOpensAt) { %>
-            Opens automatically on <strong><%= formatDateTime(completion.postOpensAt) %></strong> — the last day of
-            your enrollment in this subject. Until then you cannot take it.
+          <% if (!lp.allPassed) { %>
+            It opens after you pass all your modules (<%= lp.passed %> of <%= lp.total %> so far) and your tutor opens it.
           <% } else { %>
-            Opens automatically on the last day of your enrollment in this subject.
+            You passed all your modules. Your tutor opens your Post-Assessment once it is ready.
           <% } %>
         </p>
+
+      <% } else { %>
+        <p class="table-note">Your tutor opens the Post-Assessment once you finish your modules.</p>
         <% if (completion.modulesOpened < completion.modulesTotal || completion.pendingAssessments.length) { %>
-          <p class="table-note">Before then, finish your modules:</p>
+          <p class="table-note">Still to do:</p>
           <ul class="module-handout-list">
             <% if (completion.modulesOpened < completion.modulesTotal) { %>
               <li>Open all your modules (<%= completion.modulesOpened %> of <%= completion.modulesTotal %> so far)</li>

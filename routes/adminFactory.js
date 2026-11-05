@@ -178,6 +178,8 @@ const { buildBellItems } = require('../lib/bell');
 const { normalizeAmount } = require('../lib/billing');
 const { slipCode, parseSlipCode } = require('../lib/paymentSlip');
 const { query } = require('../config/db');
+// Learning paths: each student's own modules and the assessments written for them.
+const paths = require('../lib/learningPaths');
 
 /** "Jane Cruz (Assistant Admin)" — who took the money, for a notification. */
 function displayActor(user) {
@@ -2961,6 +2963,222 @@ function createAdminRouter(role) {
   // Monitoring, and a bookmark or an old link should land there rather than 404.
   router.get('/student-results', (req, res) => {
     res.redirect(`${basePath}/assessment-monitoring`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Learning paths (lib/learningPaths.js), reached from Assessment Monitoring
+  // by a student's name: their modules, the assessments written for them and
+  // every take. The main admin checks, edits and opens; an assistant views
+  // their own branch's students.
+  // -------------------------------------------------------------------------
+  const monitoringOf = (studentId) => `${basePath}/assessment-monitoring/students/${Number(studentId)}`;
+
+  /** The student, when this viewer may see them; otherwise flashes and redirects. */
+  async function requireMonitoredStudent(req, res, studentId) {
+    const student = studentId ? await getUserById(Number(studentId)) : null;
+    if (!student || student.role !== 'student') {
+      setFlash(req, 'error', 'Student not found.');
+      res.redirect(`${basePath}/assessment-monitoring`);
+      return null;
+    }
+    if (!canActOnBranch(req.session.user, student.branch_id)) {
+      setFlash(req, 'error', 'That student belongs to another branch.');
+      res.redirect(`${basePath}/assessment-monitoring`);
+      return null;
+    }
+    return student;
+  }
+
+  /** Only the main admin changes a learning path; returns true after refusing. */
+  function refuseUnlessMainAdmin(req, res, back) {
+    if (req.session.user.role === 'admin') return false;
+    setFlash(req, 'error', 'Only the main admin can do that.');
+    res.redirect(back);
+    return true;
+  }
+
+  router.get('/assessment-monitoring/students/:studentId', async (req, res, next) => {
+    try {
+      const student = await requireMonitoredStudent(req, res, req.params.studentId);
+      if (!student) return;
+      const assignments = await getStudentAssignments(student.id);
+      const seen = new Set();
+      const subjects = assignments
+        .filter((a) => !seen.has(Number(a.subject_id)) && seen.add(Number(a.subject_id)))
+        .map((a) => ({ subject_id: a.subject_id, subject_name: a.subject_name }));
+      const entries = await paths.managePageEntries(student.id, subjects);
+      const shell = await buildShellData(req, {
+        pageTitle: `${student.first_name} ${student.last_name || ''} — Learning Path`,
+        section: 'assessment_monitoring',
+        contentView: '../content/learning-path-manage',
+        student,
+        entries,
+        canAct: req.session.user.role === 'admin',
+        isMainAdmin: req.session.user.role === 'admin',
+        backHref: `${basePath}/assessment-monitoring`
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  router.get('/path-modules/:id/pdf', async (req, res, next) => {
+    try {
+      const row = await paths.getPathModuleById(Number(req.params.id));
+      if (!row) {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(`${basePath}/assessment-monitoring`);
+      }
+      if (!(await requireMonitoredStudent(req, res, row.student_id))) return;
+      const pdf = await paths.buildModulePdf(row);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Length', pdf.bytes.length);
+      res.setHeader('Content-Disposition', `inline; filename="${paths.pdfFileName(row)}"`);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.send(pdf.bytes);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/path-modules/:id/open', async (req, res) => {
+    try {
+      const row = await paths.getPathModuleById(Number(req.params.id));
+      if (!row) throw new Error('Module not found.');
+      if (refuseUnlessMainAdmin(req, res, monitoringOf(row.student_id))) return;
+      if (!(await requireMonitoredStudent(req, res, row.student_id))) return;
+      const result = await paths.openModuleAssessment(row.id, req.session.user.id);
+      setFlash(req, 'success', result.opened === 'retake'
+        ? `Take ${result.take} is open for the student.`
+        : 'The assessment is open for the student.');
+      res.redirect(monitoringOf(row.student_id));
+    } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
+  });
+
+  router.post('/path-modules/:id/retry', async (req, res) => {
+    try {
+      const row = await paths.getPathModuleById(Number(req.params.id));
+      if (!row) throw new Error('Module not found.');
+      if (refuseUnlessMainAdmin(req, res, monitoringOf(row.student_id))) return;
+      if (!(await requireMonitoredStudent(req, res, row.student_id))) return;
+      paths.retry(row.additions_status === 'failed' ? 'additions' : 'assessment', row.id)
+        .catch((error) => console.error('[admin] retry failed:', error.message));
+      setFlash(req, 'success', 'It is being written again. This takes a minute or two.');
+      res.redirect(monitoringOf(row.student_id));
+    } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
+  });
+
+  // Main admin: count a module as passed without its assessment (a broken case).
+  router.post('/path-modules/:id/pass', async (req, res) => {
+    try {
+      const row = await paths.getPathModuleById(Number(req.params.id));
+      if (!row) throw new Error('Module not found.');
+      if (refuseUnlessMainAdmin(req, res, monitoringOf(row.student_id))) return;
+      if (!(await requireMonitoredStudent(req, res, row.student_id))) return;
+      await paths.markModulePassed(row.id, req.session.user.id);
+      setFlash(req, 'success', 'The module counts as passed. The next one is open.');
+      res.redirect(monitoringOf(row.student_id));
+    } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
+  });
+
+  router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
+    try {
+      const page = await paths.editPageData(Number(req.params.assessmentId));
+      if (!page) {
+        setFlash(req, 'error', 'Assessment not found.');
+        return res.redirect(`${basePath}/assessment-monitoring`);
+      }
+      if (!(await requireMonitoredStudent(req, res, page.studentId))) return;
+      const isMain = req.session.user.role === 'admin';
+      const shell = await buildShellData(req, {
+        pageTitle: page.assessment.title,
+        section: 'assessment_monitoring',
+        contentView: '../content/learning-path-edit',
+        ...page,
+        // An assistant views the questions; only the main admin edits them.
+        editable: page.editable && isMain,
+        reason: page.editable && !isMain ? '' : page.reason,
+        saveAction: `${basePath}/path-assessments/${page.assessment.id}/edit`,
+        backHref: monitoringOf(page.studentId)
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/path-assessments/:assessmentId/edit', async (req, res) => {
+    const assessmentId = Number(req.params.assessmentId);
+    const back = `${basePath}/path-assessments/${assessmentId}/edit`;
+    try {
+      if (refuseUnlessMainAdmin(req, res, back)) return;
+      const page = await paths.editPageData(assessmentId);
+      if (!page) throw new Error('Assessment not found.');
+      if (!(await requireMonitoredStudent(req, res, page.studentId))) return;
+      const result = await paths.replaceDraftQuestions(assessmentId, paths.readPostedQuestions(req.body), req.session.user.id);
+      setFlash(req, 'success', `${result.count} question${result.count === 1 ? '' : 's'} saved.`);
+      res.redirect(back);
+    } catch (error) { failBack(req, res, error, back); }
+  });
+
+  router.post('/paths/:pathId/post/open', async (req, res) => {
+    try {
+      const path = await paths.getPathById(Number(req.params.pathId));
+      if (!path) throw new Error('Learning path not found.');
+      if (refuseUnlessMainAdmin(req, res, monitoringOf(path.student_id))) return;
+      if (!(await requireMonitoredStudent(req, res, path.student_id))) return;
+      await paths.openPathPost(path.id, req.session.user.id);
+      setFlash(req, 'success', 'The Post-Assessment is open for the student.');
+      res.redirect(monitoringOf(path.student_id));
+    } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
+  });
+
+  router.post('/paths/:pathId/post/retry', async (req, res) => {
+    try {
+      const path = await paths.getPathById(Number(req.params.pathId));
+      if (!path) throw new Error('Learning path not found.');
+      if (refuseUnlessMainAdmin(req, res, monitoringOf(path.student_id))) return;
+      if (!(await requireMonitoredStudent(req, res, path.student_id))) return;
+      paths.retry('post', path.id).catch((error) => console.error('[admin] retry failed:', error.message));
+      setFlash(req, 'success', 'The Post-Assessment is being written again. This takes a minute or two.');
+      res.redirect(monitoringOf(path.student_id));
+    } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
+  });
+
+  // Main admin: open the Post-Assessment of a student without a learning path,
+  // whenever it is needed. It no longer opens by itself on the month's last day.
+  router.post('/students/:studentId/subjects/:subjectId/post/open', async (req, res) => {
+    const studentId = Number(req.params.studentId);
+    const subjectId = Number(req.params.subjectId);
+    try {
+      if (refuseUnlessMainAdmin(req, res, monitoringOf(studentId))) return;
+      if (!(await requireMonitoredStudent(req, res, studentId))) return;
+      if (await paths.getCurrentPath(studentId, subjectId)) {
+        throw new Error('This student is on a learning path: open their Post-Assessment from it.');
+      }
+      const { getStudentSubjectCompletion } = require('../lib/data');
+      const completion = await getStudentSubjectCompletion(studentId, subjectId);
+      if (!completion.preDone) throw new Error('The student has not taken the Pre-Assessment yet.');
+      if (completion.postTaken) throw new Error('The student has taken the Post-Assessment already.');
+      await paths.openPostForStudent(studentId, subjectId, req.session.user.id);
+      setFlash(req, 'success', 'The Post-Assessment is open for the student.');
+      res.redirect(monitoringOf(studentId));
+    } catch (error) { failBack(req, res, error, monitoringOf(studentId)); }
+  });
+
+  router.get('/path-attempts/:attemptId', async (req, res, next) => {
+    try {
+      const page = await paths.attemptPageData(Number(req.params.attemptId));
+      if (!page) {
+        setFlash(req, 'error', 'That take was not found.');
+        return res.redirect(`${basePath}/assessment-monitoring`);
+      }
+      if (!(await requireMonitoredStudent(req, res, page.studentId))) return;
+      const shell = await buildShellData(req, {
+        pageTitle: page.submission.title,
+        section: 'assessment_monitoring',
+        contentView: '../content/student-assessment-breakdown',
+        submission: page.submission,
+        weakAreas: page.weakAreas,
+        viewerRole: 'admin'
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
   });
 
   return router;

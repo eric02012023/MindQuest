@@ -95,6 +95,9 @@ Tatlong bagay lang ang binago, para sa limang ito lamang:
    - Natitirang balance: STD-0166 ₱3,100; ang iba ₱1,300.
 2. **Huling araw ng enrolment:** inilipat mula **28 Okt 2026** papuntang **15 Okt 2026**.
    Nagbubukas ang Post-Assessment nang 12:01 AM sa huling araw na iyon.
+   - Mula 5 Nob 2026, hindi na kusang bumubukas ang Post-Assessment: ang tutor o ang main
+     admin na ang nagbubukas nito. Ang Post na bukas na bago noon at hindi pa nakukuha
+     (kasama ang sa STD-0166 at STD-0088) ay nananatiling bukas.
    - Enrolment rows: 266 at 267 (STD-0166), 85 (STD-0063), 128 (STD-0088), 189 (STD-0121),
      397 (STD-0229).
    - Hindi binago ang due date ng bill (28 Okt 2026), kaya walang bagong payment reminder.

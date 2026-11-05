@@ -8,11 +8,13 @@
     "dev": "node server.js",
     "init-db": "node scripts/init-db.js",
     "apply-schema": "node scripts/apply-schema.js",
-    "test": "node scripts/test-anti-cheat-client.js && node scripts/test-assessment-types.js && node scripts/test-payment-minimum.js && node scripts/test-subject-pricing.js && node scripts/test-tutor-assignment.js && node scripts/test-page-styles.js && node scripts/test-storage-fallback.js && node scripts/test-profile-save.js && node scripts/test-gmail-address.js && node scripts/test-payment-reminders.js && node scripts/test-defense-fixes.js && node scripts/test-notification-bell.js && node scripts/test-module-grades.js && node scripts/test-login-and-payment-guards.js && node scripts/test-reports.js && node scripts/test-level-modules.js"
+    "test": "node scripts/test-anti-cheat-client.js && node scripts/test-assessment-types.js && node scripts/test-payment-minimum.js && node scripts/test-subject-pricing.js && node scripts/test-tutor-assignment.js && node scripts/test-page-styles.js && node scripts/test-storage-fallback.js && node scripts/test-profile-save.js && node scripts/test-gmail-address.js && node scripts/test-payment-reminders.js && node scripts/test-defense-fixes.js && node scripts/test-notification-bell.js && node scripts/test-module-grades.js && node scripts/test-login-and-payment-guards.js && node scripts/test-reports.js && node scripts/test-level-modules.js && node scripts/test-learning-paths.js"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "bcryptjs": "^2.4.3",
     "dayjs": "^1.11.13",
+    "dejavu-fonts-ttf": "^2.37.3",
     "dotenv": "^16.6.1",
     "ejs": "^3.1.10",
     "express": "^4.21.0",
@@ -23,6 +25,7 @@
     "mssql": "^11.0.1",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^8.0.5",
+    "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "uuid": "^10.0.0"
   }

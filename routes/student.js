@@ -111,6 +111,8 @@ const { normalizeArray, formatDate, formatDateTime, todayDate } = require('../li
 const { monthOf, addedInMonth } = require('../lib/postWindow');
 // Phase 3: cash is a POS transaction now. The student's side ends at a slip.
 const { buildSlipModel, renderSlipPdf, slipFilename, slipCode, formatSlipDate } = require('../lib/paymentSlip');
+// Learning paths: each student's own modules, opened one after another as they pass.
+const paths = require('../lib/learningPaths');
 
 const router = express.Router();
 const profileUploader = createUploader('profiles');
@@ -347,6 +349,21 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
         return [];
       })
       : [];
+    // Their learning path (lib/learningPaths.js), when the Pre-Assessment started
+    // one: their own modules, opened one after another as they pass.
+    let learningPath = null;
+    if (preAssessmentDone) {
+      try {
+        const path = await paths.getCurrentPath(req.session.user.id, Number(req.params.subjectId), preAssessmentDone);
+        if (path) {
+          await paths.syncPath(path, newModules);
+          paths.kickPath(path.id).catch((error) => console.error('[student] could not queue the path:', error.message));
+          learningPath = await paths.loadPathView(await paths.getPathById(path.id));
+        }
+      } catch (error) {
+        console.error('[student] learning path could not be loaded:', error.message);
+      }
+    }
     const handoutsReady = gradeLevel
       ? (await getSubjectHandoutTexts(Number(req.params.subjectId), gradeLevel)).length
       : 0;
@@ -355,8 +372,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     const downPayment = await getDownPaymentStatus(req.session.user.id);
 
     // ---- Post-Assessment (Phase 8) ---------------------------------------
-    // It opens at 12:01 AM on the last day of this student's enrolment in the
-    // subject. The page says when, and shows pre-vs-post once both exist.
+    // It opens when the student's tutor (or the main admin) opens it. The page
+    // says where they stand, and shows pre-vs-post once both exist.
     const completion = await getStudentSubjectCompletion(req.session.user.id, Number(req.params.subjectId));
     const comparison = (await getSubjectPrePostComparison(Number(req.params.subjectId)))
       .find((row) => Number(row.student_id) === Number(req.session.user.id)) || null;
@@ -370,6 +387,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       modules,
       newModules,
       levelEntries,
+      learningPath,
       placementLevel: placementLevelOf(preAssessmentDone),
       preAssessmentDone,
       handoutsReady,
@@ -917,6 +935,10 @@ router.post('/assessments/:id/violation', express.json(), async (req, res) => {
     // are enrolled in — otherwise this endpoint would write rows for any id.
     const assessment = await getTutorAssessmentById(assessmentId);
     if (!assessment) return res.status(404).json({ ok: false, error: 'Assessment not found.' });
+    // An assessment written for one student is theirs alone.
+    if (assessment.for_student_id && Number(assessment.for_student_id) !== Number(req.session.user.id)) {
+      return res.status(404).json({ ok: false, error: 'Assessment not found.' });
+    }
 
     const assignments = await getStudentAssignments(req.session.user.id);
     if (!assignments.some((a) => Number(a.subject_id) === Number(assessment.subject_id))) {
@@ -1267,8 +1289,23 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       assessmentId
     });
 
-    // Their modules, written for the level they were just placed at. Only the
-    // rows are made here; the writing is queued, so the redirect does not wait.
+    // Their learning path (lib/learningPaths.js): every module of their grade
+    // made into their own, Module 1 open. Only the rows are made here; the added
+    // pages are written in the background, so the redirect does not wait.
+    let path = null;
+    try {
+      path = await paths.createPathAfterPre({
+        studentId: req.session.user.id,
+        subjectId,
+        preSubmission: { id: result.submissionId, level: result.level, assessment_id: assessmentId },
+        gradeLevel,
+        modules: await getStudentSubjectModules(req.session.user.id, subjectId)
+      });
+    } catch (error) {
+      console.error('[student] the learning path could not be started:', error.message);
+    }
+
+    // The level modules stay: the tutor's activities for each level live in them.
     const levelEntries = await prepareStudentLevelModules(req.session.user.id, subjectId)
       .catch((error) => {
         console.error('[student] level modules could not be prepared:', error.message);
@@ -1279,8 +1316,11 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
     setFlash(
       req,
       'success',
-      `Pre-Assessment submitted. Your level: ${result.level} (${result.percentage}%). Your modules are now unlocked.`
-      + (level && levelEntries.some((entry) => entry.levelModule) ? ` Your ${level} modules are being prepared.` : '')
+      `Pre-Assessment submitted. Your level: ${result.level} (${result.percentage}%).`
+      + (path
+        ? ' Module 1 is open. Your own modules, with lessons added on what you missed, are being prepared.'
+        : ' Your modules are now unlocked.'
+          + (level && levelEntries.some((entry) => entry.levelModule) ? ` Your ${level} modules are being prepared.` : ''))
       + (focus && focus.tutor_id ? ' Your tutor has been sent your focus areas.' : '')
     );
     res.redirect(`/student/results/${result.submissionId}`);
@@ -1293,15 +1333,18 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // Post-Assessment (overhaul Phase 8, spec Section 4b)
 //
-// It opens on its own at 12:01 AM on the LAST DAY of the student's enrolment in
-// the subject (enrolled 15 September -> open from 12:01 AM on 15 October), and
-// not a minute before. It does not close: a student who has not taken it can
-// take it after their month is over too. It is the same questions as the
-// Pre-Assessment this student sat, so that must have been taken. Enforced here,
-// server-side: the button on the subject page is only a reflection of it.
+// It opens when the student's tutor — or the main admin — opens it for them,
+// once they have finished their modules. It no longer opens by itself on the
+// last day of the enrolment. It does not close: a student who has not taken it
+// can take it after their month is over too.
+//
+// On a learning path it is written for the student from their own modules
+// (lib/learningPaths.js); otherwise it is the same questions as the
+// Pre-Assessment they sat. Enforced here, server-side: the button on the
+// subject page is only a reflection of it.
 // ---------------------------------------------------------------------------
 
-/** Shared guard: returns { assignment, assessment } or null after flashing. */
+/** Shared guard: returns { assignment, assessment, path } or null after flashing. */
 async function requirePostAssessment(req, subjectId) {
   const assignment = await requireEnrolment(req, subjectId);
   if (!assignment) {
@@ -1315,19 +1358,31 @@ async function requirePostAssessment(req, subjectId) {
     return { redirectTo: `/student/results/${state.postSubmission.id}` };
   }
   if (state.status === 'needs_pre') {
-    setFlash(req, 'error', 'The Post-Assessment repeats your Pre-Assessment, so take the Pre-Assessment first.');
+    setFlash(req, 'error', 'Take the Pre-Assessment first: the Post-Assessment is compared with it.');
     return null;
   }
   if (state.status !== 'open') {
-    setFlash(req, 'error', state.opensAt
-      ? `The Post-Assessment opens on ${formatDateTime(state.opensAt)} — the last day of your enrollment in ${assignment.subject_name}.`
-      : 'The Post-Assessment opens on the last day of your enrollment.');
+    setFlash(req, 'error', state.path
+      ? 'Your Post-Assessment opens once you have passed all your modules and your tutor has opened it.'
+      : 'Your tutor opens the Post-Assessment once you have finished your modules.');
     return null;
+  }
+
+  if (state.path) {
+    // Written for this student from their own modules, and opened for them.
+    const assessment = state.path.post_assessment_id
+      ? await getTutorAssessmentById(state.path.post_assessment_id)
+      : null;
+    if (!assessment || Number(assessment.for_student_id) !== Number(req.session.user.id)) {
+      setFlash(req, 'error', 'Your Post-Assessment is not ready yet.');
+      return null;
+    }
+    return { assignment, assessment, path: state.path };
   }
 
   // The same questions as the Pre-Assessment this student sat.
   const assessment = await getOrCreatePostAssessmentFor(state.preSubmission.assessment_id);
-  return { assignment, assessment };
+  return { assignment, assessment, path: null };
 }
 
 router.get('/subjects/:subjectId/post-assessment', async (req, res, next) => {
@@ -1384,9 +1439,12 @@ router.post('/subjects/:subjectId/post-assessment', async (req, res, next) => {
     });
 
     await finaliseSitting(req, { assessmentId: gate.assessment.id, submissionId: result.submissionId });
+    if (gate.path) {
+      await paths.markPathPostTaken(gate.path.id)
+        .catch((error) => console.error('[student] could not mark the Post-Assessment taken:', error.message));
+    }
 
-    // The classification on record follows the latest measurement, which is the
-    // point of sitting the same questions again — recorded by
+    // The classification on record follows the latest measurement — recorded by
     // gradeAndSubmitAssessment for every assessment kind, not just this one.
 
     setFlash(req, 'success', `Post-Assessment submitted. Your level: ${result.level} (${result.percentage}%).`);
@@ -1409,6 +1467,17 @@ router.get('/results/:submissionId', async (req, res, next) => {
     if (Number(submission.student_id) !== Number(req.session.user.id)) {
       setFlash(req, 'error', 'You can only view your own results.');
       return res.redirect('/student/subjects');
+    }
+
+    // A module assessment written for this student (lib/learningPaths.js) shows
+    // its score only: the answers stay hidden, so a retake cannot be learnt
+    // from the take before it. Their tutor and the admin see every answer.
+    if (submission.for_student_id && submission.assessment_kind === 'tutor_assessment') {
+      const owner = await paths.getPersonalOwner(submission.assessment_id);
+      setFlash(req, 'info', `Your score: ${Number(submission.score)}/${Number(submission.total_points)} (${Number(submission.percentage).toFixed(1)}%).`);
+      return res.redirect(owner && owner.pathModule
+        ? `/student/path-modules/${owner.pathModule.id}`
+        : `/student/subjects/${submission.subject_id}`);
     }
 
     const weakAreas = await getWeakAreasForSubmission(submission.id);
@@ -1479,6 +1548,26 @@ function noModuleWork() {
   };
 }
 
+/**
+ * This module's place in the student's learning path, or null when they have no
+ * path (they keep the level modules) or the module is not in it.
+ */
+async function pathModuleOf(studentId, subjectId, preSubmission, moduleId) {
+  const path = await paths.getCurrentPath(studentId, subjectId, preSubmission);
+  if (!path) return null;
+  return (await paths.getPathModules(path.id))
+    .find((row) => Number(row.module_id) === Number(moduleId) && row.status !== 'removed') || null;
+}
+
+/** On a learning path a module is opened from the path: their own copy, or shut while locked. */
+function sendToPathModule(req, res, row) {
+  if (row.status === 'locked') {
+    setFlash(req, 'error', 'Pass the module before this one first.');
+    return res.redirect(`/student/subjects/${row.subject_id || ''}`);
+  }
+  return res.redirect(`/student/path-modules/${row.id}`);
+}
+
 // Student: one of the admin's modules written for their level (lib/levelModules.js).
 // This is where they read the lesson and answer the module's activities.
 router.get('/level-modules/:id', async (req, res, next) => {
@@ -1507,6 +1596,9 @@ router.get('/level-modules/:id', async (req, res, next) => {
       setFlash(req, 'error', 'This module is not assigned to your year level.');
       return res.redirect(`/student/subjects/${mod.subject_id}`);
     }
+    // A student on a learning path works in their own copy of the module.
+    const onPath = await pathModuleOf(studentId, mod.subject_id, preDone, mod.id);
+    if (onPath) return sendToPathModule(req, res, { ...onPath, subject_id: mod.subject_id });
     // Their own level's — another level's module is not theirs by its address
     // either — and part of their month, like any module.
     const month = monthOf(assignment);
@@ -1572,6 +1664,11 @@ router.get('/modules/:moduleId', async (req, res, next) => {
       setFlash(req, 'error', 'Please complete the Pre-Assessment for this subject before opening its modules.');
       return res.redirect(`/student/subjects/${mod.subject_id}`);
     }
+
+    // A student on a learning path works in their own copy of the module, and a
+    // module of it that is still locked stays shut by its address too.
+    const onPath = await pathModuleOf(studentId, mod.subject_id, preDone, mod.id);
+    if (onPath) return sendToPathModule(req, res, { ...onPath, subject_id: mod.subject_id });
 
     // Year-level targeting. moduleTargetsStudent matches the exact label against
     // year_level AND grade_level — deliberately not the collapsed key, which
@@ -1647,8 +1744,11 @@ router.get('/modules/:moduleId', async (req, res, next) => {
  */
 async function requireModuleAssessment(req, assessmentId) {
   const assessment = await getTutorAssessmentById(Number(assessmentId));
+  // One student's own module assessment is taken from their module page
+  // (/student/path-modules/:id), never through this route.
   if (!assessment || Number(assessment.is_archived) || !Number(assessment.is_published)
-      || (assessment.assessment_kind || 'tutor_assessment') !== 'tutor_assessment') {
+      || (assessment.assessment_kind || 'tutor_assessment') !== 'tutor_assessment'
+      || assessment.for_student_id) {
     setFlash(req, 'error', 'Assessment not found.');
     return { redirectTo: '/student/subjects' };
   }
@@ -1801,6 +1901,179 @@ router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not submit assessment.');
     res.redirect('/student/subjects');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Learning path (lib/learningPaths.js): the student's own modules
+// ---------------------------------------------------------------------------
+
+/** The student's own module, open or passed; or { redirectTo } after flashing. */
+async function requirePathModule(req, id) {
+  const row = await paths.getPathModuleById(Number(id));
+  if (!row || Number(row.student_id) !== Number(req.session.user.id) || row.status === 'removed') {
+    setFlash(req, 'error', 'Module not found.');
+    return { redirectTo: '/student/subjects' };
+  }
+  const assignment = await requireEnrolment(req, row.subject_id);
+  if (!assignment) {
+    setFlash(req, 'error', 'You are not enrolled in this subject.');
+    return { redirectTo: '/student/subjects' };
+  }
+  if (row.status === 'locked') {
+    setFlash(req, 'error', 'Pass the module before this one first.');
+    return { redirectTo: `/student/subjects/${row.subject_id}` };
+  }
+  return { row, assignment };
+}
+
+const TAKE_STATE_MESSAGES = {
+  locked: 'Pass the module before this one first.',
+  preparing: 'Your assessment for this module is still being prepared.',
+  waiting_tutor: 'Your tutor opens this assessment when you are ready for it.',
+  waiting_retake: 'Your tutor opens your next take when you are ready for it.',
+  passed: 'You have passed this module already.'
+};
+
+// Student: their own copy of a module — the PDF, the lessons added for them,
+// the tutor's activities, and the module's assessment.
+router.get('/path-modules/:id', async (req, res, next) => {
+  try {
+    const gate = await requirePathModule(req, req.params.id);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
+    const { row, assignment } = gate;
+    const studentId = req.session.user.id;
+    paths.kickPath(row.path_id).catch((error) => console.error('[student] could not queue the path:', error.message));
+
+    const mod = await getModuleById(row.module_id);
+    if (!mod) {
+      setFlash(req, 'error', 'That module was removed.');
+      return res.redirect(`/student/subjects/${row.subject_id}`);
+    }
+    const month = monthOf(assignment);
+    const viewOnly = viewOnlyMessage(assignment);
+    if (!viewOnly) await recordModuleOpen(studentId, mod.id, mod.subject_id);
+
+    // The tutor's activities: those for every level, and those of the level
+    // module of the level their Pre-Assessment placed them at.
+    const handouts = await getModuleHandouts(mod.id);
+    const levelModule = await getStudentLevelModuleFor(mod.id, row.placement_level, month);
+    const work = await moduleWorkFor(studentId, mod, month, handouts, {
+      levelModuleId: levelModule ? levelModule.id : null
+    });
+    const attempts = row.assessment_id ? await paths.getAttempts(row.assessment_id, studentId) : [];
+
+    const shell = await buildShell(req, {
+      pageTitle: `Module ${row.order_number || row.position} — ${row.module_title}`,
+      section: 'subjects',
+      contentView: '../content/student-path-module',
+      row: { ...row, take_state: paths.takeState(row) },
+      mod,
+      assignment,
+      activities: work.activities,
+      submissions: work.submissions,
+      attempts,
+      viewOnly
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Student: their module as one PDF — every original page, with their added pages.
+router.get('/path-modules/:id/pdf', async (req, res, next) => {
+  try {
+    const gate = await requirePathModule(req, req.params.id);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
+    const pdf = await paths.buildModulePdf(gate.row);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdf.bytes.length);
+    res.setHeader('Content-Disposition', `inline; filename="${paths.pdfFileName(gate.row)}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf.bytes);
+  } catch (error) { next(error); }
+});
+
+// Student: take their module's assessment, once their tutor has opened it.
+router.get('/path-modules/:id/assessment', async (req, res, next) => {
+  try {
+    const gate = await requirePathModule(req, req.params.id);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
+    const { row, assignment } = gate;
+    const back = `/student/path-modules/${row.id}`;
+    const state = paths.takeState(row);
+    if (state !== 'can_take') {
+      setFlash(req, 'info', TAKE_STATE_MESSAGES[state] || TAKE_STATE_MESSAGES.preparing);
+      return res.redirect(back);
+    }
+    const viewOnly = viewOnlyMessage(assignment);
+    if (viewOnly) {
+      setFlash(req, 'error', viewOnly);
+      return res.redirect(back);
+    }
+    const assessment = await getAssessmentWithQuestions(row.assessment_id);
+    if (!assessment || !assessment.questions.length) {
+      setFlash(req, 'error', 'This assessment has no questions yet.');
+      return res.redirect(back);
+    }
+    const take = Number(row.takes_used) + 1;
+    const shell = await buildShell(req, {
+      pageTitle: assessment.title,
+      section: 'subjects',
+      contentView: '../content/student-take-tutor-assessment',
+      assessment: { ...assessment, questions: paths.questionsForTake(assessment.questions, assessment.id, take) },
+      subjectId: row.subject_id,
+      subjectName: assignment.subject_name,
+      isPre: false,
+      formAction: `/student/path-modules/${row.id}/assessment`,
+      pillLabel: take > 1 ? `Module Assessment · Take ${take}` : 'Module Assessment',
+      cancelHref: back,
+      startedAt: new Date().toISOString(),
+      antiCheat: {
+        endpoint: `/student/assessments/${assessment.id}/violation`,
+        sessionKey: newSittingKey(),
+        limit: MAX_VIOLATIONS,
+        startCount: 0
+      }
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Student: submit a take. They see their score only.
+router.post('/path-modules/:id/assessment', async (req, res) => {
+  const back = `/student/path-modules/${Number(req.params.id) || ''}`;
+  try {
+    const gate = await requirePathModule(req, req.params.id);
+    if (gate.redirectTo) return res.redirect(gate.redirectTo);
+    const { row } = gate;
+    if (req.body.assessment_id && Number(req.body.assessment_id) !== Number(row.assessment_id)) {
+      setFlash(req, 'error', 'That assessment does not match this module. Please open it again.');
+      return res.redirect(back);
+    }
+    const answers = [];
+    for (const key of Object.keys(req.body)) {
+      if (!key.startsWith('answer_')) continue;
+      answers.push({ question_id: Number(key.slice(7)), student_answer: req.body[key] });
+    }
+    const result = await paths.submitModuleAttempt({
+      pathModuleId: row.id,
+      studentId: req.session.user.id,
+      answers,
+      startedAt: req.body.started_at || null
+    });
+    await finaliseSitting(req, { assessmentId: row.assessment_id, submissionId: result.submissionId });
+
+    const pct = `${Number(result.percentage).toFixed(1)}%`;
+    const scoreText = `Score: ${result.score}/${result.totalPoints} (${pct}).`;
+    setFlash(req, result.passed ? 'success' : 'warning', result.passed
+      ? `${scoreText} You passed this module.${result.nextId
+        ? ' Your next module is open.'
+        : ' That was your last module: your tutor opens your Post-Assessment once it is ready.'}`
+      : `${scoreText} You need Intermediate (51%) to pass. Your tutor will open another take.`);
+    res.redirect(back);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not submit the assessment.');
+    res.redirect(back);
   }
 });
 

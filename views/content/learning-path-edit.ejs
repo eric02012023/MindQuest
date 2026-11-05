@@ -1,0 +1,236 @@
+<%# File: views/content/learning-path-edit.ejs
+    Purpose: Check — and, until it is opened, edit — an assessment written for
+    one student on their learning path (lib/learningPaths.js).
+    Locals: assessment (with questions and options), editable, reason,
+            allowedTypes, saveAction, backHref, edits, studentLabel %>
+<% const questions = assessment.questions || []; %>
+<% const typeName = (t) => t === 'multiple_choice' ? 'Multiple Choice' : t === 'true_false' ? 'True or False' : t; %>
+<section class="page-stack">
+  <div class="panel-card">
+    <div class="panel-card-head">
+      <h2><%= assessment.title %></h2>
+      <a class="btn btn-secondary btn-sm" href="<%= backHref %>">Back</a>
+    </div>
+    <p><strong>Student:</strong> <%= studentLabel %></p>
+    <p><strong>Questions:</strong> <%= questions.length %></p>
+    <% if (!editable && reason) { %>
+      <p class="lock-note"><%= reason %></p>
+    <% } %>
+    <% if (edits && edits.length) { %>
+      <p class="table-note">
+        Last edited <%= formatDateTime(edits[0].edited_at) %>
+        <% if (edits[0].first_name) { %>by <%= edits[0].first_name %> <%= edits[0].last_name || '' %><% } %>
+      </p>
+    <% } %>
+  </div>
+
+  <% if (!editable) { %>
+    <section class="panel-card">
+      <div class="list-stack">
+        <% questions.forEach((q, i) => { %>
+          <article class="list-card lpe-read">
+            <div>
+              <strong>Q<%= i + 1 %>. <%= q.question_text %></strong>
+              <span class="module-card-meta"><%= typeName(q.question_type) %></span>
+              <% if (q.question_type === 'multiple_choice') { %>
+                <ul class="lpe-choices">
+                  <% (q.options || []).forEach((o) => { %>
+                    <li class="<%= String(o.option_label).toUpperCase() === String(q.correct_answer).toUpperCase() ? 'is-key' : '' %>">
+                      <%= o.option_label %>. <%= o.option_text %>
+                    </li>
+                  <% }) %>
+                </ul>
+              <% } else { %>
+                <p class="lpe-key">Answer: <%= /^t/i.test(String(q.correct_answer)) ? 'True' : 'False' %></p>
+              <% } %>
+              <% if (q.explanation) { %><p class="module-card-meta">Why: <%= q.explanation %></p><% } %>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+  <% } else { %>
+    <form method="post" action="<%= saveAction %>" id="lpe-form" class="page-stack">
+      <input type="hidden" name="questions_json" id="lpe-json" value="" />
+      <div id="lpe-list" class="list-stack">
+        <% questions.forEach((q, i) => { %>
+          <% const labels = ['A', 'B', 'C', 'D', 'E']; %>
+          <% const options = q.options || []; %>
+          <article class="panel-card lpe-item" data-source-module="<%= q.source_module_id || '' %>" data-source-handout="<%= q.source_handout_id || '' %>">
+            <div class="panel-card-head">
+              <h3 class="lpe-number">Question <%= i + 1 %></h3>
+              <button type="button" class="btn btn-secondary btn-sm lpe-remove">Remove</button>
+            </div>
+            <label class="lpe-field">
+              <span>Type</span>
+              <select class="lpe-type">
+                <% allowedTypes.forEach((t) => { %>
+                  <option value="<%= t %>" <%= q.question_type === t ? 'selected' : '' %>><%= typeName(t) %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label class="lpe-field">
+              <span>Question</span>
+              <textarea class="lpe-text" rows="3" required><%= q.question_text %></textarea>
+            </label>
+            <div class="lpe-mc" <%= q.question_type === 'multiple_choice' ? '' : 'hidden' %>>
+              <% labels.forEach((label, n) => { %>
+                <% const option = options.find((o) => String(o.option_label).toUpperCase() === label); %>
+                <label class="lpe-field lpe-choice">
+                  <span><%= label %></span>
+                  <input type="text" class="lpe-choice-text" data-label="<%= label %>" value="<%= option ? option.option_text : '' %>"
+                         placeholder="<%= n < 2 ? 'Choice' : 'Choice (optional)' %>" />
+                </label>
+              <% }) %>
+              <label class="lpe-field">
+                <span>Answer</span>
+                <select class="lpe-key-mc">
+                  <% labels.forEach((label) => { %>
+                    <option value="<%= label %>" <%= String(q.correct_answer).toUpperCase() === label ? 'selected' : '' %>><%= label %></option>
+                  <% }) %>
+                </select>
+              </label>
+            </div>
+            <div class="lpe-tf" <%= q.question_type === 'true_false' ? '' : 'hidden' %>>
+              <label class="lpe-field">
+                <span>Answer</span>
+                <select class="lpe-key-tf">
+                  <option value="true" <%= /^t/i.test(String(q.correct_answer)) ? 'selected' : '' %>>True</option>
+                  <option value="false" <%= /^f/i.test(String(q.correct_answer)) ? 'selected' : '' %>>False</option>
+                </select>
+              </label>
+            </div>
+            <label class="lpe-field">
+              <span>Why (optional)</span>
+              <input type="text" class="lpe-explanation" value="<%= q.explanation || '' %>" />
+            </label>
+          </article>
+        <% }) %>
+      </div>
+      <div class="lpe-bar">
+        <button type="button" class="btn btn-secondary" id="lpe-add">Add Question</button>
+        <button type="submit" class="btn btn-primary">Save Questions</button>
+      </div>
+    </form>
+
+    <template id="lpe-template">
+      <article class="panel-card lpe-item" data-source-module="" data-source-handout="">
+        <div class="panel-card-head">
+          <h3 class="lpe-number">Question</h3>
+          <button type="button" class="btn btn-secondary btn-sm lpe-remove">Remove</button>
+        </div>
+        <label class="lpe-field">
+          <span>Type</span>
+          <select class="lpe-type">
+            <% allowedTypes.forEach((t) => { %>
+              <option value="<%= t %>"><%= typeName(t) %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label class="lpe-field">
+          <span>Question</span>
+          <textarea class="lpe-text" rows="3" required></textarea>
+        </label>
+        <div class="lpe-mc">
+          <% ['A', 'B', 'C', 'D', 'E'].forEach((label, n) => { %>
+            <label class="lpe-field lpe-choice">
+              <span><%= label %></span>
+              <input type="text" class="lpe-choice-text" data-label="<%= label %>" value="" placeholder="<%= n < 2 ? 'Choice' : 'Choice (optional)' %>" />
+            </label>
+          <% }) %>
+          <label class="lpe-field">
+            <span>Answer</span>
+            <select class="lpe-key-mc">
+              <% ['A', 'B', 'C', 'D', 'E'].forEach((label) => { %><option value="<%= label %>"><%= label %></option><% }) %>
+            </select>
+          </label>
+        </div>
+        <div class="lpe-tf" hidden>
+          <label class="lpe-field">
+            <span>Answer</span>
+            <select class="lpe-key-tf"><option value="true">True</option><option value="false">False</option></select>
+          </label>
+        </div>
+        <label class="lpe-field">
+          <span>Why (optional)</span>
+          <input type="text" class="lpe-explanation" value="" />
+        </label>
+      </article>
+    </template>
+
+    <script>
+      (function () {
+        var list = document.getElementById('lpe-list');
+        var form = document.getElementById('lpe-form');
+        function renumber() {
+          var items = list.querySelectorAll('.lpe-item');
+          for (var i = 0; i < items.length; i++) items[i].querySelector('.lpe-number').textContent = 'Question ' + (i + 1);
+        }
+        function wire(item) {
+          var type = item.querySelector('.lpe-type');
+          type.addEventListener('change', function () {
+            item.querySelector('.lpe-mc').hidden = type.value !== 'multiple_choice';
+            item.querySelector('.lpe-tf').hidden = type.value !== 'true_false';
+          });
+          item.querySelector('.lpe-remove').addEventListener('click', function () {
+            if (list.querySelectorAll('.lpe-item').length <= 1) return;
+            item.parentNode.removeChild(item);
+            renumber();
+          });
+        }
+        Array.prototype.forEach.call(list.querySelectorAll('.lpe-item'), wire);
+        document.getElementById('lpe-add').addEventListener('click', function () {
+          var node = document.getElementById('lpe-template').content.firstElementChild.cloneNode(true);
+          list.appendChild(node);
+          wire(node);
+          renumber();
+          node.querySelector('.lpe-text').focus();
+        });
+        form.addEventListener('submit', function () {
+          var items = list.querySelectorAll('.lpe-item');
+          var out = [];
+          for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            var type = item.querySelector('.lpe-type').value;
+            var q = {
+              question_type: type,
+              question_text: item.querySelector('.lpe-text').value,
+              explanation: item.querySelector('.lpe-explanation').value,
+              source_module_id: item.getAttribute('data-source-module') || null,
+              source_handout_id: item.getAttribute('data-source-handout') || null
+            };
+            if (type === 'multiple_choice') {
+              var inputs = item.querySelectorAll('.lpe-choice-text');
+              var key = item.querySelector('.lpe-key-mc').value;
+              var choices = [];
+              var newKey = '';
+              for (var n = 0; n < inputs.length; n++) {
+                var text = inputs[n].value.trim();
+                if (!text) continue;
+                if (inputs[n].getAttribute('data-label') === key) newKey = String.fromCharCode(65 + choices.length);
+                choices.push(text);
+              }
+              q.choices = choices;
+              q.correct_answer = newKey;
+            } else {
+              q.correct_answer = item.querySelector('.lpe-key-tf').value;
+            }
+            out.push(q);
+          }
+          document.getElementById('lpe-json').value = JSON.stringify(out);
+        }, true);
+      })();
+    </script>
+  <% } %>
+</section>
+
+<style>
+  .lpe-field { display: grid; gap: 4px; margin-top: 10px; }
+  .lpe-field > span { font-size: 13px; font-weight: 700; color: var(--text-soft, #5f7084); }
+  .lpe-field textarea, .lpe-field input, .lpe-field select { width: 100%; }
+  .lpe-choice { grid-template-columns: 28px 1fr; align-items: center; }
+  .lpe-bar { display: flex; flex-wrap: wrap; gap: 10px; }
+  .lpe-choices { margin: 8px 0 0; padding-left: 18px; }
+  .lpe-choices li.is-key { font-weight: 700; color: var(--primary-700, #1c7a22); }
+  .lpe-key { margin: 6px 0 0; font-weight: 700; }
+</style>

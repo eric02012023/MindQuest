@@ -1,8 +1,9 @@
 /**
  * File: scripts/test-module-grades.js
- * Purpose: Pin down "one grade per module", "the Post-Assessment opens on the
- *          last day of the enrolment", and what is left to a student once their
- *          month is over (only what it held; view-only when nothing is left).
+ * Purpose: Pin down "one grade per module", "the Post-Assessment opens when the
+ *          tutor opens it" (it no longer opens by itself on the last day of the
+ *          enrolment), and what is left to a student once their month is over
+ *          (only what it held; view-only when nothing is left).
  *
  * Run:  node scripts/test-module-grades.js       (needs no database, no keys)
  *
@@ -39,6 +40,8 @@ const db = {
   sat: [],              // ...the Pre/Post-Assessments they sat, per subject
   monthModules: [],     // ...the modules of the subjects whose month is over
   monthActivities: [],  // ...and the activities in them
+  postOpened: false,    // a post_openings row: the tutor opened their Post-Assessment
+  path: null,           // a learning_paths row (lib/learningPaths.js)
   reads: 0,
   user: { id: 5, role: 'student', grade_level: 'Grade 6', year_level: 'Primary Level' }
 };
@@ -64,6 +67,10 @@ function answer(text, params) {
   if (sql.includes("ta.assessment_kind = 'post_assessment'") && sql.includes('tutor_assessment_submissions')) return db.postRows;
   if (sql.includes('FROM user_subject_assignments') && sql.includes('end_date')) return db.enrolment ? [db.enrolment] : [];
   if (sql.includes('FROM users u') && sql.includes('WHERE u.id = ?')) return [db.user];
+  if (sql.startsWith('SELECT TOP 1 id FROM post_openings')) return db.postOpened ? [{ id: 1 }] : [];
+  if (sql.includes('FROM learning_paths lp') && sql.includes('lp.pre_submission_id = ?')) {
+    return db.path && Number(db.path.pre_submission_id) === Number(params[0]) ? [db.path] : [];
+  }
   return [];
 }
 
@@ -141,7 +148,9 @@ async function main() {
   try { await data.createSubjectModule({ subject_id: 4, title: 'Group', grade_level: 'Primary Level', order_number: 1 }); } catch (e) { groupOnly = e.message; }
   ok('a year-level group is not accepted as the grade', /Choose the grade level/.test(groupOnly), groupOnly);
 
-  console.log('\n== the Post-Assessment opens at 12:01 AM on the last day ==');
+  // The clock of lib/postWindow.js still gives the month's last day. It no
+  // longer opens the Post-Assessment: the tutor does (see "where a student stands").
+  console.log('\n== the last day of the month, by the clock ==');
   // The office's example: enrolled 1 January, the month runs to 1 February.
   const enrolledJan1 = { start_date: '2026-01-01', end_date: '2026-02-01' };
   const opensAt = data.postWindowFor(enrolledJan1).opensAt;
@@ -235,20 +244,39 @@ async function main() {
   ok('no Pre-Assessment yet: it must come first', (await data.getStudentPostState(5, 2)).status === 'needs_pre');
 
   db.preRows = [{ id: 70, assessment_id: 9, grade_level: 'Grade 6', percentage: 40, level: 'Beginner' }];
-  ok('before the last day: not yet', (await data.getStudentPostState(5, 2)).status === 'not_yet');
+  ok('not opened by the tutor: not yet', (await data.getStudentPostState(5, 2)).status === 'not_yet');
 
-  // The enrolment ended yesterday (Manila): the Post-Assessment opened yesterday.
+  // The enrolment ended yesterday (Manila). That used to open the Post-Assessment
+  // by itself; now only the tutor (or the main admin) opens it.
   const yesterday = require('../lib/utils').todayDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
   db.enrolment = { start_date: '2026-01-01', end_date: yesterday };
+  const lastDay = await data.getStudentPostState(5, 2);
+  ok('the last day alone does not open it any more', lastDay.status === 'not_yet', `${lastDay.status} (ended ${yesterday})`);
+  ok('…and gives no opening time', lastDay.opensAt === null);
+
+  db.postOpened = true;
   const open = await data.getStudentPostState(5, 2);
-  ok('from the last day: open', open.status === 'open', `${open.status} (ended ${yesterday})`);
+  ok('opened by the tutor: open', open.status === 'open', open.status);
   ok('it repeats the Pre-Assessment the student took', open.preSubmission && open.preSubmission.assessment_id === 9);
 
   db.enrolment = { start_date: '2020-01-01', end_date: '2020-02-01' };
-  ok('long after the month, not taken: still open', (await data.getStudentPostState(5, 2)).status === 'open');
+  ok('long after the month, opened, not taken: still open', (await data.getStudentPostState(5, 2)).status === 'open');
   db.preRows = [];
-  ok('…once the Pre-Assessment it repeats is done', (await data.getStudentPostState(5, 2)).status === 'needs_pre');
+  ok('…once there is a Pre-Assessment to compare with', (await data.getStudentPostState(5, 2)).status === 'needs_pre');
   db.preRows = [{ id: 70, assessment_id: 9, grade_level: 'Grade 6', percentage: 40, level: 'Beginner' }];
+
+  console.log('\n== on a learning path, its own Post-Assessment decides ==');
+  db.postOpened = false;
+  db.path = { id: 3, student_id: 5, subject_id: 2, pre_submission_id: 70, post_status: 'draft', post_assessment_id: 90 };
+  const drafted = await data.getStudentPostState(5, 2);
+  ok('written but not opened yet: not yet', drafted.status === 'not_yet' && drafted.path && drafted.path.id === 3, drafted.status);
+  db.postOpened = true;
+  ok('an old-style opening does not open a path\'s Post', (await data.getStudentPostState(5, 2)).status === 'not_yet');
+  db.path.post_status = 'open';
+  ok('opened from the learning path: open', (await data.getStudentPostState(5, 2)).status === 'open');
+  db.path = { ...db.path, student_id: 6 };
+  ok('a path that is another student\'s is not theirs', (await data.getStudentPostState(5, 2)).path === null);
+  db.path = null;
 
   db.postRows = [{ id: 81, percentage: 75 }];
   ok('once taken: taken', (await data.getStudentPostState(5, 2)).status === 'taken');
@@ -260,7 +288,7 @@ async function main() {
     /ta\.grade_level IS NULL OR ta\.grade_level = \?/.test(db.lastSql) && db.lastParams[2] === 'Grade 6',
     JSON.stringify(db.lastParams));
 
-  console.log(`\n${failures ? `${failures} FAILURE(S)` : 'One grade per module, and the last-day Post-Assessment, hold.'}`);
+  console.log(`\n${failures ? `${failures} FAILURE(S)` : 'One grade per module, the month rule, and a Post-Assessment the tutor opens, hold.'}`);
   process.exit(failures ? 1 : 0);
 }
 

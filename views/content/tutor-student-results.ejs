@@ -143,8 +143,9 @@
                 <td><%= r.assessment_title %></td>
                 <td><%= r.subject_name %></td>
                 <td>
-                  <span class="badge badge-<%= r.purpose === 'pre' ? 'info' : r.purpose === 'post' ? 'success' : 'warning' %>">
-                    <%= r.purpose === 'pre' ? 'Pre' : r.purpose === 'post' ? 'Post' : 'Activity' %>
+                  <% const isModuleCheck = r.assessment_kind === 'tutor_assessment' && r.purpose === 'post'; %>
+                  <span class="badge badge-<%= r.purpose === 'pre' ? 'info' : isModuleCheck ? 'warning' : r.purpose === 'post' ? 'success' : 'warning' %>">
+                    <%= r.purpose === 'pre' ? 'Pre' : isModuleCheck ? 'Module' : r.purpose === 'post' ? 'Post' : 'Activity' %>
                   </span>
                 </td>
                 <td><%= r.score %>/<%= r.total_points %></td>
