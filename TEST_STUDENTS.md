@@ -118,3 +118,27 @@ UPDATE user_subject_assignments SET start_date = '2026-09-28', end_date = '2026-
 
 Kasama ng mga seeded account ang mga bayad. Nabubura ang mga ito kapag pinatakbo ang
 `scripts/remove-seeded-branch-accounts.js`.
+
+## Pagsubok sa adaptive na learning path (mula 11 Nob 2026)
+
+Ang limang student sa itaas ay nag-Pre-Assessment bago nagkaroon ng learning path, kaya
+nasa lumang paraan sila. Ang may learning path na sa live ay si **STD-0352** (Grade 1):
+ENGLISH (2 module) at SCIENCE (3 module).
+
+1. Pagkatapos ng deploy, isinusulat muli ang mga module niya na hindi pa nasisimulan: bawat
+   **kahinaan** (weak point) mula sa mga mali niya sa Pre-Assessment ay may **5 topic**,
+   nakasingit sa PDF pagkatapos ng page na nagtuturo nito. Buksan ang subject page o ang
+   Learning Path at maghintay ng 1–2 minuto bawat module.
+2. Tutor: My Students → student → **Learning Path** → **Open** sa module: makikita ang mga
+   kahinaan, ang 5 topic, ang mga tanong na mali niya, at **Create Activity** (activity
+   para sa kanya lang).
+3. Ang module assessment: **Check / Edit** → **Open for Student**. **Advance (81%)** ang
+   pasado; kapag hindi umabot, bukas agad ang susunod na take (naka-shuffle ang tanong at
+   choices) hanggang pumasa. Pagpasa, bukas ang susunod na module.
+4. Pagkatapos ng lahat ng module, ang Post-Assessment ay ang mismong mga tanong ng
+   Pre-Assessment niya, naka-shuffle. Check / Edit → Open for Student.
+5. Ang lahat ng score at ang Pre vs Post (buo at bawat module) ay nasa subject page ng
+   student at sa Learning Path page ng tutor at admin.
+
+Para magsimula ulit sa bagong Pre-Assessment: Assessment Monitoring → pangalan ng student →
+**Reset Pre-Assessment** (main admin).

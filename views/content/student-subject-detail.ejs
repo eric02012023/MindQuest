@@ -150,6 +150,8 @@
             <h4><%= m.module_title %></h4>
             <% if (m.additions_status === 'pending' || m.additions_status === 'generating') { %>
               <p class="lm-level-card-meta">Added lessons being prepared</p>
+            <% } else if (m.weak_point_count) { %>
+              <p class="lm-level-card-meta"><%= m.weak_point_count %> weak point<%= m.weak_point_count === 1 ? '' : 's' %> &middot; <%= m.added_count %> topics added for you</p>
             <% } else if (m.added_count) { %>
               <p class="lm-level-card-meta"><%= m.added_count %> lesson<%= m.added_count === 1 ? '' : 's' %> added for you</p>
             <% } else if (m.additions_status === 'none' && Number(m.pre_total) > 0) { %>
@@ -157,7 +159,7 @@
             <% } %>
             <% if (m.status === 'open') { %>
               <p class="lm-level-card-meta">
-                <%= m.take_state === 'can_take' ? 'Assessment open'
+                <%= m.take_state === 'can_take' ? (m.attempts && m.attempts.length ? 'Not passed yet — take it again' : 'Assessment open')
                   : m.take_state === 'waiting_retake' ? 'Not passed yet — waiting for your next take'
                   : m.take_state === 'waiting_tutor' ? 'Assessment waiting for your tutor'
                   : 'Assessment being prepared' %>
@@ -279,7 +281,8 @@
           <a href="/student/results/<%= completion.postSubmission.id %>">View your result and topic breakdown</a>
         </p>
 
-        <% if (comparison && comparison.pre_submission_id) { %>
+        <%# On a learning path the comparison below this panel shows it, module by module too. %>
+        <% if (comparison && comparison.pre_submission_id && !(lp && typeof pathScores !== 'undefined' && pathScores)) { %>
           <div class="prepost-compare">
             <div class="prepost-cell">
               <span class="prepost-cap">Before</span>
@@ -304,7 +307,9 @@
       <% } else if (completion.postStatus === 'open') { %>
         <p class="table-note">
           Your tutor opened your Post-Assessment.
-          <%= lp ? 'Its questions come from your own modules,' : 'It repeats your Pre-Assessment,' %>
+          <%= lp && lp.post && !/same questions as your Pre-Assessment/i.test(String(lp.post.instructions || ''))
+            ? 'Its questions come from your own modules,'
+            : lp ? 'It repeats your Pre-Assessment, in a new order,' : 'It repeats your Pre-Assessment,' %>
           so you and your tutor can see how much you have improved.
         </p>
         <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/post-assessment">Start Post-Assessment</a>
@@ -333,6 +338,11 @@
         <% } %>
       <% } %>
     </section>
+
+    <%# A learning path: every score so far, and the Pre-Assessment against the Post. %>
+    <% if (lp && typeof pathScores !== 'undefined' && pathScores) { %>
+      <%- include('../partials/path-scores', { scores: pathScores, viewer: 'student', linkBase: '/student' }) %>
+    <% } %>
   <% } %>
   <%# Phase 9: three panels were removed from here — the Gen 1 "Current Learning
       Cycle", the Gen 3 "Module Level System" gate, and the Gen 2 "Subject

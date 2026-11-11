@@ -98,6 +98,8 @@
             <span class="mq-cell mq-cell-primary" data-label="Assessment">
               <% if (item.submission_id) { %>
                 <a class="mq-name" href="<%= basePath %>/results/<%= item.submission_id %>"><%= item.title %></a>
+              <% } else if (item.attempt_id) { %>
+                <a class="mq-name" href="<%= basePath %>/path-attempts/<%= item.attempt_id %>"><%= item.title %></a>
               <% } else { %>
                 <span class="mq-name"><%= item.title %></span>
               <% } %>

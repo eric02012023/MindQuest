@@ -2128,3 +2128,60 @@ IF OBJECT_ID('dbo.app_markers', 'U') IS NOT NULL AND OBJECT_ID('dbo.post_opening
                       WHERE p.student_id = x.student_id AND p.subject_id = x.subject_id);
       INSERT INTO dbo.app_markers (name) VALUES (''post-openings-backfill'');
     END';
+
+-- ---------------------------------------------------------------------------
+-- 47. Learning paths, second form: weak points with five topics each, Advance
+--     passes a module, and the next take opens by itself.
+--
+-- No new table or column. What was added to a module is now stored packed in
+-- learning_path_modules.additions_json ("gz:" + gzip + base64 of its weak points
+-- and their topics, lib/learningPaths.js); the plain JSON list of before still
+-- reads.
+--
+-- One time only (app_markers 'path-weak-points-v2'), at the first boot of the
+-- code that writes them:
+--   * A module of a path that is not started yet, whose added lessons are in the
+--     form of before (a JSON list, starting '['), has them written again: its
+--     weak points, five topics each. Not started = locked, or open with its
+--     assessment not opened yet (none, or a draft nobody answered). Such a
+--     draft was written from the old lessons, so it is archived, and the
+--     module's assessment is written again from the new ones.
+--   * A take that did not pass and still waits for the tutor to open the next
+--     one gets that next take open, as every take does from now on.
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('dbo.app_markers', 'U') IS NOT NULL AND OBJECT_ID('dbo.learning_path_modules', 'U') IS NOT NULL
+  EXEC sp_executesql N'
+    IF NOT EXISTS (SELECT 1 FROM dbo.app_markers WHERE name = ''path-weak-points-v2'')
+    BEGIN
+      DECLARE @now DATETIME2 = DATEADD(hour, 8, GETUTCDATE());
+
+      UPDATE ta SET ta.is_archived = 1, ta.updated_at = @now
+        FROM dbo.tutor_assessments ta
+        JOIN dbo.learning_path_modules lpm ON lpm.assessment_id = ta.id
+       WHERE lpm.status IN (''locked'', ''open'') AND lpm.assessment_status = ''draft'' AND lpm.takes_used = 0
+         AND lpm.additions_status = ''ready'' AND LEFT(LTRIM(ISNULL(lpm.additions_json, N'''')), 1) = N''[''
+         AND ta.for_student_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM dbo.tutor_assessment_submissions s WHERE s.assessment_id = ta.id);
+
+      UPDATE lpm
+         SET lpm.assessment_id = NULL, lpm.assessment_status = ''waiting'', lpm.assessment_attempts = 0,
+             lpm.assessment_error = NULL, lpm.updated_at = @now
+        FROM dbo.learning_path_modules lpm
+        JOIN dbo.tutor_assessments ta ON ta.id = lpm.assessment_id
+       WHERE lpm.status IN (''locked'', ''open'') AND lpm.assessment_status = ''draft'' AND lpm.takes_used = 0
+         AND lpm.additions_status = ''ready'' AND LEFT(LTRIM(ISNULL(lpm.additions_json, N'''')), 1) = N''[''
+         AND ta.is_archived = 1 AND ta.for_student_id IS NOT NULL;
+
+      UPDATE dbo.learning_path_modules
+         SET additions_status = ''pending'', additions_attempts = 0, additions_error = NULL,
+             assessment_status = ''waiting'', assessment_attempts = 0, assessment_error = NULL,
+             updated_at = @now
+       WHERE status IN (''locked'', ''open'') AND assessment_id IS NULL AND takes_used = 0
+         AND additions_status = ''ready'' AND LEFT(LTRIM(ISNULL(additions_json, N'''')), 1) = N''['';
+
+      UPDATE dbo.learning_path_modules
+         SET takes_opened = takes_used + 1, updated_at = @now
+       WHERE status = ''open'' AND assessment_status = ''open'' AND takes_used > 0 AND takes_used >= takes_opened;
+
+      INSERT INTO dbo.app_markers (name) VALUES (''path-weak-points-v2'');
+    END';

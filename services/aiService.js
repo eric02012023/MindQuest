@@ -1128,33 +1128,28 @@ function cleanLessonText(text) {
     .slice(0, 9000);
 }
 
-/** Most added lessons one module gets for one learner. */
-const MAX_ADDITIONS = 4;
+/** Most weak points found in one handout of a module, for one learner. */
+const MAX_WEAK_POINTS = 4;
+
+/** Topics added to a learner's module for every weak point. */
+const TOPICS_PER_WEAK_POINT = 5;
 
 /** Characters of module text sent to the AI, all pages together. */
 const ADDITION_SOURCE_CHARS = 28000;
 
-/**
- * Lessons added to ONE learner's copy of a module: one for each idea behind the
- * Pre-Assessment questions they got wrong in it, each placed after the module
- * page that teaches it. The module's own pages are never rewritten — these are
- * extra pages only.
- *
- * @param {object} options
- * @param {Array<{num: number, text: string}>} options.pages  the module's pages, in order
- * @param {number} [options.pageCount]   pages in the PDF, when their text could not be read
- * @param {string} [options.fallbackText] the handout's stored text, for a scanned PDF
- * @param {Array<{question_text: string, correct_text: string, explanation?: string}>} options.missed
- * @returns {Promise<{additions: Array<{after_page: number, title: string, text: string}>, tokensUsed: number}>}
- */
-async function generateModuleAdditions(options = {}) {
-  const {
-    pages = [], pageCount = 0, fallbackText = '', missed = [],
-    level, subject, gradeLevel, moduleTitle
-  } = options;
-  if (!missed.length) return { additions: [], tokensUsed: 0 };
-  if (!isOpenAIConfigured()) throw new Error('The AI service is not configured, so the added lessons cannot be written.');
+/** An added topic shorter than this is not a topic. */
+const MIN_TOPIC_CHARS = 150;
 
+/** One line of text, no longer than `max`. */
+function oneLine(value, max = 200) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/**
+ * The module's pages as the AI reads them, each headed by its number, so it can
+ * say after which page an added part belongs.
+ */
+function modulePagesForPrompt({ pages = [], pageCount = 0, fallbackText = '' } = {}) {
   const readable = pages.filter((page) => String(page.text || '').trim().length > 0);
   const totalPages = Math.max(pages.length, Number(pageCount) || 0);
   let sourceText;
@@ -1168,69 +1163,422 @@ async function generateModuleAdditions(options = {}) {
     if (text.length < 50) throw new Error('This module has no readable text to add lessons to.');
     sourceText = `=== Pages 1 to ${totalPages || 1} (which page each part is on is not known) ===\n${text.slice(0, ADDITION_SOURCE_CHARS)}`;
   }
+  const lastPage = Math.max(1, totalPages || (readable.length ? readable[readable.length - 1].num : 1));
+  return { sourceText, pagesKnown: readable.length > 0, totalPages, lastPage };
+}
 
-  const guide = LEVEL_LESSON_GUIDES[level] || LEVEL_LESSON_GUIDES.Beginner;
-  const systemPrompt = `You add teaching to ONE learner's own copy of a learning module at a tutorial centre.
-The module's pages stay exactly as they are: you never remove, shorten, correct or rewrite them.
-You only write ADDED LESSONS that teach the ideas behind the questions this learner got wrong,
-and you say after which page each added lesson belongs.
-
-${guide}
-
-Return a JSON object with one key, "additions": an array of 1 to ${MAX_ADDITIONS} objects, each with
-- "after_page": the number of the module page that teaches the idea; the lesson is inserted right after that page${readable.length ? '' : `. The page of each part is not known, so use ${totalPages || 1}`}
-- "title": a short title for the added lesson, under 70 characters
-- "text": the added lesson as plain text
-- "covers": the numbers of the missed questions this lesson teaches
-
-Write each "text" like this:
-- start by naming the idea the learner missed, in one or two sentences
-- explain it step by step, one idea at a time, with the module's own words, facts and examples
-- give one or two worked examples taken from the module's content
-- end with a line "Try these:" and two short practice questions, each followed on the next line by its answer, starting with "Answer: "
-- a line starting with "- " for each item of a list, and an empty line between paragraphs
-
-Rules:
-- Use ONLY facts present in the module pages. Never invent facts, names or numbers the module does not give.
-- Teach the idea. Do not copy the missed questions word for word.
-- Group missed questions about the same idea into one added lesson. Every missed question must be covered by one lesson.
-- Write in the same language as the module, to the learner ("you"), in words a ${gradeLevel || 'young'} learner understands.
-- Each "text" between 120 and 400 words.
-- No markdown: no bold, no italics, no tables, no code.`;
-
-  const missedList = missed.map((q, i) => {
+function missedQuestionsForPrompt(missed = []) {
+  return missed.map((q, i) => {
     const lines = [`${i + 1}. ${String(q.question_text || '').trim()}`];
     if (q.correct_text) lines.push(`   Correct answer: ${String(q.correct_text).trim()}`);
     if (q.explanation) lines.push(`   Why: ${String(q.explanation).trim()}`);
     return lines.join('\n');
   }).join('\n');
+}
 
-  const userPrompt = `Subject: ${subject || 'General'}
+/**
+ * A topic's text laid out the same way every time: no first line repeating its
+ * title ("Topic 1: …"), "Try this:" starting a paragraph of its own and
+ * "Answer:" a line of its own, so the page and the PDF show them apart.
+ */
+function tidyTopicText(text, title) {
+  const lines = String(text || '').split('\n');
+  while (lines.length && !lines[0].trim()) lines.shift();
+  if (lines.length) {
+    const first = lines[0].trim();
+    const bare = (value) => String(value || '').trim().replace(/[\s:.\-–—]+$/, '').toLowerCase();
+    const repeatsTitle = !!title && bare(first) === bare(title);
+    const numbered = /^topic\s*\d+(\s*of\s*\d+)?\s*[:.\-–—]/i.test(first) && first.length <= 140;
+    if (repeatsTitle || numbered) lines.shift();
+  }
+  return lines.join('\n')
+    .replace(/\s*\b(Try this|Subukan mo ito)\s*:\s*/gi, (_m, label) => `\n\n${label}: `)
+    .replace(/\s*\b(Answer|Sagot)\s*:\s*/g, (_m, label) => `\n${label}: `)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** A page number from the AI, put back between 1 and the last page. */
+function pageInRange(value, lastPage) {
+  const page = Math.round(Number(value));
+  return Number.isFinite(page) ? Math.min(Math.max(1, page), lastPage) : lastPage;
+}
+
+/** The words of a text (four letters or more), to tell which weak point a question is closest to. */
+function wordsOf(text) {
+  return new Set(String(text || '').toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) || []);
+}
+
+function promptHeader({ subject, gradeLevel, level, moduleTitle }) {
+  return `Subject: ${subject || 'General'}
 Grade: ${gradeLevel || 'General'}
 Level: ${level || 'Beginner'}
-Module: ${moduleTitle || 'Module'}
+Module: ${moduleTitle || 'Module'}`;
+}
+
+/**
+ * The learner's weak points in this part of a module: one for each idea behind
+ * the Pre-Assessment questions they got wrong, with the page that teaches it and
+ * the titles of the topics that will teach it. Every missed question belongs to
+ * exactly one weak point: those the plan leaves out are asked about once more —
+ * an existing weak point, or a new one while there is room — and any still left
+ * join the weak point they share the most words with.
+ */
+const WEAK_POINT_FIELDS = (pagesInfo) => `- "title": the idea, in a few words (under 60 characters), named the way the module names it
+- "focus": one sentence naming exactly what there is to learn about this idea — the part that was got wrong — as a goal, in plain words, for example "Which sense organ goes with each of the five senses." (do not write "you" or "the learner")
+- "after_page": the number of the module page that teaches this idea${pagesInfo.pagesKnown ? '' : `. The page of each part is not known, so use ${pagesInfo.totalPages || 1}`}
+- "covers": the numbers of the missed questions that come from this idea
+- "topics": exactly ${TOPICS_PER_WEAK_POINT} short titles (under 70 characters) of the topics to add to the module to teach this idea, in teaching order`;
+
+const WEAK_POINT_RULES = `- The ${TOPICS_PER_WEAK_POINT} topics of a weak point are all about that idea and all different from each other. They build the idea up
+  step by step, for example: what it is; its parts, rules or steps; worked examples from the module; the mistake made
+  and how to avoid it; using it in a new example.
+- Plan only what the module pages teach. Never plan a topic the module has nothing on.
+- Write in the same language as the module.
+- Output strict JSON only. No commentary, no markdown.`;
+
+/** One weak point from the AI, its questions limited to those not taken yet; null when unusable. */
+function weakPointFrom(item, allowed, pagesInfo) {
+  const title = oneLine(item && item.title, 120);
+  const covers = [...new Set((Array.isArray(item && item.covers) ? item.covers : [])
+    .map((n) => Math.round(Number(n)))
+    .filter((n) => allowed.has(n)))];
+  if (!title || !covers.length) return null;
+  return {
+    title,
+    focus: oneLine(item && (item.focus || item.missed), 400),
+    after_page: pageInRange(item && item.after_page, pagesInfo.lastPage),
+    covers,
+    topics: (Array.isArray(item && item.topics) ? item.topics : [])
+      .map((topic) => oneLine(typeof topic === 'object' && topic ? topic.title : topic, 120))
+      .filter(Boolean)
+      .slice(0, TOPICS_PER_WEAK_POINT)
+  };
+}
+
+async function planWeakPoints(context) {
+  const { missed, pagesInfo } = context;
+  const systemPrompt = `You study the Pre-Assessment mistakes of ONE learner on ONE learning module at a tutorial centre,
+and find their WEAK POINTS: the ideas of the module this learner does not know yet.
+
+Return a JSON object with one key, "weak_points": an array of 1 to ${MAX_WEAK_POINTS} objects, each with
+${WEAK_POINT_FIELDS(pagesInfo)}
+
+Rules:
+- One weak point per distinct idea. Missed questions about the same idea belong to the same weak point.
+- Every missed question, 1 to ${missed.length}, is in the "covers" of exactly one weak point. Check this before you answer.
+${WEAK_POINT_RULES}`;
+
+  const userPrompt = `${promptHeader(context)}
 
 QUESTIONS THIS LEARNER GOT WRONG ON THE PRE-ASSESSMENT
-${missedList}
+${missedQuestionsForPrompt(missed)}
 
 MODULE PAGES
-${sourceText}`;
+${pagesInfo.sourceText}`;
 
-  const call = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 3500, temperature: 0.4 });
-  const raw = Array.isArray(call.result && call.result.additions) ? call.result.additions : [];
-  const lastPage = Math.max(1, totalPages || (readable.length ? readable[readable.length - 1].num : 1));
-  const additions = raw
-    .map((item) => {
-      const text = cleanLessonText(item && item.text).replace(/^## /gm, '');
-      const page = Math.round(Number(item && item.after_page));
-      return {
-        after_page: Number.isFinite(page) ? Math.min(Math.max(1, page), lastPage) : lastPage,
-        title: String((item && item.title) || '').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Added lesson',
-        text
-      };
-    })
-    .filter((item) => item.text.length >= 80)
-    .slice(0, MAX_ADDITIONS);
-  if (!additions.length) throw new Error('The AI returned no added lesson that could be used.');
-  return { additions, tokensUsed: call.tokensUsed || 0 };
+  const call = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 2000, temperature: 0.3 });
+  let tokensUsed = call.tokensUsed || 0;
+  const raw = Array.isArray(call.result && call.result.weak_points) ? call.result.weak_points : [];
+  const claimed = new Set();
+  const open = () => new Set(missed.map((_q, i) => i + 1).filter((n) => !claimed.has(n)));
+  const points = [];
+  for (const item of raw) {
+    if (points.length >= MAX_WEAK_POINTS) break;
+    // A question already in an earlier weak point stays there.
+    const point = weakPointFrom(item, open(), pagesInfo);
+    if (!point) continue;
+    point.covers.forEach((n) => claimed.add(n));
+    points.push(point);
+  }
+  if (!points.length) throw new Error('The AI found no weak point in this module it could use.');
+
+  if (open().size) {
+    try {
+      tokensUsed += await placeLeftovers(context, points, claimed);
+    } catch (error) {
+      console.error('[aiService] the questions left out of the weak points could not be placed:', error.message);
+    }
+  }
+
+  missed.forEach((question, index) => {
+    const n = index + 1;
+    if (claimed.has(n)) return;
+    const words = wordsOf(`${question.question_text || ''} ${question.correct_text || ''}`);
+    let best = points[0];
+    let bestShared = -1;
+    for (const point of points) {
+      const pointWords = wordsOf([
+        point.title, point.focus, ...point.topics,
+        ...point.covers.map((c) => (missed[c - 1] && missed[c - 1].question_text) || '')
+      ].join(' '));
+      let shared = 0;
+      for (const word of words) if (pointWords.has(word)) shared += 1;
+      if (shared > bestShared) { best = point; bestShared = shared; }
+    }
+    best.covers.push(n);
+    claimed.add(n);
+  });
+  for (const point of points) point.covers.sort((a, b) => a - b);
+  return { points, tokensUsed };
 }
+
+/**
+ * The missed questions a plan left out, placed by the AI: each in the existing
+ * weak point it is about, or in new weak points of their own while there is
+ * room. Changes `points` and `claimed`; returns the tokens it used.
+ */
+async function placeLeftovers(context, points, claimed) {
+  const { missed, pagesInfo } = context;
+  const left = missed.map((_q, i) => i + 1).filter((n) => !claimed.has(n));
+  const room = Math.max(0, MAX_WEAK_POINTS - points.length);
+  const systemPrompt = `Some questions a learner got wrong on a Pre-Assessment are not in any of their WEAK POINTS yet. Put each one where it belongs.
+
+Return a JSON object with two keys:
+- "placed": one object {"n": <question number>, "weak_point": <number of an existing weak point>} for every question that is about the idea of an existing weak point
+- "new_weak_points": ${room ? `up to ${room} new weak points for the questions about another idea of the module, each with` : 'always an empty array: there is no room for another weak point'}
+${room ? WEAK_POINT_FIELDS(pagesInfo) : ''}
+
+Rules:
+- Every question listed below is placed exactly once${room ? ': in an existing weak point, or in the "covers" of a new one' : ''}.
+- A question goes in an existing weak point only when it is truly about that weak point's idea.
+${room ? WEAK_POINT_RULES : '- Output strict JSON only. No commentary, no markdown.'}`;
+
+  const userPrompt = `${promptHeader(context)}
+
+THE WEAK POINTS SO FAR
+${points.map((point, i) => `${i + 1}. ${point.title} — ${point.focus || ''}`).join('\n')}
+
+QUESTIONS NOT IN A WEAK POINT YET
+${left.map((n) => missedQuestionsForPrompt([missed[n - 1]]).replace(/^1\./, `${n}.`)).join('\n')}
+
+MODULE PAGES
+${pagesInfo.sourceText}`;
+
+  const call = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 1800, temperature: 0.2 });
+  const result = call.result || {};
+  for (const item of Array.isArray(result.new_weak_points) ? result.new_weak_points : []) {
+    if (points.length >= MAX_WEAK_POINTS) break;
+    const allowed = new Set(left.filter((n) => !claimed.has(n)));
+    const point = weakPointFrom(item, allowed, pagesInfo);
+    if (!point) continue;
+    point.covers.forEach((n) => claimed.add(n));
+    points.push(point);
+  }
+  for (const item of Array.isArray(result.placed) ? result.placed : []) {
+    const n = Math.round(Number(item && item.n));
+    const target = points[Math.round(Number(item && item.weak_point)) - 1];
+    if (!target || !left.includes(n) || claimed.has(n)) continue;
+    target.covers.push(n);
+    claimed.add(n);
+  }
+  return call.tokensUsed || 0;
+}
+
+/**
+ * The topics of one weak point, written from the module's pages. Any topic that
+ * comes back missing or too short is asked for again, once; a weak point that
+ * still lacks one throws.
+ */
+async function writeWeakPointTopics(context, point) {
+  const { missed, pagesInfo, level, gradeLevel } = context;
+  const guide = LEVEL_LESSON_GUIDES[level] || LEVEL_LESSON_GUIDES.Beginner;
+  const questions = point.covers.map((n) => missed[n - 1]).filter(Boolean);
+  const all = Array.from({ length: TOPICS_PER_WEAK_POINT }, (_v, i) => i + 1);
+  const topics = new Map();
+  let tokensUsed = 0;
+
+  const ask = async (numbers) => {
+    const systemPrompt = `You write ADDED TOPICS for ONE learner's own copy of a learning module at a tutorial centre.
+They teach ONE weak point: an idea of the module this learner got wrong on the Pre-Assessment.
+The module's own pages stay exactly as they are. The topics are new pages, placed after page ${point.after_page}.
+
+${guide}
+
+Return a JSON object with one key, "topics": an array of exactly ${numbers.length} object${numbers.length === 1 ? '' : 's'} — topic number${numbers.length === 1 ? '' : 's'} ${numbers.join(', ')} — each with
+- "n": the topic number
+- "title": the topic's title, under 70 characters
+- "text": the topic as plain text
+
+The ${TOPICS_PER_WEAK_POINT} topics of this weak point build the idea up step by step, each one about a different part of it, following the planned titles.
+Write each "text" like this:
+- explain one part of the idea at a time, step by step, with the module's own words, facts and examples
+- where it helps, a worked example taken from the module's content
+- end with an empty line, then a line starting with "Try this: " and one short practice question, then a line starting with "Answer: " and its answer
+- do not start "text" with the title or the topic number: the title is shown above it
+- a line starting with "- " for each item of a list, and an empty line between paragraphs
+
+Rules:
+- Use ONLY facts present in the module pages. Never invent facts, names or numbers the module does not give.
+- Teach the idea. Do not copy the missed questions word for word.
+- Write in the same language as the module, to the learner ("you"), in words a ${gradeLevel || 'young'} learner understands.
+- Each "text" between 80 and 200 words, never fewer than 80: two to four short paragraphs, then the practice question.
+- No markdown: no bold, no italics, no tables, no code.
+- Output strict JSON only. No commentary.`;
+
+    const planned = all.map((n) => `${n}. ${point.topics[n - 1] || '(a fitting part of this idea, different from the others)'}`).join('\n');
+    const written = [...topics.values()].map((topic) => `${topic.no}. ${topic.title}`).join('\n');
+    const userPrompt = `${promptHeader(context)}
+
+WEAK POINT: ${point.title}
+What was got wrong: ${point.focus || '(see the questions below)'}
+
+THE QUESTIONS THE LEARNER GOT WRONG ON IT
+${missedQuestionsForPrompt(questions)}
+
+PLANNED TOPICS
+${planned}
+${written ? `\nTOPICS ALREADY WRITTEN (do not repeat them)\n${written}\n` : ''}
+WRITE TOPIC${numbers.length === 1 ? '' : 'S'} ${numbers.join(', ')}
+
+MODULE PAGES
+${pagesInfo.sourceText}`;
+
+    const call = await callOpenAI(systemPrompt, userPrompt, {
+      maxTokens: Math.min(4000, 600 + numbers.length * 550),
+      temperature: 0.5
+    });
+    tokensUsed += call.tokensUsed || 0;
+    const raw = Array.isArray(call.result && call.result.topics) ? call.result.topics : [];
+    raw.forEach((item, index) => {
+      let n = Math.round(Number(item && item.n));
+      if (!numbers.includes(n) || topics.has(n)) n = numbers[index];
+      if (!n || topics.has(n)) return;
+      const title = oneLine(item && item.title, 120) || point.topics[n - 1] || `Topic ${n}`;
+      const text = tidyTopicText(cleanLessonText(item && item.text).replace(/^## /gm, ''), title);
+      if (text.length < MIN_TOPIC_CHARS) return;
+      topics.set(n, { no: n, title, text });
+    });
+  };
+
+  await ask(all);
+  const missing = all.filter((n) => !topics.has(n));
+  if (missing.length) await ask(missing);
+  const stillMissing = all.filter((n) => !topics.has(n));
+  if (stillMissing.length) {
+    throw new Error(`Only ${all.length - stillMissing.length} of the ${all.length} topics on "${point.title}" could be written.`);
+  }
+  return { topics: all.map((n) => topics.get(n)), tokensUsed };
+}
+
+/**
+ * The topics read again against the module: a statement the pages contradict or
+ * do not support is corrected from them or taken out, and each practice answer
+ * is checked. A correction that comes back unusable leaves the topic as written.
+ */
+async function reviewWeakPointTopics(context, point, topics) {
+  const { pagesInfo } = context;
+  const systemPrompt = `You check ADDED TOPICS that were written for a learner, against the learning module they were written from.
+
+For every topic:
+- compare each statement with the module pages. Correct any statement the pages contradict or do not support, using the
+  pages, or take it out.
+- check the practice question's answer (the line starting with "Answer: ") against the module, and correct it if it is wrong.
+- keep everything else as it is: the same layout, the "Try this:" and "Answer: " lines, about the same length, the same language.
+
+Return a JSON object with one key, "topics": an array with one object per topic, each with
+- "n": the topic number
+- "ok": true when nothing had to be corrected, false when something was
+- "text": the topic's full text after your corrections (the same text when "ok" is true)
+Output strict JSON only. No commentary, no markdown.`;
+
+  const userPrompt = `${promptHeader(context)}
+
+WEAK POINT: ${point.title}
+
+TOPICS
+${topics.map((topic) => `### Topic ${topic.no}: ${topic.title}\n${topic.text}`).join('\n\n')}
+
+MODULE PAGES
+${pagesInfo.sourceText}`;
+
+  let call;
+  try {
+    call = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 4000, temperature: 0 });
+  } catch (error) {
+    console.error('[aiService] the added topics could not be checked:', error.message);
+    return { topics, corrected: 0, checked: false, tokensUsed: 0 };
+  }
+  const raw = Array.isArray(call.result && call.result.topics) ? call.result.topics : [];
+  let corrected = 0;
+  const checked = topics.map((topic, index) => {
+    const numbered = raw.find((item) => Math.round(Number(item && item.n)) === topic.no);
+    const unnumbered = raw.length === topics.length && raw[index] && !Number.isFinite(Number(raw[index].n)) ? raw[index] : null;
+    const item = numbered || unnumbered;
+    if (!item || item.ok === true) return topic;
+    const text = tidyTopicText(cleanLessonText(item.text).replace(/^## /gm, ''), topic.title);
+    if (text.length < MIN_TOPIC_CHARS || text.length < topic.text.length * 0.5 || text === topic.text) return topic;
+    corrected += 1;
+    return { ...topic, text };
+  });
+  return { topics: checked, corrected, checked: true, tokensUsed: call.tokensUsed || 0 };
+}
+
+/**
+ * What is added to ONE learner's own copy of a module: their weak points in it,
+ * one for each idea behind the Pre-Assessment questions they got wrong, and for
+ * every weak point five topics that teach it, placed after the module page that
+ * teaches that idea. The module's own pages are never rewritten.
+ *
+ * Every weak point is planned, written and then checked against the module's
+ * pages. A weak point whose topics cannot be written is tried once more; one that
+ * still fails is left out and named in `errors`. None at all throws.
+ *
+ * @param {object} options
+ * @param {Array<{num: number, text: string}>} options.pages  the module's pages, in order
+ * @param {number} [options.pageCount]   pages in the PDF, when their text could not be read
+ * @param {string} [options.fallbackText] the handout's stored text, for a scanned PDF
+ * @param {Array<{question_text: string, correct_text: string, explanation?: string}>} options.missed
+ * @returns {Promise<{ weakPoints: Array<{ title: string, focus: string, after_page: number,
+ *   questions: Array<{ q: string, a: string }>, topics: Array<{ no: number, title: string, text: string }> }>,
+ *   errors: string[], corrected: number, tokensUsed: number }>}
+ */
+async function generateModuleAdditions(options = {}) {
+  const {
+    pages = [], pageCount = 0, fallbackText = '', missed = [],
+    level, subject, gradeLevel, moduleTitle
+  } = options;
+  if (!missed.length) return { weakPoints: [], errors: [], corrected: 0, tokensUsed: 0 };
+  if (!isOpenAIConfigured()) throw new Error('The AI service is not configured, so the added lessons cannot be written.');
+
+  const context = {
+    missed, level, subject, gradeLevel, moduleTitle,
+    pagesInfo: modulePagesForPrompt({ pages, pageCount, fallbackText })
+  };
+  const plan = await planWeakPoints(context);
+  let tokensUsed = plan.tokensUsed;
+  let corrected = 0;
+  const errors = [];
+  const results = new Array(plan.points.length).fill(null);
+
+  await runWithConcurrency(plan.points.map((point, index) => ({ point, index })), 2, async ({ point, index }) => {
+    for (let attempt = 1; attempt <= 2 && !results[index]; attempt++) {
+      try {
+        const written = await writeWeakPointTopics(context, point);
+        tokensUsed += written.tokensUsed;
+        const reviewed = await reviewWeakPointTopics(context, point, written.topics);
+        tokensUsed += reviewed.tokensUsed;
+        corrected += reviewed.corrected;
+        results[index] = {
+          title: point.title,
+          focus: point.focus,
+          after_page: point.after_page,
+          questions: point.covers.map((n) => missed[n - 1]).filter(Boolean).map((q) => ({
+            q: oneLine(q.question_text, 500),
+            a: oneLine(q.correct_text, 300)
+          })),
+          topics: reviewed.topics
+        };
+      } catch (error) {
+        if (attempt === 2) errors.push(error.message);
+      }
+    }
+  });
+
+  const weakPoints = results.filter(Boolean);
+  if (!weakPoints.length) throw new Error(errors[0] || 'The AI returned no added lesson that could be used.');
+  return { weakPoints, errors, corrected, tokensUsed };
+}
+
+// Defined after module.exports above, so added here (a const is not hoisted).
+Object.assign(module.exports, { MAX_WEAK_POINTS, TOPICS_PER_WEAK_POINT, tidyTopicText });

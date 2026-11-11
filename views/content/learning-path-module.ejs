@@ -1,0 +1,254 @@
+<%# File: views/content/learning-path-module.ejs
+    Purpose: One module of one student's learning path, for their tutor and the
+    admin (lib/learningPaths.js, modulePageData): the weak points found in it
+    with their five topics and the Pre-Assessment items behind them, the
+    activities the student answers in it, and its assessment with every take.
+    Locals: row (learning_path_modules row + take_state, attempts, weakPoints),
+            personalActivities, sharedActivities, canWriteActivity, studentLabel,
+            basePath, canAct, canWrite, backHref %>
+<%
+  const number = row.order_number || row.position;
+  const pct = (value) => `${Number(value || 0).toFixed(1)}%`;
+  const points = (row.weakPoints || []);
+  const newPoints = points.filter((point) => !point.legacy);
+  const topicCount = points.reduce((sum, point) => sum + point.topics.length, 0);
+  const lastTake = row.attempts && row.attempts.length ? row.attempts[row.attempts.length - 1] : null;
+  const levelKey = (level) => String(level || 'beginner').toLowerCase();
+  const allActivities = [
+    ...(personalActivities || []).map((a) => ({ ...a, forLabel: 'This student' })),
+    ...(sharedActivities || []).map((a) => ({ ...a, forLabel: a.level_module_level ? `${a.level_module_level} students` : 'Every student' }))
+  ];
+%>
+<link rel="stylesheet" href="/css/level-modules.css" />
+<section class="page-stack">
+  <div class="panel-card">
+    <div class="panel-card-head">
+      <h2>Module <%= number %>: <%= row.module_title %></h2>
+      <a class="btn btn-secondary btn-sm" href="<%= backHref %>">Back</a>
+    </div>
+    <p><strong>Student:</strong> <%= studentLabel %></p>
+    <p><strong>Subject:</strong> <%= row.subject_name %></p>
+    <p>
+      <strong>Status:</strong>
+      <% if (row.status === 'passed') { %>
+        <span class="badge badge-success">Passed</span>
+      <% } else if (row.status === 'open') { %>
+        <span class="badge badge-info">Open</span>
+      <% } else { %>
+        <span class="badge badge-warning">Locked</span>
+      <% } %>
+    </p>
+    <div class="lpmod-actions">
+      <% if (row.status !== 'locked') { %>
+        <a class="btn btn-primary btn-sm" href="<%= basePath %>/path-modules/<%= row.id %>/pdf" target="_blank" rel="noopener">View Module (PDF)</a>
+      <% } %>
+      <% if (canWrite && canWriteActivity) { %>
+        <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= row.id %>/create-assessment">Create Activity</a>
+      <% } %>
+    </div>
+  </div>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Weak Points</h3>
+      <% if (newPoints.length) { %>
+        <span class="badge badge-info"><%= newPoints.length %> weak point<%= newPoints.length === 1 ? '' : 's' %> &middot; <%= topicCount %> topics</span>
+      <% } else if (points.length) { %>
+        <span class="badge badge-info"><%= points.length %> added</span>
+      <% } %>
+    </div>
+    <% if (row.pre_total) { %>
+      <p class="table-note">Pre-Assessment in this module: <%= row.pre_correct %>/<%= row.pre_total %> right</p>
+    <% } %>
+
+    <% if (row.additions_status === 'pending' || row.additions_status === 'generating') { %>
+      <p class="table-note">Being written.</p>
+    <% } else if (row.additions_status === 'failed') { %>
+      <p class="lock-note">Not written: <%= row.additions_error || 'the AI could not write them.' %></p>
+      <% if (canAct) { %>
+        <form method="post" action="<%= basePath %>/path-modules/<%= row.id %>/retry">
+          <input type="hidden" name="back" value="module" />
+          <button type="submit" class="btn btn-secondary btn-sm">Try Again</button>
+        </form>
+      <% } %>
+    <% } else if (row.additions_status === 'none') { %>
+      <p class="table-note">None: every Pre-Assessment item of this module was right.</p>
+    <% } %>
+    <% if (row.additions_status === 'ready' && row.additions_error) { %>
+      <p class="lock-note"><%= row.additions_error %></p>
+    <% } %>
+
+    <div class="lpmod-points">
+      <% points.forEach((point) => { %>
+        <details class="lpmod-point">
+          <summary>
+            <strong><%= point.legacy ? point.title : `Weak point ${point.no}: ${point.title}` %></strong>
+            <span class="module-card-meta">
+              after page <%= point.after_page %>
+              <% if (!point.legacy) { %>&middot; <%= point.topics.length %> topics &middot; <%= point.questions.length %> missed item<%= point.questions.length === 1 ? '' : 's' %><% } %>
+            </span>
+          </summary>
+          <% if (point.focus) { %>
+            <p><strong>What to learn:</strong> <%= point.focus %></p>
+          <% } %>
+          <% if (point.questions.length) { %>
+            <h4 class="lpmod-sub">Missed on the Pre-Assessment</h4>
+            <ul class="lpmod-missed">
+              <% point.questions.forEach((q) => { %>
+                <li><%= q.q %><% if (q.a) { %> <span class="module-card-meta">Answer: <%= q.a %></span><% } %></li>
+              <% }) %>
+            </ul>
+          <% } %>
+          <ol class="lpmod-topics">
+            <% point.topics.forEach((topic) => { %>
+              <li>
+                <% if (!point.legacy) { %><strong><%= topic.title %></strong><% } %>
+                <div class="lpmod-text">
+                  <% String(topic.text || '').split(/\n/).forEach((line) => { %>
+                    <% const text = line.trim(); %>
+                    <% if (!text) { %>
+                    <% } else if (/^[-•*]\s+/.test(text)) { %>
+                      <p class="lpmod-bullet">&bull; <%= text.replace(/^[-•*]\s+/, '') %></p>
+                    <% } else if (/^(answer|sagot|try this|subukan mo ito|subukan)\s*:/i.test(text)) { %>
+                      <p><strong><%= text.split(':')[0] %>:</strong><%= text.slice(text.indexOf(':') + 1) %></p>
+                    <% } else { %>
+                      <p><%= text %></p>
+                    <% } %>
+                  <% }) %>
+                </div>
+              </li>
+            <% }) %>
+          </ol>
+        </details>
+      <% }) %>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Activities</h3>
+      <span class="badge badge-info"><%= allActivities.length %></span>
+    </div>
+    <% if (!allActivities.length) { %>
+      <p class="empty-state">No activity in this module yet.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table class="lpmod-table">
+          <thead><tr><th>Activity</th><th>For</th><th>Items</th><th>Score</th><th>Answered</th></tr></thead>
+          <tbody>
+            <% allActivities.forEach((a) => { %>
+              <tr>
+                <td>
+                  <% if (a.submission_id) { %>
+                    <a href="<%= basePath %>/results/<%= a.submission_id %>"><strong><%= a.title %></strong></a>
+                  <% } else { %>
+                    <strong><%= a.title %></strong>
+                  <% } %>
+                </td>
+                <td><%= a.forLabel %></td>
+                <td><%= Number(a.question_count || a.item_count || 0) %></td>
+                <td>
+                  <% if (a.submission_id) { %>
+                    <%= Number(a.score) %>/<%= Number(a.total_points) %> <span class="module-card-meta"><%= pct(a.percentage) %></span>
+                  <% } else { %>
+                    <span class="module-card-meta">Not answered yet</span>
+                  <% } %>
+                </td>
+                <td><%= a.submitted_at ? formatDateTime(a.submitted_at) : '—' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel-card">
+    <div class="panel-card-head">
+      <h3>Module Assessment</h3>
+      <% if (row.status === 'passed') { %>
+        <span class="badge badge-success">Passed</span>
+      <% } else if (row.status === 'locked') { %>
+        <span class="badge badge-warning">Locked</span>
+      <% } else if (row.assessment_status === 'draft') { %>
+        <span class="badge badge-warning">Ready to check</span>
+      <% } else if (row.take_state === 'can_take') { %>
+        <span class="badge badge-success">Open &middot; take <%= Number(row.takes_used) + 1 %></span>
+      <% } else if (row.take_state === 'waiting_retake') { %>
+        <span class="badge badge-warning">Needs another take</span>
+      <% } else if (row.assessment_status === 'failed') { %>
+        <span class="badge badge-warning">Not written</span>
+      <% } else { %>
+        <span class="badge badge-info">Being written</span>
+      <% } %>
+    </div>
+    <% if (row.assessment_status === 'failed' && row.assessment_error) { %>
+      <p class="lock-note"><%= row.assessment_error %></p>
+    <% } %>
+    <div class="lpmod-actions">
+      <% if (row.assessment_id) { %>
+        <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-assessments/<%= row.assessment_id %>/edit">
+          <%= canAct && row.assessment_status === 'draft' ? 'Check / Edit' : 'View Questions' %>
+        </a>
+      <% } %>
+      <% if (canAct && row.assessment_status === 'draft' && row.status === 'open') { %>
+        <form method="post" action="<%= basePath %>/path-modules/<%= row.id %>/open"
+              data-confirm-message="Open the Module <%= number %> assessment for <%= studentLabel %>? It can no longer be edited after that.">
+          <input type="hidden" name="back" value="module" />
+          <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+        </form>
+      <% } %>
+      <% if (canAct && row.take_state === 'waiting_retake') { %>
+        <form method="post" action="<%= basePath %>/path-modules/<%= row.id %>/open">
+          <input type="hidden" name="back" value="module" />
+          <button type="submit" class="btn btn-primary btn-sm">Open Next Take</button>
+        </form>
+      <% } %>
+      <% if (canAct && row.status === 'open' && row.assessment_status === 'failed' && !row.assessment_id) { %>
+        <form method="post" action="<%= basePath %>/path-modules/<%= row.id %>/retry">
+          <input type="hidden" name="back" value="module" />
+          <button type="submit" class="btn btn-secondary btn-sm">Try Again</button>
+        </form>
+      <% } %>
+    </div>
+
+    <% if (row.attempts && row.attempts.length) { %>
+      <div class="table-wrap">
+        <table class="lpmod-table">
+          <thead><tr><th>Take</th><th>Score</th><th>Level</th><th>Result</th><th>Taken</th></tr></thead>
+          <tbody>
+            <% row.attempts.forEach((take) => { %>
+              <% const passedHere = (take === lastTake && row.status === 'passed' && !row.passed_by) || take.level === 'Advance'; %>
+              <tr>
+                <td><a href="<%= basePath %>/path-attempts/<%= take.id %>">Take <%= take.attempt_number %></a></td>
+                <td><%= Number(take.score) %>/<%= Number(take.total_points) %> <span class="module-card-meta"><%= pct(take.percentage) %></span></td>
+                <td><span class="lm-level lm-level-<%= levelKey(take.level) %>"><%= take.level %></span></td>
+                <td><span class="badge <%= passedHere ? 'badge-success' : 'badge-warning' %>"><%= passedHere ? 'Passed' : 'Not passed' %></span></td>
+                <td><%= formatDateTime(take.submitted_at) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+</section>
+
+<style>
+  .lpmod-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  .lpmod-actions form { margin: 0; }
+  .lpmod-points { display: grid; gap: 10px; margin-top: 10px; }
+  .lpmod-point { border: 1px solid var(--border, #d7e2ea); border-radius: 12px; padding: 10px 14px; background: #fff; }
+  .lpmod-point summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .lpmod-point[open] summary { margin-bottom: 8px; }
+  .lpmod-sub { margin: 10px 0 4px; font-size: 14px; }
+  .lpmod-missed { margin: 0 0 8px; padding-left: 18px; }
+  .lpmod-missed .module-card-meta { display: block; }
+  .lpmod-topics { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 10px; }
+  .lpmod-text { margin-top: 4px; display: grid; gap: 5px; }
+  .lpmod-text p { margin: 0; line-height: 1.55; }
+  .lpmod-bullet { padding-left: 14px; text-indent: -10px; }
+  .lpmod-table td { vertical-align: top; }
+  .lpmod-table .module-card-meta { margin-left: 4px; }
+  .module-card-meta { color: var(--text-soft, #5f7084); font-size: 12.5px; }
+</style>

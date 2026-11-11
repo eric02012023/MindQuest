@@ -902,3 +902,80 @@ npm test                                 # includes scripts/test-learning-paths.
 
 `SELECT * FROM app_markers` lists `post-openings-backfill` once the new code has
 booted.
+
+### This release: learning paths — five topics for every weak point, Advance passes, retakes open by themselves, the Post repeats the Pre
+
+Schema section 47 at boot: no new table or column, one one-time step. No new
+package or environment variable.
+
+**What is added to a student's module** (`services/aiService.js`,
+`generateModuleAdditions`; `lib/learningPaths.js`)
+- From the Pre-Assessment questions of that module the student got wrong, the
+  AI finds their **weak points** — one per idea they missed, at most four per
+  handout — and every missed question belongs to one. Questions the first plan
+  leaves out are asked about once more: they join the weak point they are about,
+  or become a weak point of their own.
+- For **every weak point, five topics** are written from the module's own pages,
+  building the idea up step by step, each ending with a practice question and
+  its answer. A topic missing or too short is asked for again.
+- Every topic is then **checked against the module's pages**: a statement the
+  pages do not support is corrected or taken out, and each practice answer is
+  checked. A weak point that still cannot be written is tried once more.
+- In the PDF each weak point is a section of its own — its title, what to learn,
+  its five topics — right after the page that teaches it. The office's pages are
+  untouched. The student's module page, the tutor's and the admin's show the
+  same, and the tutor's and admin's also show the Pre-Assessment items behind
+  each weak point.
+- Stored packed (`gz:` + gzip + base64) in `learning_path_modules.additions_json`,
+  about a third of the plain text — the database is capped at 30 MB. Lessons
+  written before this still read.
+
+**Passing a module.** **Advance (81%)** passes and opens the next module (it was
+Intermediate, 51%). Below it, the **next take opens at once** — no tutor needed —
+its questions and choices in a new order. The tutor is told each time.
+
+**Activities for one student.** On the tutor's page of a student's module (My
+Students → Learning Path → **Open**), **Create Activity** writes an activity for
+that student alone — by hand, or drafted with AI from their own module, at least
+half on their weak points. It is published to them at once and they are told.
+Only they see it (`for_student_id`); it is answered once and its answers are
+shown like any activity's.
+
+**The Post-Assessment** of a learning path is now **the very questions of the
+student's Pre-Assessment, in a new order** (choices shuffled too, every answer
+key following its choice) — no AI. Their tutor (or the main admin) checks it,
+may edit it, and opens it, as before.
+
+**Every score, and Pre against Post.** The student's subject page, and the
+tutor's and admin's Learning Path page, list every score — the Pre-Assessment,
+each take of each module's assessment (passed or not), the activities, the
+Post-Assessment — and set the Pre against the Post, overall and module by module.
+My Progress and the learner analytics list every take too.
+
+**The one-time step** (`app_markers` `path-weak-points-v2`, at the first boot):
+modules of a learning path not started yet whose lessons are in the old form
+(locked, or open with their assessment not opened) get their weak points and
+topics written; an unopened draft assessment written from the old lessons is
+archived and written again. A take waiting on the tutor gets its next take
+open. On live when this was written: STD-0352's two paths (English, Science),
+five modules, two unopened drafts (#2177, #2179), no take.
+
+**Cost and time.** Per module with mistakes: one call to plan, two per weak
+point (write, check), sometimes one more — a few cents a student with
+gpt-4o-mini, about half a minute to a minute a module, in the background. A
+module with four weak points adds about 8 pages to its PDF.
+
+**If it has to be rolled back.** The old code reads the packed lessons as none
+(the module shows its own pages only) and passes at Intermediate again. Nothing
+needs undoing first; activities written for one student stay theirs
+(`for_student_id`), and the old code leaves them out of every list.
+
+To verify after the deploy:
+
+```bash
+node scripts/apply-schema.js --check     # parses cleanly
+npm test                                 # scripts/test-learning-paths.js covers all of the above
+```
+
+`SELECT name FROM app_markers` lists `path-weak-points-v2` once the new code has
+booted.

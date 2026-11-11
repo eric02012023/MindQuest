@@ -352,6 +352,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     // Their learning path (lib/learningPaths.js), when the Pre-Assessment started
     // one: their own modules, opened one after another as they pass.
     let learningPath = null;
+    let pathScores = null;
     if (preAssessmentDone) {
       try {
         const path = await paths.getCurrentPath(req.session.user.id, Number(req.params.subjectId), preAssessmentDone);
@@ -359,6 +360,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
           await paths.syncPath(path, newModules);
           paths.kickPath(path.id).catch((error) => console.error('[student] could not queue the path:', error.message));
           learningPath = await paths.loadPathView(await paths.getPathById(path.id));
+          // Every score of the path, and the Pre-Assessment against the Post.
+          pathScores = await paths.getPathScores(learningPath);
         }
       } catch (error) {
         console.error('[student] learning path could not be loaded:', error.message);
@@ -388,6 +391,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       newModules,
       levelEntries,
       learningPath,
+      pathScores,
       placementLevel: placementLevelOf(preAssessmentDone),
       preAssessmentDone,
       handoutsReady,
@@ -1338,10 +1342,10 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
 // last day of the enrolment. It does not close: a student who has not taken it
 // can take it after their month is over too.
 //
-// On a learning path it is written for the student from their own modules
-// (lib/learningPaths.js); otherwise it is the same questions as the
-// Pre-Assessment they sat. Enforced here, server-side: the button on the
-// subject page is only a reflection of it.
+// On a learning path it is the student's own copy of the questions of their
+// Pre-Assessment, in a new order, checked by their tutor (lib/learningPaths.js);
+// otherwise it is the same questions as the Pre-Assessment they sat. Enforced
+// here, server-side: the button on the subject page is only a reflection of it.
 // ---------------------------------------------------------------------------
 
 /** Shared guard: returns { assignment, assessment, path } or null after flashing. */
@@ -1369,7 +1373,8 @@ async function requirePostAssessment(req, subjectId) {
   }
 
   if (state.path) {
-    // Written for this student from their own modules, and opened for them.
+    // Made for this student — their Pre-Assessment's questions in a new order —
+    // and opened for them.
     const assessment = state.path.post_assessment_id
       ? await getTutorAssessmentById(state.path.post_assessment_id)
       : null;
@@ -1471,8 +1476,10 @@ router.get('/results/:submissionId', async (req, res, next) => {
 
     // A module assessment written for this student (lib/learningPaths.js) shows
     // its score only: the answers stay hidden, so a retake cannot be learnt
-    // from the take before it. Their tutor and the admin see every answer.
-    if (submission.for_student_id && submission.assessment_kind === 'tutor_assessment') {
+    // from the take before it. Their tutor and the admin see every answer. An
+    // activity their tutor wrote for them is answered once, and shows like any.
+    if (submission.for_student_id && submission.assessment_kind === 'tutor_assessment'
+        && submission.assessment_purpose !== 'activity') {
       const owner = await paths.getPersonalOwner(submission.assessment_id);
       setFlash(req, 'info', `Your score: ${Number(submission.score)}/${Number(submission.total_points)} (${Number(submission.percentage).toFixed(1)}%).`);
       return res.redirect(owner && owner.pathModule
@@ -1744,11 +1751,25 @@ router.get('/modules/:moduleId', async (req, res, next) => {
  */
 async function requireModuleAssessment(req, assessmentId) {
   const assessment = await getTutorAssessmentById(Number(assessmentId));
-  // One student's own module assessment is taken from their module page
-  // (/student/path-modules/:id), never through this route.
+  if (assessment && assessment.for_student_id) {
+    // An activity their tutor wrote for THEM, in a module of their learning path
+    // that is open or passed. One student's own module assessment is taken from
+    // their module page (/student/path-modules/:id), never through this route.
+    // Like everything of a path, it is not held to the month (decision c).
+    const pathModule = await paths.personalActivityModule(assessment, req.session.user.id);
+    const assignment = pathModule ? await requireEnrolment(req, assessment.subject_id) : null;
+    const mod = assignment ? await getModuleById(assessment.module_id) : null;
+    if (!pathModule || !assignment || !mod) {
+      setFlash(req, 'error', 'Assessment not found.');
+      return { redirectTo: '/student/subjects' };
+    }
+    return {
+      assessment, assignment, mod, levelModuleId: null, pathModuleId: Number(pathModule.id),
+      viewOnly: viewOnlyMessage(assignment)
+    };
+  }
   if (!assessment || Number(assessment.is_archived) || !Number(assessment.is_published)
-      || (assessment.assessment_kind || 'tutor_assessment') !== 'tutor_assessment'
-      || assessment.for_student_id) {
+      || (assessment.assessment_kind || 'tutor_assessment') !== 'tutor_assessment') {
     setFlash(req, 'error', 'Assessment not found.');
     return { redirectTo: '/student/subjects' };
   }
@@ -1824,11 +1845,15 @@ router.get('/tutor-assessments/:id', async (req, res, next) => {
       setFlash(req, 'info', 'You have already completed this assessment.');
       return res.redirect(`/student/assessment-result/${alreadySubmitted.id}`);
     }
+    // Where the activity is answered from: their own module, a level module, or the module.
+    const from = gate.pathModuleId
+      ? `/student/path-modules/${gate.pathModuleId}`
+      : gate.levelModuleId
+        ? `/student/level-modules/${gate.levelModuleId}`
+        : `/student/modules/${assessment.module_id}`;
     if (gate.viewOnly) {
       setFlash(req, 'error', gate.viewOnly);
-      return res.redirect(gate.levelModuleId
-        ? `/student/level-modules/${gate.levelModuleId}`
-        : `/student/modules/${assessment.module_id}`);
+      return res.redirect(from);
     }
 
     const shell = await buildShell(req, {
@@ -1839,6 +1864,7 @@ router.get('/tutor-assessments/:id', async (req, res, next) => {
       subjectId: assessment.subject_id,
       subjectName: assignment.subject_name,
       isPre: false,
+      cancelHref: from,
       startedAt: new Date().toISOString(),
       antiCheat: {
         endpoint: `/student/assessments/${assessment.id}/violation`,
@@ -1935,8 +1961,9 @@ const TAKE_STATE_MESSAGES = {
   passed: 'You have passed this module already.'
 };
 
-// Student: their own copy of a module — the PDF, the lessons added for them,
-// the tutor's activities, and the module's assessment.
+// Student: their own copy of a module — the PDF, the topics added for each of
+// their weak points, the tutor's activities (those written for them alone
+// first), and the module's assessment.
 router.get('/path-modules/:id', async (req, res, next) => {
   try {
     const gate = await requirePathModule(req, req.params.id);
@@ -1961,6 +1988,8 @@ router.get('/path-modules/:id', async (req, res, next) => {
     const work = await moduleWorkFor(studentId, mod, month, handouts, {
       levelModuleId: levelModule ? levelModule.id : null
     });
+    // The activities their tutor wrote for them alone in this module.
+    const personal = await paths.getPersonalActivities(studentId, mod.id, { publishedOnly: true });
     const attempts = row.assessment_id ? await paths.getAttempts(row.assessment_id, studentId) : [];
 
     const shell = await buildShell(req, {
@@ -1970,9 +1999,10 @@ router.get('/path-modules/:id', async (req, res, next) => {
       row: { ...row, take_state: paths.takeState(row) },
       mod,
       assignment,
-      activities: work.activities,
+      activities: [...personal, ...work.activities],
       submissions: work.submissions,
       attempts,
+      passLabel: paths.PASS_LABEL,
       viewOnly
     });
     res.render('shells/dashboard', shell);
@@ -2069,7 +2099,7 @@ router.post('/path-modules/:id/assessment', async (req, res) => {
       ? `${scoreText} You passed this module.${result.nextId
         ? ' Your next module is open.'
         : ' That was your last module: your tutor opens your Post-Assessment once it is ready.'}`
-      : `${scoreText} You need Intermediate (51%) to pass. Your tutor will open another take.`);
+      : `${scoreText} You need ${paths.PASS_LABEL} to pass. Take it again when you are ready: the questions come in a new order.`);
     res.redirect(back);
   } catch (error) {
     setFlash(req, 'error', error.message || 'Could not submit the assessment.');

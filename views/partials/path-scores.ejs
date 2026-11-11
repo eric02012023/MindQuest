@@ -1,0 +1,145 @@
+<%# File: views/partials/path-scores.ejs
+    Purpose: Every score of one learning path, and the Pre-Assessment against the
+    Post-Assessment — overall and module by module (lib/learningPaths.js,
+    getPathScores). Shown to the student on their subject page, and to their
+    tutor and the admin on the student's Learning Path page.
+    Locals: scores, viewer ('student' | 'staff'), linkBase ('/student', '/tutor',
+            '/admin' or '/assistant') %>
+<% const sc = typeof scores === 'undefined' ? null : scores; %>
+<% if (sc) { %>
+<%
+  const isStudent = viewer === 'student';
+  const pct = (value) => (value === null || value === undefined ? '—' : `${Number(value).toFixed(1)}%`);
+  const levelKey = (level) => String(level || 'beginner').toLowerCase();
+  const signed = (value) => `${value > 0 ? '+' : ''}${Number(value).toFixed(1)}`;
+  const changeClass = (value) => (value > 0 ? 'is-up' : value < 0 ? 'is-down' : '');
+  const cmp = sc.comparison;
+%>
+<link rel="stylesheet" href="/css/level-modules.css" />
+<section class="panel-card ps-card">
+  <div class="panel-card-head">
+    <h3>Pre-Assessment vs Post-Assessment</h3>
+    <% if (cmp) { %>
+      <span class="ps-delta <%= changeClass(cmp.delta) %>"><%= signed(cmp.delta) %> points</span>
+    <% } %>
+  </div>
+
+  <div class="ps-compare">
+    <div class="ps-cell">
+      <span class="ps-cap">Pre-Assessment</span>
+      <span class="ps-pct"><%= sc.pre ? pct(sc.pre.percentage) : '—' %></span>
+      <% if (sc.pre) { %>
+        <span class="lm-level lm-level-<%= levelKey(sc.pre.level) %>"><%= sc.pre.level %></span>
+        <span class="ps-sub"><%= Number(sc.pre.score) %>/<%= Number(sc.pre.total_points) %></span>
+      <% } %>
+    </div>
+    <div class="ps-arrow" aria-hidden="true">&rarr;</div>
+    <div class="ps-cell">
+      <span class="ps-cap">Post-Assessment</span>
+      <span class="ps-pct"><%= sc.post ? pct(sc.post.percentage) : '—' %></span>
+      <% if (sc.post) { %>
+        <span class="lm-level lm-level-<%= levelKey(sc.post.level) %>"><%= sc.post.level %></span>
+        <span class="ps-sub"><%= Number(sc.post.score) %>/<%= Number(sc.post.total_points) %></span>
+      <% } else { %>
+        <span class="ps-sub">Not taken yet</span>
+      <% } %>
+    </div>
+    <% if (cmp && cmp.levelChanged) { %>
+      <div class="ps-move"><%= cmp.preLevel %> &rarr; <%= cmp.postLevel %></div>
+    <% } %>
+  </div>
+
+  <div class="table-wrap">
+    <table class="ps-table">
+      <thead>
+        <tr><th>Module</th><th>Pre-Assessment</th><th>Post-Assessment</th><th>Change</th></tr>
+      </thead>
+      <tbody>
+        <% sc.modules.forEach((m) => { %>
+          <tr>
+            <td>
+              <strong>Module <%= m.number %></strong>
+              <span class="ps-sub"><%= m.title %></span>
+            </td>
+            <td>
+              <% if (m.pre) { %><%= m.pre.correct %>/<%= m.pre.total %> <span class="ps-sub"><%= pct(m.prePct) %></span><% } else { %>&mdash;<% } %>
+            </td>
+            <td>
+              <% if (m.post) { %><%= m.post.correct %>/<%= m.post.total %> <span class="ps-sub"><%= pct(m.postPct) %></span><% } else { %>&mdash;<% } %>
+            </td>
+            <td>
+              <% if (m.change === null) { %>&mdash;<% } else { %>
+                <span class="ps-delta <%= changeClass(m.change) %>"><%= signed(m.change) %></span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel-card ps-card">
+  <div class="panel-card-head">
+    <h3>All Scores</h3>
+    <span class="badge badge-info"><%= sc.rows.length %></span>
+  </div>
+  <% if (!sc.rows.length) { %>
+    <p class="empty-state">No score yet.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="ps-table">
+        <thead>
+          <tr><th>Assessment</th><th>Score</th><th>Level</th><th>Result</th><th>Taken</th></tr>
+        </thead>
+        <tbody>
+          <% sc.rows.forEach((r) => { %>
+            <%
+              // A module assessment's take shows its score only to the student;
+              // their tutor and the admin open it answer by answer.
+              const href = r.kind === 'take'
+                ? (isStudent ? null : `${linkBase}/path-attempts/${r.attemptId}`)
+                : (r.submissionId ? `${linkBase}/results/${r.submissionId}` : null);
+            %>
+            <tr>
+              <td>
+                <% if (href) { %><a href="<%= href %>"><strong><%= r.title %></strong></a><% } else { %><strong><%= r.title %></strong><% } %>
+                <% if (r.module) { %>
+                  <span class="ps-sub"><%= r.module %><%= !isStudent && r.kind === 'activity' && r.personal ? ' · written for this student' : '' %></span>
+                <% } %>
+              </td>
+              <td><%= Number(r.score) %>/<%= Number(r.total) %> <span class="ps-sub"><%= pct(r.percentage) %></span></td>
+              <td><span class="lm-level lm-level-<%= levelKey(r.level) %>"><%= r.level || '—' %></span></td>
+              <td>
+                <% if (r.kind === 'take') { %>
+                  <span class="badge <%= r.passed ? 'badge-success' : 'badge-warning' %>"><%= r.passed ? 'Passed' : 'Not passed' %></span>
+                <% } else { %>&mdash;<% } %>
+              </td>
+              <td><%= formatDateTime(r.at) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<style>
+  .ps-compare {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin: 4px 0 14px; padding: 16px;
+    border: 1px solid var(--border, #dfe7ee); border-radius: 14px; background: var(--surface-muted, #f4f8fb);
+  }
+  .ps-cell { display: grid; gap: 4px; justify-items: center; min-width: 120px; }
+  .ps-cap { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-soft, #5f7084); }
+  .ps-pct { font-size: 24px; font-weight: 800; line-height: 1.1; }
+  .ps-arrow { font-size: 22px; color: var(--text-soft, #5f7084); }
+  .ps-move { font-size: 13px; font-weight: 700; color: var(--text-soft, #5f7084); }
+  .ps-sub { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-soft, #5f7084); }
+  .ps-table td .ps-sub { display: inline; margin-left: 4px; }
+  .ps-table td:first-child .ps-sub { display: block; margin-left: 0; }
+  .ps-table td { vertical-align: top; }
+  .ps-delta { font-size: 13px; font-weight: 700; color: var(--text-soft, #5f7084); white-space: nowrap; }
+  .ps-delta.is-up { color: #1a7a3a; }
+  .ps-delta.is-down { color: #a43030; }
+</style>
+<% } %>

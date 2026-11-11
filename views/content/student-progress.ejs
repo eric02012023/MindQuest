@@ -18,7 +18,8 @@
   const modulesTotal = subjectList.reduce((sum, s) => sum + Number(s.stats.totalModules || 0), 0);
   const levelled = subjectList.filter((s) => s.stats.preAssessment).length;
   const kindLabel = (row) => (row.assessment_type === 'pre' ? 'Pre-Assessment'
-    : row.assessment_type === 'post' ? 'Post-Assessment' : 'Module activity');
+    : row.assessment_type === 'post' ? 'Post-Assessment'
+    : row.assessment_type === 'module_test' ? 'Module assessment' : 'Module activity');
   const levelClass = (level) => String(level || '').toLowerCase().replace(/\s+/g, '-');
 %>
 <section class="page-stack student-progress">
@@ -136,6 +137,13 @@
                 <td>
                   <% if (a.submission_id) { %>
                     <a href="/student/results/<%= a.submission_id %>"><strong><%= a.title %></strong></a>
+                  <% } else if (a.attempt_id) { %>
+                    <%# A take of a module assessment shows its score only; it opens the module. %>
+                    <% if (a.path_module_id) { %>
+                      <a href="/student/path-modules/<%= a.path_module_id %>"><strong><%= a.title %></strong></a>
+                    <% } else { %>
+                      <strong><%= a.title %></strong>
+                    <% } %>
                   <% } else if (s.assignment && s.assignment.view_only) { %>
                     <%# A finished subject is view-only: nothing left to take in it. %>
                     <strong><%= a.title %></strong>

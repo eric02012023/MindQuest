@@ -3038,6 +3038,41 @@ function createAdminRouter(role) {
     } catch (error) { next(error); }
   });
 
+  /** Back to that module's page, or to the student's learning path. */
+  const afterModuleAction = (req, row) => (req.body && req.body.back === 'module'
+    ? `${basePath}/path-modules/${Number(row.id)}`
+    : monitoringOf(row.student_id));
+
+  // One module of a student's path: its weak points and their topics, the
+  // activities the student answers in it, and its assessment with every take.
+  router.get('/path-modules/:id', async (req, res, next) => {
+    try {
+      const row = await paths.getPathModuleById(Number(req.params.id));
+      if (!row || row.status === 'removed') {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(`${basePath}/assessment-monitoring`);
+      }
+      if (!(await requireMonitoredStudent(req, res, row.student_id))) return;
+      paths.kickPath(row.path_id).catch((error) => console.error('[admin] could not queue the path:', error.message));
+      const page = await paths.modulePageData(row.id);
+      if (!page) {
+        setFlash(req, 'error', 'Module not found.');
+        return res.redirect(monitoringOf(row.student_id));
+      }
+      const shell = await buildShellData(req, {
+        pageTitle: `Module ${page.row.order_number || page.row.position} — ${page.studentLabel}`,
+        section: 'assessment_monitoring',
+        contentView: '../content/learning-path-module',
+        ...page,
+        // The main admin checks and opens; an assistant views. Activities are the tutor's to write.
+        canAct: req.session.user.role === 'admin',
+        canWrite: false,
+        backHref: monitoringOf(row.student_id)
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
   router.post('/path-modules/:id/open', async (req, res) => {
     try {
       const row = await paths.getPathModuleById(Number(req.params.id));
@@ -3048,7 +3083,7 @@ function createAdminRouter(role) {
       setFlash(req, 'success', result.opened === 'retake'
         ? `Take ${result.take} is open for the student.`
         : 'The assessment is open for the student.');
-      res.redirect(monitoringOf(row.student_id));
+      res.redirect(afterModuleAction(req, row));
     } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
   });
 
@@ -3061,7 +3096,7 @@ function createAdminRouter(role) {
       paths.retry(row.additions_status === 'failed' ? 'additions' : 'assessment', row.id)
         .catch((error) => console.error('[admin] retry failed:', error.message));
       setFlash(req, 'success', 'It is being written again. This takes a minute or two.');
-      res.redirect(monitoringOf(row.student_id));
+      res.redirect(afterModuleAction(req, row));
     } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
   });
 

@@ -287,6 +287,25 @@ function pathPageOf(studentId, subjectId) {
   return `/tutor/students/${Number(studentId)}/path/${Number(subjectId)}`;
 }
 
+/** Where an action on a student's module goes back to: that module's page, or their learning path. */
+function afterModuleAction(req, row) {
+  return req.body && req.body.back === 'module'
+    ? `/tutor/path-modules/${Number(row.id)}`
+    : pathPageOf(row.student_id, row.subject_id);
+}
+
+/** The student's module, when it is one of this tutor's students'; otherwise flashes and redirects. */
+async function requireMyPathModule(req, res, id) {
+  const row = await paths.getPathModuleById(Number(id));
+  if (!row || row.status === 'removed') {
+    setFlash(req, 'error', 'Module not found.');
+    res.redirect('/tutor/students');
+    return null;
+  }
+  if (!(await requireMyStudent(req, res, row.student_id, row.subject_id))) return null;
+  return row;
+}
+
 router.get('/students/:studentId/path/:subjectId', async (req, res, next) => {
   try {
     const studentId = Number(req.params.studentId);
@@ -343,7 +362,7 @@ router.post('/path-modules/:id/open', async (req, res) => {
     setFlash(req, 'success', result.opened === 'retake'
       ? `Take ${result.take} is open for the student.`
       : 'The assessment is open for the student.');
-    res.redirect(pathPageOf(row.student_id, row.subject_id));
+    res.redirect(afterModuleAction(req, row));
   } catch (error) { failBack(req, res, error, '/tutor/students'); }
 });
 
@@ -356,8 +375,138 @@ router.post('/path-modules/:id/retry', async (req, res) => {
     paths.retry(row.additions_status === 'failed' ? 'additions' : 'assessment', row.id)
       .catch((error) => console.error('[tutor] retry failed:', error.message));
     setFlash(req, 'success', 'It is being written again. This takes a minute or two.');
-    res.redirect(pathPageOf(row.student_id, row.subject_id));
+    res.redirect(afterModuleAction(req, row));
   } catch (error) { failBack(req, res, error, '/tutor/students'); }
+});
+
+// One module of a student's path: its weak points and their topics, the
+// activities the student answers in it, and its assessment with every take.
+router.get('/path-modules/:id', async (req, res, next) => {
+  try {
+    const row = await requireMyPathModule(req, res, req.params.id);
+    if (!row) return;
+    paths.kickPath(row.path_id).catch((error) => console.error('[tutor] could not queue the path:', error.message));
+    const page = await paths.modulePageData(row.id);
+    if (!page) {
+      setFlash(req, 'error', 'Module not found.');
+      return res.redirect(pathPageOf(row.student_id, row.subject_id));
+    }
+    const shell = await buildShell(req, {
+      pageTitle: `Module ${page.row.order_number || page.row.position} — ${page.studentLabel}`,
+      section: 'students',
+      contentView: '../content/learning-path-module',
+      ...page,
+      canAct: true,
+      canWrite: true,
+      backHref: pathPageOf(row.student_id, row.subject_id)
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+/** The activity builder's page for one student's module, the AI's draft in it when there is one. */
+async function personalBuilderData(req, row, extra = {}) {
+  const mod = await getModuleById(row.module_id);
+  if (!mod) throw new Error('That module was removed.');
+  const student = [row.first_name, row.last_name].filter(Boolean).join(' ') || 'the student';
+  return createAssessmentViewData(req, mod, {
+    pageTitle: 'Create Activity',
+    section: 'students',
+    formBase: `/tutor/path-modules/${row.id}`,
+    draftsFromLesson: false,
+    draftHeading: `Draft from ${student}'s module`,
+    forStudentLabel: student,
+    ...extra
+  });
+}
+
+// Tutor: write an activity for this one student, inside their module.
+router.get('/path-modules/:id/create-assessment', async (req, res, next) => {
+  try {
+    const row = await requireMyPathModule(req, res, req.params.id);
+    if (!row) return;
+    if (!paths.canWriteActivity(row)) {
+      setFlash(req, 'error', 'An activity can be given in a module that is open for the student, or passed.');
+      return res.redirect(`/tutor/path-modules/${row.id}`);
+    }
+    const shell = await buildShell(req, await personalBuilderData(req, row));
+    res.render('shells/dashboard', shell);
+  } catch (error) { failBack(req, res, error, `/tutor/path-modules/${Number(req.params.id) || ''}`); }
+});
+
+/**
+ * Draft the activity with AI from the student's own module — its handouts and
+ * the topics added for their weak points, at least half the questions on those.
+ * Nothing is saved: the tutor reviews it and presses Create.
+ */
+router.post('/path-modules/:id/draft-assessment', async (req, res) => {
+  const backToForm = `/tutor/path-modules/${Number(req.params.id) || ''}/create-assessment`;
+  try {
+    const row = await requireMyPathModule(req, res, req.params.id);
+    if (!row) return;
+    if (!paths.canWriteActivity(row)) throw new Error('An activity can be given in a module that is open for the student, or passed.');
+    const itemCount = Math.min(
+      TUTOR_ASSESSMENT_MAX_ITEMS,
+      Math.max(TUTOR_ASSESSMENT_MIN_ITEMS, Number(req.body.item_count) || 10)
+    );
+    const questionType = SPEC_QUESTION_TYPES.includes(req.body.question_type) ? req.body.question_type : 'mixed';
+    const sources = await paths.moduleSourcesFor(row.id);
+    if (!sources.length) {
+      setFlash(req, 'error', 'This module has no readable text yet, so there is nothing to draft from.');
+      return res.redirect(backToForm);
+    }
+    let generated;
+    try {
+      generated = await generateAssessmentFromHandouts({
+        handouts: sources,
+        subject: row.subject_name,
+        yearLevel: row.grade_level,
+        level: row.placement_level,
+        itemCount,
+        questionType,
+        focus: row.weakPoints.length ? paths.FOCUS_RULE : null
+      });
+    } catch (error) {
+      setFlash(req, 'error', `Could not draft the activity: ${error.message}`);
+      return res.redirect(backToForm);
+    }
+    setFlash(req, 'success', `Drafted ${generated.questions.length} question(s). Review and edit them, then press Create Assessment.`);
+    const shell = await buildShell(req, await personalBuilderData(req, row, {
+      draftQuestions: generated.questions,
+      form: {
+        title: String(req.body.title || '').trim() || `Module ${row.order_number || row.position} Activity`,
+        instructions: String(req.body.instructions || '').trim(),
+        question_type: questionType,
+        item_count: itemCount
+      }
+    }));
+    res.render('shells/dashboard', shell);
+  } catch (error) { failBack(req, res, error, backToForm); }
+});
+
+// Tutor: save the activity, for this student only, published to them at once.
+router.post('/path-modules/:id/create-assessment', async (req, res) => {
+  const backToForm = `/tutor/path-modules/${Number(req.params.id) || ''}/create-assessment`;
+  try {
+    const row = await requireMyPathModule(req, res, req.params.id);
+    if (!row) return;
+    const questions = parseBuilderQuestions(req.body);
+    if (!questions) {
+      setFlash(req, 'error', 'A title and at least one question are required.');
+      return res.redirect(backToForm);
+    }
+    await paths.createPersonalActivity(row.id, {
+      tutorId: req.session.user.id,
+      title: req.body.title,
+      instructions: req.body.instructions,
+      questions
+    });
+    setFlash(req, 'success', `Activity "${String(req.body.title).trim()}" created and given to ${[row.first_name, row.last_name].filter(Boolean).join(' ') || 'the student'}.`);
+    res.redirect(`/tutor/path-modules/${row.id}`);
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Could not create the activity.');
+    res.redirect(backToForm);
+  }
 });
 
 // Check — and, until it is opened, edit — an assessment written for one student.

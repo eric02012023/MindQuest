@@ -1,11 +1,13 @@
 <%# File: views/content/learning-path-manage.ejs
     Purpose: One student's learning paths for their tutor and the admin
-    (lib/learningPaths.js): each module with its added lessons, its assessment
-    and every take, and the Post-Assessment — with what can be done next.
-    Locals: student, entries [{ subjectId, subjectName, view, completion }],
+    (lib/learningPaths.js): each module with its weak points and topics, its
+    assessment and every take, the Post-Assessment — with what can be done next —
+    and every score, the Pre-Assessment set against the Post-Assessment.
+    Locals: student, entries [{ subjectId, subjectName, view, scores, completion }],
             basePath, canAct, isMainAdmin, backHref %>
 <% const pct = (value) => `${Number(value || 0).toFixed(1)}%`; %>
 <% const studentLabel = [student.first_name, student.last_name].filter(Boolean).join(' '); %>
+<link rel="stylesheet" href="/css/level-modules.css" />
 <section class="page-stack">
   <div class="panel-card">
     <div class="panel-card-head">
@@ -88,7 +90,7 @@
               <tr>
                 <th>Module</th>
                 <th>Status</th>
-                <th>Added Lessons</th>
+                <th>Weak Points</th>
                 <th>Assessment</th>
                 <th>Takes</th>
                 <th></th>
@@ -99,7 +101,7 @@
                 <% const number = m.order_number || m.position; %>
                 <tr>
                   <td>
-                    <strong>Module <%= number %></strong>
+                    <a href="<%= basePath %>/path-modules/<%= m.id %>"><strong>Module <%= number %></strong></a>
                     <span class="module-card-meta"><%= m.module_title %></span>
                   </td>
                   <td>
@@ -114,7 +116,14 @@
                   </td>
                   <td>
                     <% if (m.additions_status === 'ready') { %>
-                      <%= m.added_count %> added
+                      <% if (m.weak_point_count) { %>
+                        <%= m.weak_point_count %> weak point<%= m.weak_point_count === 1 ? '' : 's' %> &middot; <%= m.added_count %> topics
+                        <% m.weakPoints.forEach((point) => { %>
+                          <span class="module-card-meta"><%= point.no %>. <%= point.title %></span>
+                        <% }) %>
+                      <% } else { %>
+                        <%= m.added_count %> added
+                      <% } %>
                       <% if (m.pre_total) { %><span class="module-card-meta">Pre: <%= m.pre_correct %>/<%= m.pre_total %> right</span><% } %>
                     <% } else if (m.additions_status === 'none') { %>
                       None needed
@@ -157,7 +166,8 @@
                       </a>
                     <% }) %>
                   </td>
-                  <td class="lpm-actions">
+                  <td><div class="lpm-actions">
+                    <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= m.id %>">Open</a>
                     <% if (m.status !== 'locked') { %>
                       <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= m.id %>/pdf" target="_blank" rel="noopener">View Module</a>
                     <% } %>
@@ -189,7 +199,7 @@
                         <button type="submit" class="btn btn-secondary btn-sm">Mark as Passed</button>
                       </form>
                     <% } %>
-                  </td>
+                  </div></td>
                 </tr>
               <% }) %>
 
@@ -207,7 +217,7 @@
                   <% } else if (pre.post_status === 'waiting') { %>
                     <span class="badge badge-info">After every module</span>
                   <% } else { %>
-                    <span class="badge badge-info">Being written</span>
+                    <span class="badge badge-info">Being prepared</span>
                   <% } %>
                 </td>
                 <td colspan="2">
@@ -219,7 +229,7 @@
                     <a href="<%= basePath %>/results/<%= view.post.submission_id %>"><%= pct(view.post.percentage) %></a>
                   <% } else { %>&mdash;<% } %>
                 </td>
-                <td class="lpm-actions">
+                <td><div class="lpm-actions">
                   <% if (pre.post_assessment_id) { %>
                     <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-assessments/<%= pre.post_assessment_id %>/edit">
                       <%= canAct && pre.post_status === 'draft' ? 'Check / Edit' : 'View Questions' %>
@@ -236,13 +246,16 @@
                       <button type="submit" class="btn btn-secondary btn-sm">Try Again</button>
                     </form>
                   <% } %>
-                </td>
+                </div></td>
               </tr>
             </tbody>
           </table>
         </div>
       <% } %>
     </section>
+    <% if (view && entry.scores) { %>
+      <%- include('../partials/path-scores', { scores: entry.scores, viewer: 'staff', linkBase: basePath }) %>
+    <% } %>
   <% }) %>
 </section>
 
