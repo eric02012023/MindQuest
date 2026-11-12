@@ -118,6 +118,37 @@ const { buildBellItems } = require('../lib/bell');
   ok('a reminder with no link opens the Notifications page', student[1].href === '/student/notifications');
   ok('nothing at all is an empty list', buildBellItems({ basePath: '/student' }).length === 0);
 
+  console.log('\n== the bell: a tutor\'s notices about their students ==');
+  const { withoutRepeats } = require('../lib/appNotifications');
+  const ready = (id, created) => ({
+    id, notification_type: 'path_assessment_ready', ref_type: 'learning_path_module', ref_id: 12,
+    title: 'Module 1 assessment ready to check — Mark Santos', link_url: '/tutor/students/901/path/5', created_at: created
+  });
+  const once = withoutRepeats([
+    ready(2326, '2026-11-09T14:33:50Z'),
+    { id: 2325, notification_type: 'focus_handout', ref_type: 'focus_handout', ref_id: 53, title: 'Focus area ready', created_at: '2026-11-09T14:33:11Z' },
+    ready(2328, '2026-11-12T21:35:31Z'),
+    { id: 7, notification_type: 'note', title: 'No reference', created_at: '2026-11-01T00:00:00Z' },
+    { id: 8, notification_type: 'note', title: 'No reference either', created_at: '2026-11-02T00:00:00Z' }
+  ]);
+  ok('the same notice about the same module is listed once', once.filter((a) => a.ref_id === 12).length === 1);
+  ok('…and it is the newest one', once.find((a) => a.ref_id === 12).id === 2328);
+  ok('notices with no reference are all kept', once.filter((a) => a.notification_type === 'note').length === 2);
+  ok('newest first', once[0].id === 2328, once.map((a) => a.id).join(','));
+  ok('another kind of notice about another thing stays', once.some((a) => a.id === 2325));
+
+  const tutorAlerts = buildBellItems({
+    basePath: '/tutor',
+    openAlerts: true,
+    alerts: [{ ...ready(2328, '2026-11-12T21:35:31Z'), message: 'Check it.', student_name: 'Mark Santos', student_image_path: '/uploads/profiles/g.png', subject_name: 'SCIENCE' }]
+  });
+  ok('a tutor\'s notice opens through /tutor/alerts/:id/open (read, then where it points)', tutorAlerts[0].href === '/tutor/alerts/2328/open', tutorAlerts[0].href);
+  ok('it shows the student it is about', tutorAlerts[0].avatarName === 'Mark Santos' && tutorAlerts[0].avatarSrc === '/uploads/profiles/g.png');
+  ok('…and the subject, so two alike notices of one student tell apart', tutorAlerts[0].text === 'SCIENCE · Check it.', tutorAlerts[0].text);
+  ok('and can still be put away with its ×', tutorAlerts[0].dismissUrl === '/tutor/alerts/2328/read');
+  const plain = buildBellItems({ basePath: '/student', alerts: [{ id: 4, title: 'Payment reminder', link_url: '/student/billing', created_at: '2026-10-01T00:00:00Z' }] });
+  ok('other roles keep opening the stored link', plain[0].href === '/student/billing' && plain[0].avatarName === 'MindQuest');
+
   console.log(`\n${failures ? `${failures} FAILURE(S)` : 'Transactions queue their statements, and the bell lists every role the same way.'}`);
   process.exit(failures ? 1 : 0);
 })().catch((error) => { console.error('ERROR', error.message, error.stack); process.exit(1); });

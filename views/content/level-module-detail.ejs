@@ -9,7 +9,7 @@
 
     Locals: levelModule (with source, sections, status, error_message, is_stale),
             handouts, assessments, viewerRole ('tutor' | 'admin' | 'admin_assistant'),
-            moduleHref (the admin's module page for this viewer) %>
+            moduleHref (where Back goes for this viewer), moduleBackLabel (optional) %>
 <%
   const lm = levelModule;
   const src = lm.source;
@@ -40,7 +40,7 @@
           <button class="btn btn-secondary" type="submit">Write Again</button>
         </form>
       <% } %>
-      <a class="btn btn-secondary" href="<%= moduleHref %>">Back to Module</a>
+      <a class="btn btn-secondary" href="<%= moduleHref %>"><%= typeof moduleBackLabel !== 'undefined' && moduleBackLabel ? moduleBackLabel : 'Back to Module' %></a>
     </div>
   </div>
 

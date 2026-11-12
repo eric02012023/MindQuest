@@ -38,9 +38,12 @@
         <span class="badge badge-warning">Locked</span>
       <% } %>
     </p>
+    <%# The handout here is the student's own: every page of the module's handout,
+        with the pages the system added for their weak points (lib/modulePdf.js).
+        The tutor opens a locked module's too, to see what is coming. %>
     <div class="lpmod-actions">
-      <% if (row.status !== 'locked') { %>
-        <a class="btn btn-primary btn-sm" href="<%= basePath %>/path-modules/<%= row.id %>/pdf" target="_blank" rel="noopener">View Module (PDF)</a>
+      <% if (row.status !== 'locked' || canWrite) { %>
+        <a class="btn btn-primary btn-sm" href="<%= basePath %>/path-modules/<%= row.id %>/pdf" target="_blank" rel="noopener">Open Handout</a>
       <% } %>
       <% if (canWrite && canWriteActivity) { %>
         <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= row.id %>/create-assessment">Create Activity</a>
@@ -134,7 +137,7 @@
     <% } else { %>
       <div class="table-wrap">
         <table class="lpmod-table">
-          <thead><tr><th>Activity</th><th>For</th><th>Items</th><th>Score</th><th>Answered</th></tr></thead>
+          <thead><tr><th>Activity</th><th>For</th><th>Items</th><th>Score</th><th>Answered</th><th></th></tr></thead>
           <tbody>
             <% allActivities.forEach((a) => { %>
               <tr>
@@ -155,6 +158,11 @@
                   <% } %>
                 </td>
                 <td><%= a.submitted_at ? formatDateTime(a.submitted_at) : '—' %></td>
+                <td>
+                  <% if (a.submission_id) { %>
+                    <a class="btn btn-secondary btn-sm" href="<%= basePath %>/results/<%= a.submission_id %>">View Answers</a>
+                  <% } %>
+                </td>
               </tr>
             <% }) %>
           </tbody>

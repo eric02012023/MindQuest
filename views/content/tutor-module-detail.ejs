@@ -1,14 +1,8 @@
 <%# File: views/content/tutor-module-detail.ejs
-    Purpose: One module as the tutor sees it — Admin's handouts (readable, not
-    editable), the module written for each level (lib/levelModules.js), where
-    the tutor writes activities now, and every assessment on the module. %>
-<%
-  const levelRows = typeof levelModules === 'undefined' ? {} : (levelModules || {});
-  const levelNames = typeof levels === 'undefined' ? ['Beginner', 'Intermediate', 'Advance'] : levels;
-  const statusText = (row) => !row ? 'Not made yet'
-    : row.status === 'ready' ? 'Ready'
-      : row.status === 'failed' ? 'Could not be written' : 'Being written';
-%>
+    Purpose: One of the admin's modules as the tutor sees it — its handouts
+    (readable, not editable) and the activities shared on it. The tutor works in
+    each student's own modules now (Modules & Assessments); this page stays for
+    old links, without the level modules it used to list. %>
 <link rel="stylesheet" href="/css/level-modules.css" />
 <section class="page-stack">
   <div class="toolbar-card split">
@@ -27,43 +21,6 @@
       <p class="module-card-desc"><%= mod.description %></p>
     </section>
   <% } %>
-
-  <%# ---- Level modules: where the activities are written --------------------- %>
-  <section class="panel-card">
-    <div class="panel-card-head">
-      <h3>Level Modules</h3>
-    </div>
-    <div class="lm-level-grid">
-      <% levelNames.forEach((level) => { %>
-        <% const row = levelRows[level] || null; %>
-        <article class="lm-level-card">
-          <div class="lm-level-card-head">
-            <span class="lm-level lm-level-<%= level.toLowerCase() %>"><%= level %></span>
-            <span class="lm-status lm-status-<%= row ? row.status : 'none' %>"><%= statusText(row) %></span>
-          </div>
-          <% if (row) { %>
-            <p class="lm-level-card-meta">
-              <%= Number(row.assessment_count || 0) %> activit<%= Number(row.assessment_count || 0) === 1 ? 'y' : 'ies' %>
-              <% if (Number(row.section_count || 0)) { %>&middot; <%= row.section_count %> lesson part<%= Number(row.section_count) === 1 ? '' : 's' %><% } %>
-            </p>
-            <% if (row.status === 'failed' && row.error_message) { %>
-              <p class="lm-level-card-error"><%= row.error_message %></p>
-            <% } %>
-          <% } %>
-          <div class="lm-level-card-actions">
-            <% if (row) { %>
-              <a class="btn btn-primary btn-sm" href="/tutor/level-modules/<%= row.id %>">Open</a>
-            <% } %>
-            <% if (!row || row.status === 'failed') { %>
-              <form method="post" action="/tutor/modules/<%= mod.id %>/levels/<%= level %>/make">
-                <button class="btn btn-secondary btn-sm" type="submit"><%= row ? 'Try again' : 'Make' %></button>
-              </form>
-            <% } %>
-          </div>
-        </article>
-      <% }) %>
-    </div>
-  </section>
 
   <%# ---- Handouts (Admin's, read-only) ------------------------------------ %>
   <section class="panel-card">

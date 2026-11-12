@@ -1,0 +1,330 @@
+<%# File: views/content/tutor-student-modules.ejs
+    Purpose: One student's modules in a subject, for their tutor (Modules &
+    Assessments, then the student's box). Module 1, 2, 3 are the student's own —
+    each module's handout edited for them by the system — with what their
+    learning path asks of the tutor: check and open each module's assessment,
+    open the next take, try again what could not be written, and the
+    Post-Assessment; then every score, the Pre against the Post. A module opens
+    on its own page, where the tutor writes activities for this student.
+
+    A student whose Pre-Assessment came before learning paths has the modules of
+    their grade with the lesson written for their level instead, and their
+    Post-Assessment is opened here too.
+
+    Locals: student, studentLabel, subjectId, subjectName, kind ('path' |
+            'legacy' | 'none'), level, entry ({ view, scores, completion }),
+            cards (legacy: [{ module, handouts, levelModule, opened }])
+            — lib/learningPaths.js, tutorStudentModules %>
+<%
+  const pct = (value) => `${Number(value || 0).toFixed(1)}%`;
+  const levelKey = (value) => String(value || 'beginner').toLowerCase();
+  const view = entry && entry.view;
+  const completion = entry && entry.completion;
+  const grade = student.grade_level || student.year_level || '';
+%>
+<link rel="stylesheet" href="/css/level-modules.css" />
+<section class="page-stack">
+  <section class="panel-card tsm-head">
+    <div class="tsm-who">
+      <%- include('../partials/avatar', { avatarSrc: student.image_path, avatarName: studentLabel, avatarSize: 'md' }) %>
+      <div class="tsm-who-text">
+        <h2><%= studentLabel %></h2>
+        <div class="tsm-tags">
+          <span class="target-chip"><%= student.user_id || '—' %></span>
+          <span class="target-chip"><%= subjectName %></span>
+          <% if (grade) { %><span class="target-chip"><%= grade %></span><% } %>
+          <% if (level) { %><span class="lm-level lm-level-<%= levelKey(level) %>"><%= level %></span><% } %>
+        </div>
+      </div>
+    </div>
+    <a class="btn btn-secondary btn-sm" href="/tutor/modules">Back</a>
+  </section>
+
+  <% if (kind === 'none') { %>
+    <section class="panel-card">
+      <p class="empty-state"><%= studentLabel %> has not taken the <%= subjectName %> Pre-Assessment yet.</p>
+    </section>
+  <% } %>
+
+  <% if (kind === 'path' && view) { %>
+    <%# ---- Module 1, 2, 3: the student's own ----------------------------------- %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Modules</h3>
+        <span class="badge badge-info"><%= view.passed %> of <%= view.total %> passed</span>
+      </div>
+      <% if (!view.modules.length) { %>
+        <p class="empty-state">No module for <%= grade || 'this grade' %> yet.</p>
+      <% } %>
+      <div class="tsm-grid">
+        <% view.modules.forEach((m) => { %>
+          <% const number = m.order_number || m.position; %>
+          <article class="tsm-card tsm-card-<%= m.status %>">
+            <div class="tsm-card-head">
+              <span class="module-number">Module <%= number %></span>
+              <% if (m.status === 'passed') { %>
+                <span class="badge badge-success">Passed</span>
+              <% } else if (m.status === 'open') { %>
+                <span class="badge badge-info">Open</span>
+              <% } else { %>
+                <span class="badge badge-warning">Locked</span>
+              <% } %>
+            </div>
+            <h4><a href="/tutor/path-modules/<%= m.id %>"><%= m.module_title || `Module ${number}` %></a></h4>
+
+            <dl class="tsm-facts">
+              <% if (m.pre_total) { %>
+                <div>
+                  <dt>Pre-Assessment</dt>
+                  <dd><%= m.pre_correct %>/<%= m.pre_total %> right</dd>
+                </div>
+              <% } %>
+              <div>
+                <dt>Weak points</dt>
+                <dd>
+                  <% if (m.additions_status === 'ready') { %>
+                    <%= m.weak_point_count ? `${m.weak_point_count} · ${m.added_count} topics` : `${m.added_count} added` %>
+                  <% } else if (m.additions_status === 'none') { %>
+                    None needed
+                  <% } else if (m.additions_status === 'failed') { %>
+                    <span class="badge badge-warning">Not written</span>
+                  <% } else { %>
+                    Being written
+                  <% } %>
+                </dd>
+              </div>
+              <div>
+                <dt>Assessment</dt>
+                <dd>
+                  <% if (m.status === 'locked') { %>
+                    &mdash;
+                  <% } else if (m.assessment_status === 'passed' || (m.status === 'passed' && m.assessment_id)) { %>
+                    <span class="badge badge-success">Passed<% if (m.last_percentage !== null && m.last_percentage !== undefined) { %> &middot; <%= pct(m.last_percentage) %><% } %></span>
+                    <% if (m.passed_by) { %><span class="module-card-meta">marked by the admin</span><% } %>
+                  <% } else if (m.assessment_status === 'draft') { %>
+                    <span class="badge badge-warning">Ready to check</span>
+                  <% } else if (m.take_state === 'can_take') { %>
+                    <span class="badge badge-success">Open &middot; take <%= Number(m.takes_used) + 1 %></span>
+                  <% } else if (m.take_state === 'waiting_retake') { %>
+                    <span class="badge badge-warning">Needs another take</span>
+                  <% } else if (m.assessment_status === 'failed') { %>
+                    <span class="badge badge-warning">Not written</span>
+                  <% } else if (m.status === 'passed') { %>
+                    &mdash;
+                  <% } else { %>
+                    Being written
+                  <% } %>
+                </dd>
+              </div>
+              <% if (m.attempts.length) { %>
+                <div>
+                  <dt>Takes</dt>
+                  <dd>
+                    <% m.attempts.forEach((attempt) => { %>
+                      <a class="tsm-take" href="/tutor/path-attempts/<%= attempt.id %>"><%= attempt.attempt_number %>: <%= pct(attempt.percentage) %></a>
+                    <% }) %>
+                  </dd>
+                </div>
+              <% } %>
+            </dl>
+            <% if (m.additions_status === 'failed' && m.additions_error) { %>
+              <p class="tsm-error"><%= m.additions_error %></p>
+            <% } else if (m.assessment_status === 'failed' && !m.assessment_id && m.assessment_error) { %>
+              <p class="tsm-error"><%= m.assessment_error %></p>
+            <% } %>
+
+            <div class="tsm-actions">
+              <a class="btn btn-primary btn-sm" href="/tutor/path-modules/<%= m.id %>">Open</a>
+              <a class="btn btn-secondary btn-sm" href="/tutor/path-modules/<%= m.id %>/pdf" target="_blank" rel="noopener">Open Handout</a>
+              <% if (m.assessment_id && (m.assessment_status === 'draft' || m.status === 'open' || m.status === 'passed')) { %>
+                <a class="btn btn-secondary btn-sm" href="/tutor/path-assessments/<%= m.assessment_id %>/edit">
+                  <%= m.assessment_status === 'draft' ? 'Check / Edit' : 'View Questions' %>
+                </a>
+              <% } %>
+              <% if (m.assessment_status === 'draft' && m.status === 'open') { %>
+                <form method="post" action="/tutor/path-modules/<%= m.id %>/open"
+                      data-confirm-message="Open the Module <%= number %> assessment for <%= studentLabel %>? It can no longer be edited after that.">
+                  <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+                </form>
+              <% } %>
+              <% if (m.take_state === 'waiting_retake') { %>
+                <form method="post" action="/tutor/path-modules/<%= m.id %>/open"
+                      data-confirm-message="Open take <%= Number(m.takes_used) + 1 %> of the Module <%= number %> assessment for <%= studentLabel %>?">
+                  <button type="submit" class="btn btn-primary btn-sm">Open Next Take</button>
+                </form>
+              <% } %>
+              <% if (m.additions_status === 'failed' || (m.status === 'open' && m.assessment_status === 'failed' && !m.assessment_id)) { %>
+                <form method="post" action="/tutor/path-modules/<%= m.id %>/retry">
+                  <button type="submit" class="btn btn-secondary btn-sm">Try Again</button>
+                </form>
+              <% } %>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+
+    <%# ---- The Post-Assessment: their Pre-Assessment's questions, new order ---- %>
+    <% const p = view.path; %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Post-Assessment</h3>
+        <% if (p.post_status === 'taken' || (view.post && view.post.submission_id)) { %>
+          <span class="badge badge-success">Taken</span>
+        <% } else if (p.post_status === 'open') { %>
+          <span class="badge badge-success">Open</span>
+        <% } else if (p.post_status === 'draft') { %>
+          <span class="badge badge-warning">Ready to check</span>
+        <% } else if (p.post_status === 'failed') { %>
+          <span class="badge badge-warning">Not written</span>
+        <% } else if (p.post_status === 'waiting') { %>
+          <span class="badge badge-info">After every module</span>
+        <% } else { %>
+          <span class="badge badge-info">Being prepared</span>
+        <% } %>
+      </div>
+      <% if (p.post_status === 'failed' && p.post_error) { %>
+        <p class="tsm-error"><%= p.post_error %></p>
+      <% } %>
+      <div class="tsm-post">
+        <% if (view.post && view.post.item_count) { %>
+          <span class="module-card-meta"><%= view.post.item_count %> questions</span>
+        <% } %>
+        <% if (view.post && view.post.submission_id) { %>
+          <a class="btn btn-secondary btn-sm" href="/tutor/results/<%= view.post.submission_id %>">Result &middot; <%= pct(view.post.percentage) %></a>
+        <% } %>
+        <% if (p.post_assessment_id) { %>
+          <a class="btn btn-secondary btn-sm" href="/tutor/path-assessments/<%= p.post_assessment_id %>/edit">
+            <%= p.post_status === 'draft' ? 'Check / Edit' : 'View Questions' %>
+          </a>
+        <% } %>
+        <% if (p.post_status === 'draft') { %>
+          <form method="post" action="/tutor/paths/<%= p.id %>/post/open"
+                data-confirm-message="Open the Post-Assessment for <%= studentLabel %>? It can no longer be edited after that.">
+            <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+          </form>
+        <% } %>
+        <% if (p.post_status === 'failed') { %>
+          <form method="post" action="/tutor/paths/<%= p.id %>/post/retry">
+            <button type="submit" class="btn btn-secondary btn-sm">Try Again</button>
+          </form>
+        <% } %>
+      </div>
+    </section>
+
+    <% if (entry.scores) { %>
+      <%- include('../partials/path-scores', { scores: entry.scores, viewer: 'staff', linkBase: '/tutor' }) %>
+    <% } %>
+  <% } %>
+
+  <% if (kind === 'legacy' && completion) { %>
+    <%# ---- A Pre-Assessment from before learning paths: the level's modules ---- %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Modules</h3>
+        <span class="badge badge-info"><%= completion.modulesOpened %> of <%= completion.modulesTotal %> opened</span>
+      </div>
+      <p class="table-note">Pre-Assessment taken before learning paths</p>
+      <% if (!cards.length) { %>
+        <p class="empty-state">No module for <%= grade || 'this grade' %> yet.</p>
+      <% } %>
+      <div class="tsm-grid">
+        <% cards.forEach((card) => { %>
+          <% const mod = card.module; %>
+          <article class="tsm-card">
+            <div class="tsm-card-head">
+              <span class="module-number">Module <%= mod.order_number %></span>
+              <span class="badge <%= card.opened ? 'badge-success' : 'badge-warning' %>"><%= card.opened ? 'Opened' : 'Not opened yet' %></span>
+            </div>
+            <h4><%= mod.title %></h4>
+            <dl class="tsm-facts">
+              <div>
+                <dt>Lesson</dt>
+                <dd>
+                  <% if (!card.levelModule) { %>
+                    &mdash;
+                  <% } else if (card.levelModule.status === 'ready') { %>
+                    <span class="lm-level lm-level-<%= levelKey(card.levelModule.level) %>"><%= card.levelModule.level %></span>
+                  <% } else if (card.levelModule.status === 'failed') { %>
+                    <span class="badge badge-warning">Not written</span>
+                  <% } else { %>
+                    Being written
+                  <% } %>
+                </dd>
+              </div>
+            </dl>
+            <div class="tsm-actions">
+              <% if (card.levelModule) { %>
+                <a class="btn btn-primary btn-sm" href="/tutor/level-modules/<%= card.levelModule.id %>?student=<%= student.id %>">Open</a>
+              <% } %>
+              <% card.handouts.forEach((h, n) => { %>
+                <a class="btn btn-secondary btn-sm" href="<%= h.file_path %>" target="_blank" rel="noopener">Open Handout<%= card.handouts.length > 1 ? ` ${n + 1}` : '' %></a>
+              <% }) %>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
+
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Post-Assessment</h3>
+        <% if (completion.postTaken) { %>
+          <span class="badge badge-success">Taken</span>
+        <% } else if (completion.postStatus === 'open') { %>
+          <span class="badge badge-success">Open</span>
+        <% } else { %>
+          <span class="badge badge-info">Not open</span>
+        <% } %>
+      </div>
+      <div class="tsm-post">
+        <span class="module-card-meta">Activities answered: <%= completion.assessmentsDone %>/<%= completion.assessmentsTotal %></span>
+        <% if (completion.postTaken && completion.postSubmission) { %>
+          <a class="btn btn-secondary btn-sm" href="/tutor/results/<%= completion.postSubmission.id %>">Result &middot; <%= pct(completion.postSubmission.percentage) %></a>
+        <% } else if (completion.postStatus !== 'open') { %>
+          <% if (completion.isComplete) { %>
+            <form method="post" action="/tutor/students/<%= student.id %>/subjects/<%= subjectId %>/post/open"
+                  data-confirm-message="Open the Post-Assessment for <%= studentLabel %>?">
+              <button type="submit" class="btn btn-primary btn-sm">Open Post-Assessment</button>
+            </form>
+          <% } else { %>
+            <span class="module-card-meta">Opens once every module is opened and every activity answered.</span>
+          <% } %>
+        <% } %>
+      </div>
+    </section>
+
+    <% const preSub = completion.preSubmission; const postSub = completion.postSubmission; %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Pre-Assessment vs Post-Assessment</h3>
+        <% if (preSub && postSub) { %>
+          <% const delta = Number(postSub.percentage) - Number(preSub.percentage); %>
+          <span class="tsm-delta <%= delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : '' %>"><%= delta > 0 ? '+' : '' %><%= delta.toFixed(1) %> points</span>
+        <% } %>
+      </div>
+      <div class="tsm-compare">
+        <div>
+          <span class="tsm-cap">Pre-Assessment</span>
+          <% if (preSub) { %>
+            <a class="tsm-pct" href="/tutor/results/<%= preSub.id %>"><%= pct(preSub.percentage) %></a>
+            <span class="lm-level lm-level-<%= levelKey(preSub.level) %>"><%= preSub.level %></span>
+          <% } else { %>
+            <span class="tsm-pct">&mdash;</span>
+          <% } %>
+        </div>
+        <div class="tsm-arrow" aria-hidden="true">&rarr;</div>
+        <div>
+          <span class="tsm-cap">Post-Assessment</span>
+          <% if (postSub) { %>
+            <a class="tsm-pct" href="/tutor/results/<%= postSub.id %>"><%= pct(postSub.percentage) %></a>
+            <span class="lm-level lm-level-<%= levelKey(postSub.level) %>"><%= postSub.level %></span>
+          <% } else { %>
+            <span class="tsm-pct">&mdash;</span>
+            <span class="module-card-meta">Not taken yet</span>
+          <% } %>
+        </div>
+      </div>
+    </section>
+  <% } %>
+</section>

@@ -1,15 +1,27 @@
 <%# File: views/content/learning-path-edit.ejs
     Purpose: Check — and, until it is opened, edit — an assessment written for
-    one student on their learning path (lib/learningPaths.js).
+    one student on their learning path (lib/learningPaths.js). The tutor opens
+    it for the student from here too (openAction), once it is checked.
     Locals: assessment (with questions and options), editable, reason,
-            allowedTypes, saveAction, backHref, edits, studentLabel %>
+            allowedTypes, saveAction, backHref, edits, studentLabel,
+            openAction, openConfirm (optional) %>
 <% const questions = assessment.questions || []; %>
 <% const typeName = (t) => t === 'multiple_choice' ? 'Multiple Choice' : t === 'true_false' ? 'True or False' : t; %>
+<% const openHere = typeof openAction === 'undefined' ? null : openAction; %>
 <section class="page-stack">
   <div class="panel-card">
     <div class="panel-card-head">
       <h2><%= assessment.title %></h2>
-      <a class="btn btn-secondary btn-sm" href="<%= backHref %>">Back</a>
+      <div class="lpe-head-actions">
+        <% if (openHere) { %>
+          <form method="post" action="<%= openHere %>"
+                data-confirm-message="<%= typeof openConfirm === 'undefined' || !openConfirm ? 'Open it for the student? It can no longer be edited after that.' : openConfirm %>">
+            <input type="hidden" name="back" value="module" />
+            <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+          </form>
+        <% } %>
+        <a class="btn btn-secondary btn-sm" href="<%= backHref %>">Back</a>
+      </div>
     </div>
     <p><strong>Student:</strong> <%= studentLabel %></p>
     <p><strong>Questions:</strong> <%= questions.length %></p>
@@ -186,7 +198,27 @@
           renumber();
           node.querySelector('.lpe-text').focus();
         });
+        // Opening it for the student while an edit is not saved would give them
+        // the questions as they were: save first.
+        var dirty = false;
+        form.addEventListener('input', function () { dirty = true; });
+        form.addEventListener('change', function () { dirty = true; });
+        form.addEventListener('click', function (event) {
+          if (event.target.closest('#lpe-add, .lpe-remove')) dirty = true;
+        });
+        var openForm = document.querySelector('.lpe-head-actions form');
+        if (openForm) {
+          openForm.addEventListener('submit', function (event) {
+            if (!dirty) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof window.mqAlert === 'function') {
+              window.mqAlert('Save the questions first, then open it for the student.', 'Not saved yet');
+            }
+          });
+        }
         form.addEventListener('submit', function () {
+          dirty = false;
           var items = list.querySelectorAll('.lpe-item');
           var out = [];
           for (var i = 0; i < items.length; i++) {
@@ -225,6 +257,8 @@
 </section>
 
 <style>
+  .lpe-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .lpe-head-actions form { margin: 0; }
   .lpe-field { display: grid; gap: 4px; margin-top: 10px; }
   .lpe-field > span { font-size: 13px; font-weight: 700; color: var(--text-soft, #5f7084); }
   .lpe-field textarea, .lpe-field input, .lpe-field select { width: 100%; }

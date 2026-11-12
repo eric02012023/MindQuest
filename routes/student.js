@@ -1915,6 +1915,20 @@ router.post('/tutor-assessments/:id/submit', async (req, res, next) => {
 
     await finaliseSitting(req, { assessmentId, submissionId: result.submissionId });
 
+    // An activity their tutor wrote for them alone: the tutor is told the score,
+    // and the notice opens the answers (lib/learningPaths.js). Never throws.
+    if (gate.pathModuleId) {
+      await paths.notifyActivityAnswered({
+        assessment: gate.assessment,
+        studentId,
+        submissionId: result.submissionId,
+        score: result.score,
+        totalPoints: result.totalPoints,
+        percentage: result.percentage,
+        pathModuleId: gate.pathModuleId
+      });
+    }
+
     setFlash(
       req,
       req.body.auto_submitted ? 'warning' : 'success',

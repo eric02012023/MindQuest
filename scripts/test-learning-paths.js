@@ -54,6 +54,12 @@ function answer(text, params = []) {
   const sql = String(text).replace(/\s+/g, ' ').trim();
   db.statements.push({ sql, params });
   if (sql.startsWith('INSERT')) return { insertId: ++db.insertId };
+  if (sql.startsWith('SELECT TOP 1 usa.tutor_id')) return db.assignedTutor ? [db.assignedTutor] : [];
+  if (db.boxes) {
+    if (sql.startsWith('SELECT DISTINCT usa.subject_id')) return db.boxes.enrolled;
+    if (sql.includes("WHERE ta.assessment_kind = 'pre_assessment' AND ta.subject_id IN")) return db.boxes.sittings;
+    if (sql.includes('WHERE lp.pre_submission_id IN')) return db.boxes.paths;
+  }
   if (db.post) {
     if (sql.startsWith('UPDATE learning_paths SET post_status = \'generating\'')) return [{ id: db.post.path.id }];
     if (sql.includes('FROM learning_paths lp JOIN subjects s')) return [db.post.path];
@@ -590,6 +596,95 @@ async function main() {
   ok('activities and level modules are not touched',
     !deletes.some((s) => /level_modules|student_module_reads/.test(s)));
   db.reset = null;
+
+  console.log('\n== the tutor is told, and the notice opens the very page it is about ==');
+  db.post = {
+    path: { id: 3, student_id: 5, subject_id: 2, subject_name: 'SCIENCE', grade_level: 'Grade 4', pre_submission_id: 70, pre_assessment_id: 55, post_status: 'pending', first_name: 'Ana', last_name: 'Reyes' },
+    modules: [{ id: 11, path_id: 3, module_id: 61, position: 1, status: 'passed', additions_json: '[]' }]
+  };
+  db.assessment = {
+    header: { id: 55, subject_id: 2, title: 'Pre-Assessment — SCIENCE (Grade 4)', subject_name: 'SCIENCE', assessment_kind: 'pre_assessment' },
+    questions: preQuestions.map(({ options, ...q }) => q),
+    options: preQuestions.flatMap((q) => q.options)
+  };
+  db.assignedTutor = { tutor_id: 353, first_name: 'Rosa', last_name: 'Lim' };
+  db.statements = [];
+  const told = await paths.runJobNow('post', 3);
+  const notices = db.statements.filter((s) => s.sql.startsWith('INSERT INTO app_notifications'));
+  const putAway = db.statements.findIndex((s) => s.sql.startsWith('UPDATE app_notifications SET is_read = 1') && s.params.includes(353));
+  ok('the Post is made and the student\'s tutor is told', told.ok === true && notices.length === 1 && notices[0].params.includes(353),
+    JSON.stringify(notices.map((n) => n.params)));
+  ok('the notice opens the Post-Assessment\'s questions, to check them',
+    notices.length === 1 && notices[0].params.some((p) => /^\/tutor\/path-assessments\/\d+\/edit$/.test(String(p))));
+  ok('an unread notice about the same thing is put away first, so the bell lists it once',
+    putAway >= 0 && putAway < db.statements.indexOf(notices[0]));
+  db.post = null;
+  db.assessment = null;
+
+  db.pathModule = {
+    id: 12, path_id: 5, module_id: 62, position: 1, order_number: 1, status: 'open', student_id: 352, subject_id: 5,
+    first_name: 'Mark', last_name: 'Santos', additions_json: '[]'
+  };
+  db.statements = [];
+  await paths.notifyActivityAnswered({
+    assessment: { id: 700, title: 'Plants practice', subject_id: 5, for_student_id: 352, tutor_id: 353 },
+    studentId: 352, submissionId: 901, score: 4, totalPoints: 5, percentage: 80, pathModuleId: 12
+  });
+  const answered = db.statements.find((s) => s.sql.startsWith('INSERT INTO app_notifications'));
+  ok('an activity given to one student, answered: their tutor is told the score',
+    !!answered && answered.params.includes(353) && answered.params.some((p) => String(p) === 'Mark Santos answered "Plants practice" (80.0%)'),
+    answered ? JSON.stringify(answered.params.slice(0, 3)) : 'no notice');
+  ok('…and the notice opens the student\'s answers',
+    !!answered && answered.params.includes('/tutor/results/901') && answered.params.includes('tutor_submission') && answered.params.includes(901));
+  db.statements = [];
+  await paths.notifyActivityAnswered({
+    assessment: { id: 701, title: 'Shared', subject_id: 5, for_student_id: null }, studentId: 352, submissionId: 902, pathModuleId: 12
+  });
+  ok('an activity shared with a whole level tells nobody', !db.statements.some((s) => s.sql.startsWith('INSERT INTO app_notifications')));
+  db.assignedTutor = null;
+  db.pathModule = null;
+
+  console.log('\n== Modules & Assessments: a box per student who took the Pre-Assessment ==');
+  db.boxes = {
+    enrolled: [
+      { subject_id: 5, student_id: 352, student_code: 'STD-0901', first_name: 'Mark', last_name: 'Santos', grade_level: 'Grade 1', image_path: null },
+      { subject_id: 5, student_id: 304, student_code: 'STD-0902', first_name: 'Ana', last_name: 'Cruz', grade_level: 'Grade 4', image_path: '/uploads/profiles/a.png' },
+      { subject_id: 5, student_id: 77, student_code: 'STD-0077', first_name: 'Ben', last_name: 'Lim', grade_level: 'Grade 2', image_path: null },
+      { subject_id: 4, student_id: 352, student_code: 'STD-0901', first_name: 'Mark', last_name: 'Santos', grade_level: 'Grade 1', image_path: null },
+      { subject_id: 4, student_id: 88, student_code: 'STD-0903', first_name: 'Carla', last_name: 'Diaz', grade_level: 'Grade 5', image_path: null }
+    ],
+    sittings: [
+      { id: 1147, student_id: 352, subject_id: 5, pre_grade: 'Grade 1', level: 'Beginner' },
+      { id: 1145, student_id: 352, subject_id: 4, pre_grade: 'Grade 1', level: 'Advanced' },
+      { id: 1140, student_id: 304, subject_id: 5, pre_grade: 'Grade 4', level: 'Intermediate' },
+      { id: 1100, student_id: 88, subject_id: 4, pre_grade: 'Grade 3', level: 'Advance' }
+    ],
+    paths: [
+      { id: 5, student_id: 352, subject_id: 5, pre_submission_id: 1147, placement_level: 'Beginner', post_status: 'waiting', total: 3, passed: 0, to_check: 1 },
+      { id: 4, student_id: 352, subject_id: 4, pre_submission_id: 1145, placement_level: 'Beginner', post_status: 'draft', total: 2, passed: 2, to_check: 0 }
+    ]
+  };
+  const withBoxes = await paths.tutorModuleBoxes(353, [
+    { subject_id: 4, subject_name: 'ENGLISH' }, { subject_id: 5, subject_name: 'SCIENCE' }, { subject_id: 9, subject_name: 'FILIPINO' }
+  ]);
+  const science = withBoxes.find((s) => s.subject_id === 5);
+  const english = withBoxes.find((s) => s.subject_id === 4);
+  ok('every subject the tutor teaches is listed, in order', withBoxes.map((s) => s.subject_name).join(',') === 'ENGLISH,SCIENCE,FILIPINO');
+  ok('only a student who took the Pre-Assessment gets a box, by name', science.boxes.map((b) => b.code).join(',') === 'STD-0902,STD-0901',
+    science.boxes.map((b) => b.code).join(','));
+  ok('a Pre-Assessment of another grade does not count', english.boxes.map((b) => b.code).join(',') === 'STD-0901');
+  const mark = science.boxes.find((b) => b.code === 'STD-0901');
+  ok('a box says whose modules: the name, the grade and the level of the module',
+    mark.name === 'Mark Santos' && mark.grade === 'Grade 1' && mark.level === 'Beginner' && mark.onPath);
+  ok('on a learning path the level is the path\'s placement', english.boxes[0].level === 'Beginner');
+  ok('before learning paths: the level of their Pre-Assessment', science.boxes[0].level === 'Intermediate' && !science.boxes[0].onPath);
+  ok('what waits for the tutor to check is counted, the Post included', mark.toCheck === 1 && english.boxes[0].toCheck === 1);
+  ok('a box opens the student\'s own modules', mark.href === '/tutor/modules/students/352/5');
+  ok('a subject where nobody took it has no box', withBoxes.find((s) => s.subject_id === 9).boxes.length === 0);
+  db.boxes = null;
+  db.statements = [];
+  const noSubjects = await paths.tutorModuleBoxes(353, []);
+  ok('no subject: nothing asked of the database', noSubjects.length === 0 && db.statements.length === 0);
 
   console.log(`\n${failures ? `${failures} FAILURE(S)` : 'Learning paths hold: every page kept, five topics per weak point, Advance opens the next module, a retake opens at once, the Post repeats the Pre.'}`);
   process.exit(failures ? 1 : 0);

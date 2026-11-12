@@ -1386,3 +1386,170 @@ body {
 .ts-row-pending { background: rgba(210, 138, 31, .05); }
 .ts-row-pending td { color: var(--text-soft); }
 .ts-row-pending strong { color: var(--text); }
+
+/* ------------------------------------------------ Modules & Assessments
+   One box per student who took the Pre-Assessment (tutor-modules.ejs), then
+   that student's Module 1, 2, 3 (tutor-student-modules.ejs). The pages of a
+   student's module, its assessment and its takes live in this section too. */
+.tm-box-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.tm-box {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  text-decoration: none;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.tm-box:hover,
+.tm-box:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(34, 200, 22, .45);
+  box-shadow: var(--shadow-md);
+}
+.tm-box:focus-visible { outline: 3px solid rgba(34, 200, 22, .35); outline-offset: 2px; }
+
+.tm-box-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tm-box-who .mq-avatar { flex: none; }
+.tm-box-name { display: grid; gap: 2px; min-width: 0; }
+.tm-box-name strong { font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+.tm-box-name span { font-size: 12px; color: var(--text-soft); }
+
+.tm-box-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.tm-box-fact { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.tm-box-fact small {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.tm-box-fact b { font-size: 14px; }
+
+.tm-box-flag { flex: none; margin-left: auto; align-self: flex-start; white-space: nowrap; }
+
+/* A student's page: whose modules, then Module 1, 2, 3 */
+.tsm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.tsm-who { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.tsm-who .mq-avatar { flex: none; }
+.tsm-who-text { display: grid; gap: 8px; min-width: 0; }
+.tsm-who-text h2 { margin: 0; overflow-wrap: anywhere; }
+.tsm-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.tsm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.tsm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.tsm-card-locked { background: var(--surface-soft); }
+.tsm-card-passed { border-color: rgba(50, 166, 90, .45); }
+.tsm-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tsm-card h4 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.tsm-card h4 a { color: var(--text); text-decoration: none; }
+.tsm-card h4 a:hover { color: var(--primary-700); text-decoration: underline; }
+
+.tsm-facts { display: grid; gap: 6px; margin: 0; }
+.tsm-facts > div {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+.tsm-facts dt {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.tsm-facts dd { margin: 0; font-size: 13.5px; min-width: 0; }
+.tsm-take { display: inline-block; margin-right: 8px; white-space: nowrap; font-size: 13px; }
+
+.tsm-error { margin: 0; font-size: 12.5px; color: var(--danger); overflow-wrap: anywhere; }
+
+.tsm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+.tsm-actions form,
+.tsm-post form { margin: 0; }
+
+.tsm-post { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; }
+
+.tsm-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+.tsm-compare > div:not(.tsm-arrow) { display: grid; gap: 4px; justify-items: center; min-width: 120px; }
+.tsm-cap { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-soft); }
+.tsm-pct { font-size: 24px; font-weight: 800; line-height: 1.1; color: var(--text); text-decoration: none; }
+a.tsm-pct:hover { color: var(--primary-700); }
+.tsm-arrow { font-size: 22px; color: var(--text-soft); }
+.tsm-delta { font-size: 13px; font-weight: 700; color: var(--text-soft); white-space: nowrap; }
+.tsm-delta.is-up { color: #1a7a3a; }
+.tsm-delta.is-down { color: #a43030; }
+
+/* Shared by the learning-path pages that now open in this section */
+.tutor-modules-page .lock-note { margin: 12px 0 16px; font-size: 14px; color: var(--text-soft); }
+.tutor-modules-page .list-stack { display: grid; gap: 12px; }
+.tutor-modules-page .list-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+@media (max-width: 640px) {
+  .tm-box-grid,
+  .tsm-grid { grid-template-columns: minmax(0, 1fr); }
+  .tsm-facts > div { grid-template-columns: 104px 1fr; }
+}

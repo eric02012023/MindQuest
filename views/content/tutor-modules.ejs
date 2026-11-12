@@ -1,70 +1,55 @@
 <%# File: views/content/tutor-modules.ejs
-    Purpose: The tutor's entry point into the module system — every assigned
-    subject and its modules, grade by grade (each module is for one grade level,
-    numbered within it). Read-only: Admin owns modules and handouts; the tutor
-    builds assessments on top of them. %>
-<%# The page header card that used to sit here repeated the title already in the
-    topbar and described what the subject panels below already show. %>
+    Purpose: Modules & Assessments — per subject the tutor teaches, one box per
+    student of theirs who has taken its Pre-Assessment: the student's name, grade
+    and the level of their modules. A box opens that student's own modules
+    (Module 1, 2, 3, edited for them), where the tutor checks and opens their
+    assessments and writes activities for them (tutor-student-modules.ejs).
+
+    The admin's modules, unedited, are opened from My Subjects.
+
+    Locals: subjectsWithBoxes [{ subject_id, subject_name, boxes: [{ studentId,
+            subjectId, name, code, grade, level, imagePath, onPath, passed,
+            total, toCheck, href }] }] (lib/learningPaths.js, tutorModuleBoxes) %>
 <link rel="stylesheet" href="/css/level-modules.css" />
+<% const subjects = typeof subjectsWithBoxes === 'undefined' ? [] : (subjectsWithBoxes || []); %>
 <section class="page-stack">
-  <% if (!(subjectsWithModules || []).length) { %>
+  <% if (!subjects.length) { %>
     <section class="panel-card">
       <p class="empty-state">You have no assigned subjects yet.</p>
     </section>
   <% } %>
 
-  <% subjectsWithModules.forEach((subject) => { %>
+  <% subjects.forEach((subject) => { %>
     <section class="panel-card">
       <div class="panel-card-head">
         <h3><%= subject.subject_name %></h3>
-        <span class="badge badge-info"><%= subject.modules.length %> module<%= subject.modules.length === 1 ? '' : 's' %></span>
+        <span class="badge badge-info"><%= subject.boxes.length %> student<%= subject.boxes.length === 1 ? '' : 's' %></span>
       </div>
 
-      <% if (!subject.modules.length) { %>
-        <p class="empty-state">No modules for this subject yet. Admin adds them from the subject page.</p>
-      <% } %>
-
-      <div class="module-grid">
-        <% subject.modules.forEach((mod) => { %>
-          <article class="module-card">
-            <div class="module-card-head">
-              <span class="module-number">Module <%= mod.order_number %></span>
-              <span class="badge <%= Number(mod.handout_count) ? 'badge-success' : 'badge-warning' %>">
-                <%= mod.handout_count %> handout<%= Number(mod.handout_count) === 1 ? '' : 's' %>
-              </span>
-            </div>
-            <h4><%= mod.title %></h4>
-            <% if (mod.description) { %><p class="module-card-desc"><%= mod.description %></p><% } %>
-
-            <div class="module-card-targets">
-              <strong>Grade level</strong>
-              <div class="target-chips">
-                <span class="target-chip"><%= mod.grade_level || 'Not set' %></span>
-              </div>
-            </div>
-
-            <%# The levels this module has been written for (lib/levelModules.js). %>
-            <% const written = ['Beginner', 'Intermediate', 'Advance'].filter((level) => (mod.levelModules || {})[level]); %>
-            <% if (written.length) { %>
-              <div class="module-card-targets">
-                <strong>Level modules</strong>
-                <div class="lm-level-chips">
-                  <% written.forEach((level) => { %>
-                    <a class="lm-level lm-level-<%= level.toLowerCase() %>" href="/tutor/level-modules/<%= mod.levelModules[level].id %>"><%= level %></a>
-                  <% }) %>
+      <% if (!subject.boxes.length) { %>
+        <p class="empty-state">No student of yours has taken the <%= subject.subject_name %> Pre-Assessment yet.</p>
+      <% } else { %>
+        <div class="tm-box-grid">
+          <% subject.boxes.forEach((box) => { %>
+            <a class="tm-box" href="<%= box.href %>">
+              <div class="tm-box-who">
+                <%- include('../partials/avatar', { avatarSrc: box.imagePath, avatarName: box.name, avatarSize: 'md' }) %>
+                <div class="tm-box-name">
+                  <strong><%= box.name %></strong>
+                  <span><%= box.code %></span>
                 </div>
+                <% if (box.toCheck) { %>
+                  <span class="badge badge-warning tm-box-flag"><%= box.toCheck %> to check</span>
+                <% } %>
               </div>
-            <% } %>
-
-            <div class="module-card-foot">
-              <span class="module-card-meta">
-                <%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %>
-              </span>
-              <a class="btn btn-primary btn-sm" href="/tutor/modules/<%= mod.id %>">Open</a>
-            </div>
-          </article>
-        <% }) %>
-      </div>
+              <div class="tm-box-facts">
+                <span class="tm-box-fact"><small>Grade level</small><b><%= box.grade || '—' %></b></span>
+                <span class="tm-box-fact"><small>Level of module</small><span class="lm-level lm-level-<%= String(box.level).toLowerCase() %>"><%= box.level %></span></span>
+              </div>
+            </a>
+          <% }) %>
+        </div>
+      <% } %>
     </section>
   <% }) %>
 </section>

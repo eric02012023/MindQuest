@@ -87,8 +87,9 @@
             <% subjects.forEach((sub) => { %><span class="mq-subject-chip"><%= sub.subject_name %></span><% }) %>
           </div>
           <div class="mq-chip-list" style="margin-top: 10px;">
+            <%# Each opens the student's own modules in Modules & Assessments. %>
             <% subjects.forEach((sub) => { %>
-              <a class="btn btn-secondary btn-sm" href="/tutor/students/<%= student.id %>/path/<%= sub.subject_id %>">Learning Path: <%= sub.subject_name %></a>
+              <a class="btn btn-secondary btn-sm" href="/tutor/modules/students/<%= student.id %>/<%= sub.subject_id %>">Modules: <%= sub.subject_name %></a>
             <% }) %>
           </div>
         <% } %>

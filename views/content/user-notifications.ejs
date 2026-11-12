@@ -3,7 +3,8 @@
     "See all" goes.
 
       tutor    students asking them to be their tutor (Accept / Decline), then
-               their updates (a focus area ready, a student who added a subject)
+               their updates (a focus area ready, a student's module assessment
+               or Post-Assessment to check, a module passed, an activity answered)
       student  tutors' answers to their requests, then their updates (payment
                reminders)
 
@@ -88,16 +89,19 @@
         <thead><tr><th>When</th><th>Update</th><th>Status</th><th>Manage</th></tr></thead>
         <tbody>
           <% if (!updates.length) { %>
-            <tr><td colspan="4"><%= isTutor ? 'No updates yet. You are told here when a focus area is ready for one of your students.' : 'No updates yet. Payment reminders appear here.' %></td></tr>
+            <tr><td colspan="4"><%= isTutor ? 'No updates yet. Your students\' focus areas, modules and activities are told here.' : 'No updates yet. Payment reminders appear here.' %></td></tr>
           <% } %>
           <% updates.forEach((alert) => { %>
+            <%# A tutor's notice opens through /tutor/alerts/:id/open: it is read
+                from then on, and lands on the very page it is about. %>
+            <% const openHref = isTutor ? `/tutor/alerts/${alert.id}/open` : alert.link_url; %>
             <tr>
               <td><%= formatDateTime(alert.created_at) %></td>
-              <td><strong><%= alert.title %></strong><br /><small><%= alert.message || '' %></small></td>
+              <td><strong><%= alert.title %></strong><br /><small><%= alert.subject_name ? `${alert.subject_name} · ` : '' %><%= alert.message || '' %></small></td>
               <td><span class="badge <%= alert.is_read ? 'badge-success' : 'badge-warning' %>"><%= alert.is_read ? 'Read' : 'New' %></span></td>
               <td>
                 <div class="un-row-actions">
-                  <% if (alert.link_url) { %><a class="btn btn-secondary btn-sm" href="<%= alert.link_url %>">Open</a><% } %>
+                  <% if (openHref) { %><a class="btn btn-secondary btn-sm" href="<%= openHref %>">Open</a><% } %>
                   <% if (!alert.is_read) { %>
                     <form method="post" action="<%= basePath %>/alerts/<%= alert.id %>/read"><button class="btn btn-secondary btn-sm" type="submit">Mark as read</button></form>
                   <% } %>

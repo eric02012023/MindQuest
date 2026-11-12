@@ -27,9 +27,14 @@
   const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
   // Worst first: the point of this page is deciding what to teach next.
   const topics = [...(weakAreas || [])].sort((a, b) => Number(a.percentage) - Number(b.percentage));
-  const backUrl = isStudent
-    ? `/student/subjects/${submission.subject_id}`
-    : `${basePath}/subjects/${submission.subject_id}`;
+  // A page can send Back elsewhere (backHref, backLabel): the tutor's take of a
+  // module assessment, or an activity of a student's module, goes back to it.
+  const backUrl = typeof backHref !== 'undefined' && backHref
+    ? backHref
+    : isStudent
+      ? `/student/subjects/${submission.subject_id}`
+      : `${basePath}/subjects/${submission.subject_id}`;
+  const backText = typeof backLabel !== 'undefined' && backLabel ? backLabel : 'Back to subject';
 %>
 <section class="mq-page">
 
@@ -46,7 +51,7 @@
           · <%= formatDateTime(submission.submitted_at) %>
         </p>
       </div>
-      <a class="mq-btn mq-btn-sm" href="<%= backUrl %>">Back to subject</a>
+      <a class="mq-btn mq-btn-sm" href="<%= backUrl %>"><%= backText %></a>
     </div>
   </div>
 

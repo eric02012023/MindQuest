@@ -29,8 +29,13 @@
       creation and handouts. Each module is for ONE grade level and only that
       grade's students see it, so they are listed grade by grade — the grades
       this tutor's own students are in first.
+
+      Each module opens its handout as the admin uploaded it, unedited. A
+      student's own copy — edited for them — and the activities written for
+      them are in Modules & Assessments.
       ------------------------------------------------------------------------ %>
   <%
+    const handoutsOf = (mod) => (typeof moduleHandouts !== 'undefined' && moduleHandouts && moduleHandouts.get(Number(mod.id))) || [];
     const myGrades = new Map();
     myStudents.forEach((student) => {
       const grade = studentGradeOf(student);
@@ -81,12 +86,15 @@
               </div>
             </div>
 
-            <div class="module-card-foot">
-              <% if (Number(mod.assessment_count)) { %>
-                <span class="module-card-meta"><%= mod.assessment_count %> assessment<%= Number(mod.assessment_count) === 1 ? '' : 's' %></span>
-              <% } %>
-              <a class="btn btn-secondary btn-sm" href="/tutor/modules/<%= mod.id %>/create-assessment">Create Assessment</a>
-            </div>
+            <% const files = handoutsOf(mod); %>
+            <% if (files.length) { %>
+              <div class="module-card-foot module-card-handouts">
+                <% files.forEach((h, n) => { %>
+                  <a class="btn btn-secondary btn-sm" href="<%= h.file_path %>" target="_blank" rel="noopener"
+                     title="<%= h.title || h.file_original_name || 'Handout' %>">Open Handout<%= files.length > 1 ? ` ${n + 1}` : '' %></a>
+                <% }) %>
+              </div>
+            <% } %>
           </article>
         <% }) %>
       </div>
@@ -146,12 +154,12 @@
   <%# ------------------------------------------------------------------------
       Post-Assessment (overhaul Phase 8, acceptance item 12).
 
-      The tutor opens each student's Post-Assessment once they finish their
-      modules; it no longer opens by itself on the month's last day. A student
-      on a learning path (lib/learningPaths.js) has their own copy of their
-      Pre-Assessment's questions in a new order, checked and opened from their
-      learning path. Any other student sits a copy of the exact Pre-Assessment
-      they took.
+      Where each of the tutor's students stands. The tutor opens a student's
+      Post-Assessment — like everything else on their learning path — from
+      their box in Modules & Assessments, not here. A student on a learning path
+      (lib/learningPaths.js) has their own copy of their Pre-Assessment's
+      questions in a new order; any other student sits a copy of the exact
+      Pre-Assessment they took.
       ------------------------------------------------------------------------ %>
   <section class="panel-card">
     <div class="panel-card-head">
@@ -171,7 +179,6 @@
               <th>Pre</th>
               <th>Post</th>
               <th>Change</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -224,22 +231,6 @@
                     </span>
                   <% } %>
                 </td>
-                <td>
-                  <% if (r.path) { %>
-                    <a class="btn btn-secondary btn-sm" href="/tutor/students/<%= r.id %>/path/<%= subjectId %>">Learning Path</a>
-                    <% if (r.path.toCheck) { %><span class="module-card-meta"><%= r.path.toCheck %> to check</span><% } %>
-                    <% if (r.path.retakeDue) { %><span class="module-card-meta">needs another take</span><% } %>
-                  <% } else if (r.preDone && !r.postTaken && r.postStatus !== 'open') { %>
-                    <% if (r.isComplete) { %>
-                      <form method="post" action="/tutor/students/<%= r.id %>/subjects/<%= subjectId %>/post/open"
-                            data-confirm-message="Open the Post-Assessment for <%= r.first_name %> <%= r.last_name || '' %>?">
-                        <button type="submit" class="btn btn-primary btn-sm">Open Post</button>
-                      </form>
-                    <% } else { %>
-                      <span class="module-card-meta">modules not finished</span>
-                    <% } %>
-                  <% } %>
-                </td>
               </tr>
             <% }) %>
           </tbody>
@@ -253,3 +244,7 @@
       above. %>
 
 </section>
+
+<style>
+  .module-card-handouts { flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+</style>

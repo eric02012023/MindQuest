@@ -51,15 +51,15 @@ const {
   // Tutor module assessments (Phase 7)
   getModuleById,
   getModuleHandouts,
+  getHandoutsForModules,
   getModuleHandoutTexts,
   moduleTargetsStudent,
   // Post-Assessment (Phase 8): opens on each student's last enrollment day
   getSubjectPrePostComparison,
   getSubjectPostReadiness,
-  // Level modules: each module written again for each level; activities go in them
-  LEVELS,
+  // Level modules: each module written again for each level. A student whose
+  // Pre-Assessment came before learning paths still works in them.
   normalizeLevel,
-  getLevelModulesBySource,
   getLevelModuleDetail,
   withLevelModuleStaleFlag,
   getPlacementLevels,
@@ -77,13 +77,13 @@ const {
   // In-app notifications addressed to this tutor
   getAppNotifications,
   markAppNotificationReferenceRead,
-  markOwnAppNotificationRead,
   markAllAppNotificationsRead,
   archiveAppNotification,
   recoverAppNotification,
   getScheduleRequestHistory
 } = require('../lib/data');
 const { buildBellItems } = require('../lib/bell');
+const notices = require('../lib/appNotifications');
 const { resolveScope } = require('../lib/rbac');
 const { getProgressComparison } = require('../lib/analytics');
 const { progressCsv } = require('../lib/reportsCsv');
@@ -130,37 +130,96 @@ function failBack(req, res, error, fallback) {
 
 // Role: Handles a reusable server-side operation used by this module.
 
+/** The unread notices that point at what the page shows (`refs`: [refType, refId] pairs). */
+function noticesAbout(alerts = [], refs = []) {
+  if (!refs.length) return [];
+  return alerts.filter((alert) => refs.some(([refType, refId]) => (
+    alert.ref_type === refType && Number(alert.ref_id) === Number(refId) && Number(refId) > 0
+  )));
+}
+
 async function buildShell(req, extra = {}) {
   // Phase 9: the bell used to merge pending assessment_requests in beside the
   // schedule notifications. With the request/approve loop retired there is
   // nothing to act on, and a badge counting rows no page can respond to is worse
   // than no badge.
   //
-  // The bell now also counts the alerts addressed to this tutor — chiefly the
-  // "focus area ready for <student>" notice written when one of their learners
-  // finishes a Pre-Assessment. That notice is the whole point of the weak-topic
-  // flow: material nobody is told about is material nobody teaches from.
-  const [allNotifications, alerts, focusHandoutCount] = await Promise.all([
-    getTutorScheduleNotifications(req.session.user.id),
-    getAppNotifications(req.session.user, { unreadOnly: true }).catch(() => []),
-    countUnviewedFocusHandouts(req.session.user.id).catch(() => 0)
+  // The bell also lists the alerts addressed to this tutor: a focus area ready,
+  // a student's module assessment or Post-Assessment ready to check, a module
+  // passed or not yet, an activity answered. Each opens the very page it is about
+  // (/tutor/alerts/:id/open) and is read from then on, and each shows the
+  // student it is about. The same notice about the same thing is listed once,
+  // and a page that shows what a notice is about (`readRefs`) settles it.
+  const user = req.session.user;
+  const { readRefs = [], ...pageData } = extra;
+  const [allNotifications, unread, focusHandoutCount] = await Promise.all([
+    getTutorScheduleNotifications(user.id),
+    getAppNotifications(user, { unreadOnly: true }).catch(() => []),
+    countUnviewedFocusHandouts(user.id).catch(() => 0)
   ]);
-  const bellItems = buildBellItems({ basePath: '/tutor', scheduleRequests: allNotifications, alerts });
+  let alerts = unread;
+  const reached = noticesAbout(alerts, readRefs);
+  if (reached.length) {
+    await notices.markManyReadFor(reached.map((alert) => alert.id), user)
+      .catch((error) => console.error('[tutor] could not mark the notices read:', error.message));
+    const done = new Set(reached.map((alert) => Number(alert.id)));
+    alerts = alerts.filter((alert) => !done.has(Number(alert.id)));
+  }
+  alerts = notices.withoutRepeats(alerts);
+  alerts = await notices.withAlertStudents(alerts).catch((error) => {
+    console.error('[tutor] could not name the students of the notices:', error.message);
+    return alerts;
+  });
+  const bellItems = buildBellItems({
+    basePath: '/tutor', scheduleRequests: allNotifications, alerts, openAlerts: true
+  });
 
   return {
-    pageTitle: extra.pageTitle || 'Tutor Dashboard',
+    pageTitle: pageData.pageTitle || 'Tutor Dashboard',
     roleName: 'Tutor',
     basePath: '/tutor',
-    section: extra.section || 'dashboard',
-    contentView: extra.contentView,
-    currentUser: req.session.user,
+    section: pageData.section || 'dashboard',
+    contentView: pageData.contentView,
+    currentUser: user,
     notificationCount: bellItems.length,
     inboxNotifications: allNotifications,
     alerts,
     bellItems,
     focusHandoutCount,
-    ...extra
+    ...pageData
   };
+}
+
+/**
+ * Where a notice opens: the very page it is about. A module's assessment that
+ * is still waiting to be checked opens on its questions; a module, on the
+ * student's module; a Post-Assessment, on its questions while it waits, else on
+ * the student's modules; an activity answered, on the student's answers.
+ */
+async function alertDestination(alert) {
+  const refId = Number(alert.ref_id) || 0;
+  if (alert.ref_type === 'learning_path_module' && refId) {
+    const row = await paths.getPathModuleById(refId);
+    if (row && row.status !== 'removed') {
+      if (alert.notification_type === 'path_assessment_ready' && row.assessment_id && row.assessment_status === 'draft') {
+        return `/tutor/path-assessments/${Number(row.assessment_id)}/edit`;
+      }
+      return `/tutor/path-modules/${Number(row.id)}`;
+    }
+  } else if (alert.ref_type === 'learning_path' && refId) {
+    const path = await paths.getPathById(refId);
+    if (path) {
+      return path.post_assessment_id && path.post_status === 'draft'
+        ? `/tutor/path-assessments/${Number(path.post_assessment_id)}/edit`
+        : paths.tutorModulesHref(path.student_id, path.subject_id);
+    }
+  } else if (alert.ref_type === 'focus_handout' && refId) {
+    return `/tutor/focus-handouts/${refId}`;
+  } else if (alert.ref_type === 'tutor_submission' && refId) {
+    return `/tutor/results/${refId}`;
+  }
+  const link = String(alert.link_url || '');
+  return /^\/tutor\/[^/]/.test(link) ? link : '/tutor/notifications';
 }
 
 /** A background request from the bell's × wants no page and no flash back. */
@@ -270,7 +329,8 @@ router.get('/students/:studentId', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // Learning paths (lib/learningPaths.js): a student's own modules, the
 // assessments written for them that this tutor checks and opens, and their
-// Post-Assessment.
+// Post-Assessment. They live in Modules & Assessments: a box per student, then
+// that student's Module 1, 2, 3, then one module.
 // ---------------------------------------------------------------------------
 
 /** True when this tutor teaches the student the subject; otherwise flashes and redirects. */
@@ -279,15 +339,16 @@ async function requireMyStudent(req, res, studentId, subjectId) {
     return true;
   }
   setFlash(req, 'error', 'That student is not one of yours in this subject.');
-  res.redirect('/tutor/students');
+  res.redirect('/tutor/modules');
   return false;
 }
 
+/** The student's modules in a subject (Modules & Assessments). */
 function pathPageOf(studentId, subjectId) {
-  return `/tutor/students/${Number(studentId)}/path/${Number(subjectId)}`;
+  return paths.tutorModulesHref(studentId, subjectId);
 }
 
-/** Where an action on a student's module goes back to: that module's page, or their learning path. */
+/** Where an action on a student's module goes back to: that module's page, or the student's modules. */
 function afterModuleAction(req, row) {
   return req.body && req.body.back === 'module'
     ? `/tutor/path-modules/${Number(row.id)}`
@@ -299,48 +360,26 @@ async function requireMyPathModule(req, res, id) {
   const row = await paths.getPathModuleById(Number(id));
   if (!row || row.status === 'removed') {
     setFlash(req, 'error', 'Module not found.');
-    res.redirect('/tutor/students');
+    res.redirect('/tutor/modules');
     return null;
   }
   if (!(await requireMyStudent(req, res, row.student_id, row.subject_id))) return null;
   return row;
 }
 
-router.get('/students/:studentId/path/:subjectId', async (req, res, next) => {
-  try {
-    const studentId = Number(req.params.studentId);
-    const subjectId = Number(req.params.subjectId);
-    if (!(await requireMyStudent(req, res, studentId, subjectId))) return;
-    const { query: dbQuery } = require('../config/db');
-    const [student, subjectRows] = await Promise.all([
-      getUserById(studentId),
-      dbQuery('SELECT id, name FROM subjects WHERE id = ?', [subjectId])
-    ]);
-    if (!student || !subjectRows.length) {
-      setFlash(req, 'error', 'Student not found.');
-      return res.redirect('/tutor/students');
-    }
-    const entries = await paths.managePageEntries(studentId, [{ subject_id: subjectId, subject_name: subjectRows[0].name }]);
-    const shell = await buildShell(req, {
-      pageTitle: `${student.first_name} ${student.last_name || ''} — ${subjectRows[0].name}`,
-      section: 'students',
-      contentView: '../content/learning-path-manage',
-      student,
-      entries,
-      canAct: true,
-      isMainAdmin: false,
-      backHref: `/tutor/students/${studentId}`
-    });
-    res.render('shells/dashboard', shell);
-  } catch (error) { next(error); }
+// The learning path used to be its own page, reached from My Subject and the
+// student's profile. It is the student's page in Modules & Assessments now; an
+// old link or notice lands there.
+router.get('/students/:studentId/path/:subjectId', (req, res) => {
+  res.redirect(pathPageOf(req.params.studentId, req.params.subjectId));
 });
 
 router.get('/path-modules/:id/pdf', async (req, res, next) => {
   try {
     const row = await paths.getPathModuleById(Number(req.params.id));
-    if (!row) {
+    if (!row || row.status === 'removed') {
       setFlash(req, 'error', 'Module not found.');
-      return res.redirect('/tutor/students');
+      return res.redirect('/tutor/modules');
     }
     if (!(await requireMyStudent(req, res, row.student_id, row.subject_id))) return;
     const pdf = await paths.buildModulePdf(row);
@@ -359,11 +398,14 @@ router.post('/path-modules/:id/open', async (req, res) => {
     if (!row) throw new Error('Module not found.');
     if (!(await requireMyStudent(req, res, row.student_id, row.subject_id))) return;
     const result = await paths.openModuleAssessment(row.id, req.session.user.id);
+    // Checked and opened: the notice that asked for it is done with.
+    await notices.markRefReadFor('learning_path_module', row.id, req.session.user)
+      .catch((error) => console.error('[tutor] could not mark the notice read:', error.message));
     setFlash(req, 'success', result.opened === 'retake'
       ? `Take ${result.take} is open for the student.`
       : 'The assessment is open for the student.');
     res.redirect(afterModuleAction(req, row));
-  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+  } catch (error) { failBack(req, res, error, '/tutor/modules'); }
 });
 
 // Try a failed piece of writing again: the added lessons, or the assessment.
@@ -376,11 +418,12 @@ router.post('/path-modules/:id/retry', async (req, res) => {
       .catch((error) => console.error('[tutor] retry failed:', error.message));
     setFlash(req, 'success', 'It is being written again. This takes a minute or two.');
     res.redirect(afterModuleAction(req, row));
-  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+  } catch (error) { failBack(req, res, error, '/tutor/modules'); }
 });
 
-// One module of a student's path: its weak points and their topics, the
-// activities the student answers in it, and its assessment with every take.
+// One module of a student's path: the handout the system edited for them (their
+// own copy, as a PDF), the activities the tutor writes for them in it, its weak
+// points and their topics, and its assessment with every take.
 router.get('/path-modules/:id', async (req, res, next) => {
   try {
     const row = await requireMyPathModule(req, res, req.params.id);
@@ -393,12 +436,14 @@ router.get('/path-modules/:id', async (req, res, next) => {
     }
     const shell = await buildShell(req, {
       pageTitle: `Module ${page.row.order_number || page.row.position} — ${page.studentLabel}`,
-      section: 'students',
+      section: 'modules',
       contentView: '../content/learning-path-module',
       ...page,
       canAct: true,
       canWrite: true,
-      backHref: pathPageOf(row.student_id, row.subject_id)
+      backHref: pathPageOf(row.student_id, row.subject_id),
+      // The notices about this module (ready to check, passed, not yet) are read here.
+      readRefs: [['learning_path_module', row.id]]
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -411,7 +456,7 @@ async function personalBuilderData(req, row, extra = {}) {
   const student = [row.first_name, row.last_name].filter(Boolean).join(' ') || 'the student';
   return createAssessmentViewData(req, mod, {
     pageTitle: 'Create Activity',
-    section: 'students',
+    section: 'modules',
     formBase: `/tutor/path-modules/${row.id}`,
     draftsFromLesson: false,
     draftHeading: `Draft from ${student}'s module`,
@@ -509,22 +554,37 @@ router.post('/path-modules/:id/create-assessment', async (req, res) => {
   }
 });
 
-// Check — and, until it is opened, edit — an assessment written for one student.
+// Check — and, until it is opened, edit — an assessment written for one student,
+// then open it for them from here.
 router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
   try {
     const page = await paths.editPageData(Number(req.params.assessmentId));
     if (!page) {
       setFlash(req, 'error', 'Assessment not found.');
-      return res.redirect('/tutor/students');
+      return res.redirect('/tutor/modules');
     }
     if (!(await requireMyStudent(req, res, page.studentId, page.subjectId))) return;
+    const pathModule = page.owner.kind === 'module' ? page.owner.pathModule : null;
+    const path = page.owner.kind === 'post' ? page.owner.path : null;
+    let openAction = null;
+    let openConfirm = '';
+    if (pathModule && pathModule.assessment_status === 'draft' && pathModule.status === 'open') {
+      openAction = `/tutor/path-modules/${Number(pathModule.id)}/open`;
+      openConfirm = `Open the Module ${pathModule.order_number || pathModule.position} assessment for ${page.studentLabel}? It can no longer be edited after that.`;
+    } else if (path && path.post_status === 'draft') {
+      openAction = `/tutor/paths/${Number(path.id)}/post/open`;
+      openConfirm = `Open the Post-Assessment for ${page.studentLabel}? It can no longer be edited after that.`;
+    }
     const shell = await buildShell(req, {
       pageTitle: page.assessment.title,
-      section: 'students',
+      section: 'modules',
       contentView: '../content/learning-path-edit',
       ...page,
       saveAction: `/tutor/path-assessments/${page.assessment.id}/edit`,
-      backHref: pathPageOf(page.studentId, page.subjectId)
+      openAction,
+      openConfirm,
+      backHref: pathModule ? `/tutor/path-modules/${Number(pathModule.id)}` : pathPageOf(page.studentId, page.subjectId),
+      readRefs: pathModule ? [['learning_path_module', pathModule.id]] : path ? [['learning_path', path.id]] : []
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -549,9 +609,11 @@ router.post('/paths/:pathId/post/open', async (req, res) => {
     if (!path) throw new Error('Learning path not found.');
     if (!(await requireMyStudent(req, res, path.student_id, path.subject_id))) return;
     await paths.openPathPost(path.id, req.session.user.id);
+    await notices.markRefReadFor('learning_path', path.id, req.session.user)
+      .catch((error) => console.error('[tutor] could not mark the notice read:', error.message));
     setFlash(req, 'success', 'The Post-Assessment is open for the student.');
     res.redirect(pathPageOf(path.student_id, path.subject_id));
-  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+  } catch (error) { failBack(req, res, error, '/tutor/modules'); }
 });
 
 router.post('/paths/:pathId/post/retry', async (req, res) => {
@@ -562,7 +624,7 @@ router.post('/paths/:pathId/post/retry', async (req, res) => {
     paths.retry('post', path.id).catch((error) => console.error('[tutor] retry failed:', error.message));
     setFlash(req, 'success', 'The Post-Assessment is being written again. This takes a minute or two.');
     res.redirect(pathPageOf(path.student_id, path.subject_id));
-  } catch (error) { failBack(req, res, error, '/tutor/students'); }
+  } catch (error) { failBack(req, res, error, '/tutor/modules'); }
 });
 
 // A student without a learning path: open their Post-Assessment once their
@@ -584,7 +646,7 @@ router.post('/students/:studentId/subjects/:subjectId/post/open', async (req, re
     }
     await paths.openPostForStudent(studentId, subjectId, req.session.user.id);
     setFlash(req, 'success', 'The Post-Assessment is open for the student.');
-    res.redirect(req.get('Referer') || pathPageOf(studentId, subjectId));
+    res.redirect(pathPageOf(studentId, subjectId));
   } catch (error) { failBack(req, res, error, pathPageOf(studentId, subjectId)); }
 });
 
@@ -594,16 +656,20 @@ router.get('/path-attempts/:attemptId', async (req, res, next) => {
     const page = await paths.attemptPageData(Number(req.params.attemptId));
     if (!page) {
       setFlash(req, 'error', 'That take was not found.');
-      return res.redirect('/tutor/students');
+      return res.redirect('/tutor/modules');
     }
     if (!(await requireMyStudent(req, res, page.studentId, page.subjectId))) return;
+    const owner = await paths.getPersonalOwner(page.submission.assessment_id).catch(() => null);
+    const pathModule = owner && owner.kind === 'module' ? owner.pathModule : null;
     const shell = await buildShell(req, {
       pageTitle: page.submission.title,
-      section: 'students',
+      section: 'modules',
       contentView: '../content/student-assessment-breakdown',
       submission: page.submission,
       weakAreas: page.weakAreas,
-      viewerRole: 'tutor'
+      viewerRole: 'tutor',
+      backHref: pathModule ? `/tutor/path-modules/${Number(pathModule.id)}` : pathPageOf(page.studentId, page.subjectId),
+      backLabel: pathModule ? `Back to Module ${pathModule.order_number || pathModule.position}` : 'Back to modules'
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -652,6 +718,8 @@ router.get('/notifications', async (req, res, next) => {
       getTutorScheduleNotifications(req.session.user.id),
       getAppNotifications(req.session.user).catch(() => [])
     ]);
+    // Each notice with the student and the subject it is about.
+    const allAlerts = await notices.withAlertStudents(alerts).catch(() => alerts);
     const shell = await buildShell(req, {
       pageTitle: 'Notifications',
       section: 'notifications',
@@ -659,7 +727,7 @@ router.get('/notifications', async (req, res, next) => {
       viewerRole: 'tutor',
       scheduleRequests,
       scheduleUpdates: [],
-      allAlerts: alerts
+      allAlerts
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -704,12 +772,28 @@ router.get('/notifications/history', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// The bell's × (and Mark as read on the Notifications page): this notice, and
+// any unread repeat of it about the same thing, so it does not come back.
 router.post('/alerts/:id/read', async (req, res, next) => {
   try {
-    await markOwnAppNotificationRead(Number(req.params.id), req.session.user);
+    await notices.markReadWithRepeats(Number(req.params.id), req.session.user);
     if (isBackgroundRequest(req)) return res.status(204).end();
     setFlash(req, 'success', 'Notification marked as read.');
     res.redirect(req.get('Referer') || '/tutor');
+  } catch (error) { failBack(req, res, error, '/tutor/notifications'); }
+});
+
+// A notice clicked in the bell (or Open on the Notifications page): it is read
+// from now on, and it opens the very page it is about — the student's
+// assessment to check, their module, their answers (alertDestination).
+router.get('/alerts/:id/open', async (req, res) => {
+  try {
+    const alert = await notices.markReadWithRepeats(Number(req.params.id), req.session.user);
+    if (!alert) {
+      setFlash(req, 'error', 'That notification was not found.');
+      return res.redirect('/tutor/notifications');
+    }
+    res.redirect(await alertDestination(alert));
   } catch (error) { failBack(req, res, error, '/tutor/notifications'); }
 });
 
@@ -785,6 +869,11 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     // of two "Enrolled Students" — including other tutors' students.
     const myStudentIds = new Set(students.map((s) => Number(s.student_id)));
     const onlyMine = (rows) => (rows || []).filter((row) => myStudentIds.has(Number(row.student_id)));
+    // The modules the admin set up, each with its handouts as the admin uploaded
+    // them — the tutor opens them here, unedited. A student's own edited copy is
+    // in Modules & Assessments.
+    const modules = await getSubjectModules(req.params.subjectId);
+    const moduleHandouts = await getHandoutsForModules(modules.map((mod) => mod.id));
     const shell = await buildShell(req, {
       pageTitle: currentSubject.subject_name || 'Subject Details',
       section: 'subjects',
@@ -794,7 +883,8 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       adminResources,
       // Module system (overhaul Phase 6): the modules Admin set up, and how each
       // student did on the generated Pre-Assessment.
-      modules: await getSubjectModules(req.params.subjectId),
+      modules,
+      moduleHandouts,
       preResults: onlyMine(await getSubjectSubmissions(req.params.subjectId, { kind: 'pre_assessment' })),
       // Post-Assessment (Phase 8): where each student stands — the tutor opens
       // it per student — and pre-vs-post once taken.
@@ -1235,34 +1325,61 @@ async function resolveTutorModule(req, moduleId) {
   return mod;
 }
 
-// Tutor: View all assigned subjects and their modules
+// Modules & Assessments: per subject the tutor teaches, one box per student of
+// theirs who has taken its Pre-Assessment — the student's name, grade and level.
+// A box opens that student's own modules. The admin's modules, unedited, are
+// opened from My Subjects.
 router.get('/modules', async (req, res, next) => {
   try {
     const subjects = await getTutorAssignedSubjects(req.session.user.id);
-    const subjectsWithModules = [];
-    for (const s of subjects) {
-      // getSubjectModules, not the legacy getModulesBySubject: this is the
-      // overhaul's shape — order_number, target year levels, handout and
-      // assessment counts — and it is not capped at three levels per subject.
-      const modules = await getSubjectModules(s.subject_id);
-      // Each module's level modules, where the tutor writes activities now.
-      const levels = await getLevelModulesBySource(modules.map((mod) => mod.id));
-      subjectsWithModules.push({
-        ...s,
-        modules: modules.map((mod) => ({ ...mod, levelModules: levels.get(Number(mod.id)) || {} }))
-      });
-    }
+    const subjectsWithBoxes = await paths.tutorModuleBoxes(req.session.user.id, subjects);
     const shell = await buildShell(req, {
       pageTitle: 'Modules & Assessments',
       section: 'modules',
       contentView: '../content/tutor-modules',
-      subjectsWithModules
+      subjectsWithBoxes
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
 });
 
-// Tutor: View a specific module, its handouts and its assessments
+// One student's modules in a subject: Module 1, 2, 3 of their learning path —
+// each its own copy, edited for them — with what the learning path asks of the
+// tutor (check and open each assessment, open the next take, the
+// Post-Assessment) and every score, Pre against Post.
+router.get('/modules/students/:studentId/:subjectId', async (req, res, next) => {
+  try {
+    const studentId = Number(req.params.studentId);
+    const subjectId = Number(req.params.subjectId);
+    if (!(await requireMyStudent(req, res, studentId, subjectId))) return;
+    const { query: dbQuery } = require('../config/db');
+    const [student, subjectRows] = await Promise.all([
+      getUserById(studentId),
+      dbQuery('SELECT id, name FROM subjects WHERE id = ?', [subjectId])
+    ]);
+    if (!student || !subjectRows.length) {
+      setFlash(req, 'error', 'Student not found.');
+      return res.redirect('/tutor/modules');
+    }
+    const page = await paths.tutorStudentModules(studentId, { subject_id: subjectId, subject_name: subjectRows[0].name });
+    const studentLabel = [student.first_name, student.last_name].filter(Boolean).join(' ');
+    const shell = await buildShell(req, {
+      pageTitle: `${studentLabel} — ${subjectRows[0].name}`,
+      section: 'modules',
+      contentView: '../content/tutor-student-modules',
+      student,
+      studentLabel,
+      subjectId,
+      subjectName: subjectRows[0].name,
+      ...page
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// Tutor: one of the admin's modules — its handouts and the activities shared on
+// it. Nothing links here any more but old pages; the modules are opened per
+// student in Modules & Assessments.
 router.get('/modules/:id', async (req, res, next) => {
   try {
     const mod = await resolveTutorModule(req, req.params.id);
@@ -1274,10 +1391,7 @@ router.get('/modules/:id', async (req, res, next) => {
       contentView: '../content/tutor-module-detail',
       mod,
       handouts: await getModuleHandouts(mod.id),
-      assessments: await getTutorAssessmentsByModule(mod.id),
-      // Its three level modules (a level not made yet is null).
-      levelModules: (await getLevelModulesBySource([mod.id])).get(Number(mod.id)) || {},
-      levels: LEVELS
+      assessments: await getTutorAssessmentsByModule(mod.id)
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -1337,11 +1451,16 @@ async function levelModuleActivities(levelModule) {
     .filter((a) => !a.level_module_id || Number(a.level_module_id) === Number(levelModule.id));
 }
 
-// Tutor: one level module — its lesson, the admin's handouts, and its activities
+// Tutor: one level module — its lesson, the admin's handouts, and its activities.
+// A student whose Pre-Assessment came before learning paths works in these: their
+// page in Modules & Assessments opens them with ?student=, and Back goes there.
 router.get('/level-modules/:id', async (req, res, next) => {
   try {
     const levelModule = await resolveTutorLevelModule(req, req.params.id);
     if (!levelModule) return res.redirect('/tutor/modules');
+    const studentId = Number(req.query.student) || 0;
+    const fromStudent = studentId
+      && await tutorTeachesStudentIn(req.session.user.id, studentId, Number(levelModule.source.subject_id));
     const shell = await buildShell(req, {
       pageTitle: `Module ${levelModule.source.order_number} — ${levelModule.level}`,
       section: 'modules',
@@ -1350,7 +1469,8 @@ router.get('/level-modules/:id', async (req, res, next) => {
       handouts: await getModuleHandouts(levelModule.source.id),
       assessments: await levelModuleActivities(levelModule),
       viewerRole: 'tutor',
-      moduleHref: `/tutor/modules/${levelModule.source.id}`
+      moduleHref: fromStudent ? pathPageOf(studentId, levelModule.source.subject_id) : '/tutor/modules',
+      moduleBackLabel: fromStudent ? 'Back to the student\'s modules' : 'Back to Modules'
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
@@ -1527,14 +1647,14 @@ router.get('/modules/:id/assessments/:assessmentId/submissions', async (req, res
 });
 
 /**
- * The admin's module is to view now: a new activity is written inside one of
- * its level modules, where only that level's students meet it (the routes
- * above). These addresses stay — a bookmark, a tab left open — and send the
- * tutor to the module, whose level modules are listed there.
+ * The admin's module is to view now: a new activity is written for one student,
+ * inside their own module (Modules & Assessments, then the student's box, then
+ * the module). These addresses stay — a bookmark, a tab left open, the old
+ * "Create Assessment" on My Subjects — and send the tutor there.
  */
 function toLevelModules(req, res) {
-  setFlash(req, 'info', 'Activities are written inside a level module now: open Beginner, Intermediate or Advance on this module.');
-  res.redirect(`/tutor/modules/${Number(req.params.id) || ''}`);
+  setFlash(req, 'info', 'Activities are written for each student now: open Modules & Assessments, the student, then the module.');
+  res.redirect('/tutor/modules');
 }
 router.get('/modules/:id/create-assessment', toLevelModules);
 router.post('/modules/:id/draft-assessment', toLevelModules);
@@ -1637,16 +1757,43 @@ router.get('/results/:submissionId', async (req, res, next) => {
     }
 
     const weakAreas = await getWeakAreasForSubmission(submission.id);
+    // An activity given to this student alone lives in their module: Back goes
+    // there, and the notice that they answered it is read here.
+    const pathModule = await moduleOfPersonalActivity(submission);
     const shell = await buildShell(req, {
       pageTitle: `${submission.first_name} ${submission.last_name || ''} - ${submission.title}`,
-      section: 'student_results',
+      section: pathModule ? 'modules' : 'student_results',
       contentView: '../content/student-assessment-breakdown',
       submission,
       weakAreas,
-      viewerRole: 'tutor'
+      viewerRole: 'tutor',
+      ...(pathModule ? {
+        backHref: `/tutor/path-modules/${Number(pathModule.id)}`,
+        backLabel: `Back to Module ${pathModule.order_number || pathModule.position}`
+      } : {}),
+      readRefs: [['tutor_submission', submission.id]]
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
 });
+
+/**
+ * The module of the student's learning path an answered activity was given in —
+ * one written for them alone — or null for anything else.
+ */
+async function moduleOfPersonalActivity(submission) {
+  if (!submission || !Number(submission.for_student_id) || !Number(submission.assessment_module_id)) return null;
+  if (submission.assessment_purpose !== 'activity') return null;
+  try {
+    const path = await paths.getCurrentPath(Number(submission.student_id), Number(submission.subject_id));
+    if (!path) return null;
+    return (await paths.getPathModules(path.id)).find((row) => (
+      Number(row.module_id) === Number(submission.assessment_module_id) && row.status !== 'removed'
+    )) || null;
+  } catch (error) {
+    console.error('[tutor] could not find the module of the activity:', error.message);
+    return null;
+  }
+}
 
 module.exports = router;
