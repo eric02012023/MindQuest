@@ -36,5 +36,14 @@
     "eslint": "^9.39.5",
     "eslint-config-expo": "~58.0.4"
   },
-  "description": "MindQuest student app for Android (Expo + Expo Router)."
+  "description": "MindQuest student app for Android (Expo + Expo Router).",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "react-native-gesture-handler"
+        ]
+      }
+    }
+  }
 }
