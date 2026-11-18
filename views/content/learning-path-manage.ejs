@@ -169,7 +169,7 @@
                   <td><div class="lpm-actions">
                     <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= m.id %>">Open</a>
                     <% if (m.status !== 'locked') { %>
-                      <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= m.id %>/pdf" target="_blank" rel="noopener">View Module</a>
+                      <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-modules/<%= m.id %>/pdf" target="_blank" rel="noopener">Open Handout</a>
                     <% } %>
                     <% if (m.assessment_id && (m.assessment_status === 'draft' || m.status === 'open' || m.status === 'passed')) { %>
                       <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-assessments/<%= m.assessment_id %>/edit">

@@ -1,0 +1,81 @@
+<%# File: views/partials/change-email.ejs
+    Purpose: The admin's or an assistant's own login email (lib/accountEmail.js).
+    Step 1 takes a registered Gmail address and the current password and sends a
+    4-digit code there; step 2 takes the code, and only then does the email change.
+
+    Locals: profileUser, basePath, pendingEmail (the address a code was sent to,
+            or null), variant ('card' — admin-profile.ejs, 'panel' —
+            admin-assistant-profile.ejs) %>
+<%
+  const action = `${basePath}/profile/${profileUser.id}/email`;
+  const waiting = typeof pendingEmail === 'undefined' ? null : pendingEmail;
+  const asPanel = typeof variant !== 'undefined' && variant === 'panel';
+  const registered = /@gmail\.com$/i.test(String(profileUser.email || ''));
+%>
+<% if (asPanel) { %>
+  <section class="mq-panel" id="change-email">
+    <div class="mq-panel-head">
+      <div><h3>Change email</h3></div>
+      <span class="mq-status <%= registered ? 'mq-status-active' : 'mq-status-pending' %>"><%= registered ? 'Registered Gmail' : 'Not registered' %></span>
+    </div>
+    <% if (waiting) { %>
+      <form method="post" action="<%= action %>/verify" class="mq-form mq-form-rows">
+        <label>New email<input type="email" value="<%= waiting %>" readonly /></label>
+        <label>Code<input type="text" name="code" inputmode="numeric" pattern="\d{4}" maxlength="4" autocomplete="one-time-code" placeholder="4-digit code sent to the new email" required autofocus /></label>
+        <div class="mq-form-foot ce-actions">
+          <button class="mq-btn mq-btn-primary" type="submit">Confirm new email</button>
+          <button class="mq-btn" type="submit" formaction="<%= action %>/resend" formnovalidate>Send a new code</button>
+          <button class="mq-btn" type="submit" formaction="<%= action %>/cancel" formnovalidate>Cancel</button>
+        </div>
+      </form>
+    <% } else { %>
+      <form method="post" action="<%= action %>" class="mq-form mq-form-rows">
+        <label>Current email<input type="email" value="<%= profileUser.email || '' %>" readonly /></label>
+        <label>New email (Gmail)<input type="email" name="new_email" autocomplete="email" placeholder="yourname@gmail.com" required /></label>
+        <label>Current password<input type="password" name="current_password" autocomplete="current-password" required /></label>
+        <p class="mq-form-note" style="padding: 0 16px;">A registered Gmail address only. A 4-digit code is sent to it, and the email changes once you enter it.</p>
+        <div class="mq-form-foot">
+          <button class="mq-btn mq-btn-primary" type="submit">Send code</button>
+        </div>
+      </form>
+    <% } %>
+  </section>
+<% } else { %>
+  <section class="mq-card" id="change-email">
+    <div class="mq-card-head">
+      <span class="mq-card-icon"><%- icon('message', 18) %></span>
+      <div><h3>Change email</h3></div>
+      <div class="mq-card-head-actions">
+        <span class="mq-status <%= registered ? 'mq-status-active' : 'mq-status-pending' %>"><%= registered ? 'Registered Gmail' : 'Not registered' %></span>
+      </div>
+    </div>
+    <% if (waiting) { %>
+      <form method="post" action="<%= action %>/verify">
+        <div class="mq-card-body mq-fields">
+          <label class="is-wide">Code sent to <%= waiting %><input type="text" name="code" inputmode="numeric" pattern="\d{4}" maxlength="4" autocomplete="one-time-code" placeholder="4-digit code" required autofocus /></label>
+        </div>
+        <div class="mq-card-foot ce-actions">
+          <button class="mq-btn" type="submit" formaction="<%= action %>/cancel" formnovalidate>Cancel</button>
+          <button class="mq-btn" type="submit" formaction="<%= action %>/resend" formnovalidate>Send a new code</button>
+          <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Confirm new email</button>
+        </div>
+      </form>
+    <% } else { %>
+      <form method="post" action="<%= action %>">
+        <div class="mq-card-body mq-fields">
+          <label>Current email<input type="email" value="<%= profileUser.email || '' %>" readonly /></label>
+          <label>New email (Gmail)<input type="email" name="new_email" autocomplete="email" placeholder="yourname@gmail.com" required /></label>
+          <label>Current password<input type="password" name="current_password" autocomplete="current-password" required /></label>
+        </div>
+        <div class="mq-card-foot">
+          <span class="mq-card-foot-note">A registered Gmail address only. A 4-digit code is sent to it, and the email changes once you enter it.</span>
+          <button class="mq-btn mq-btn-primary" type="submit"><%- icon('check') %> Send code</button>
+        </div>
+      </form>
+    <% } %>
+  </section>
+<% } %>
+<style>
+  .ce-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .ce-actions form { margin: 0; }
+</style>

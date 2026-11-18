@@ -21,8 +21,13 @@
     : type === 'true_false' ? 'True or False' : 'Mixed';
 %>
 <link rel="stylesheet" href="/css/level-modules.css" />
+<style>
+  /* Its buttons wrap under the title on a phone instead of running off the screen. */
+  .lmd-head .row-actions { flex-wrap: wrap; }
+  .lmd-head .row-actions form { margin: 0; }
+</style>
 <section class="page-stack">
-  <div class="toolbar-card split">
+  <div class="toolbar-card split lmd-head">
     <div>
       <h2>Module <%= src.order_number %> — <%= src.title %></h2>
       <p class="res-subtitle">

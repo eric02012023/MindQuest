@@ -1470,7 +1470,7 @@ router.get('/level-modules/:id', async (req, res, next) => {
       assessments: await levelModuleActivities(levelModule),
       viewerRole: 'tutor',
       moduleHref: fromStudent ? pathPageOf(studentId, levelModule.source.subject_id) : '/tutor/modules',
-      moduleBackLabel: fromStudent ? 'Back to the student\'s modules' : 'Back to Modules'
+      moduleBackLabel: fromStudent ? 'Back' : 'Back to Modules'
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }

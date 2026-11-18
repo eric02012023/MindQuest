@@ -225,8 +225,12 @@ textarea:focus {
   border-color: rgba(22, 168, 200, .45);
 }
 
+/* One card under another, as on every other admin page. This sheet was
+   copied from the dashboard's, whose two columns need a flex ROW; here the
+   row laid every card of a page side by side — a student's Learning Path
+   came out as narrow columns, the name one letter per line. */
 .page-stack {
-  display: flex;
+  display: grid;
   gap: 24px;
 }
 

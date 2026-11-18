@@ -75,6 +75,7 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
         <% } %>
         <% if (canChangePassword) { %>
           <a class="mq-btn" href="#change-password"><%- icon('lock') %> Change password</a>
+          <a class="mq-btn" href="#change-email"><%- icon('message') %> Change email</a>
         <% } %>
       </div>
     </div>
@@ -493,6 +494,12 @@ const tutorSlot = currentTutor && currentTutor.time_slot ? currentTutor.time_slo
         </div>
       </form>
     </section>
+
+    <%# The login email: a registered Gmail address, changed with a code sent to it. %>
+    <%- include('../partials/change-email', {
+      profileUser, basePath, variant: 'card',
+      pendingEmail: typeof pendingEmail === 'undefined' ? null : pendingEmail
+    }) %>
   <% } %>
 
   <%# ------------------------------------------------- manage subjects modal %>

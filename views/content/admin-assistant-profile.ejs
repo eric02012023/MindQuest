@@ -210,7 +210,7 @@
             data-confirm-message="Save the changes to this assistant account?">
         <input type="hidden" name="return_to" value="profile" />
         <label>Assistant name<input type="text" name="assistant_name" value="<%= displayName %>" required /></label>
-        <label>Email<input type="email" name="email" value="<%= profileUser.email || '' %>" required /></label>
+        <label>Email (Gmail)<input type="email" name="email" value="<%= profileUser.email || '' %>" placeholder="name@gmail.com — a registered Gmail address" required /></label>
         <label>Branch
           <select name="branch_id" required>
             <% (assistantBranches || []).forEach((branch) => { %>
@@ -242,11 +242,18 @@
         <label>Current password<input type="password" name="current_password" autocomplete="current-password" required /></label>
         <label>New password<input type="password" name="new_password" minlength="8" autocomplete="new-password" required /></label>
         <label>Confirm new password<input type="password" name="confirm_password" minlength="8" autocomplete="new-password" required /></label>
+        <p class="mq-form-note" style="padding: 0 16px;">At least 8 characters, with an uppercase letter, a lowercase letter, a number and a symbol.</p>
         <div class="mq-form-foot">
           <button class="mq-btn mq-btn-primary" type="submit">Save new password</button>
         </div>
       </form>
     </section>
+
+    <%# The login email: a registered Gmail address, changed with a code sent to it. %>
+    <%- include('../partials/change-email', {
+      profileUser, basePath, variant: 'panel',
+      pendingEmail: typeof pendingEmail === 'undefined' ? null : pendingEmail
+    }) %>
   <% } %>
 
 </section>

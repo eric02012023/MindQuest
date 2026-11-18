@@ -180,6 +180,9 @@ const { slipCode, parseSlipCode } = require('../lib/paymentSlip');
 const { query } = require('../config/db');
 // Learning paths: each student's own modules and the assessments written for them.
 const paths = require('../lib/learningPaths');
+// The admin's and an assistant's own login email: a registered Gmail address,
+// changed only with a code sent to it.
+const accountEmail = require('../lib/accountEmail');
 
 /** "Jane Cruz (Assistant Admin)" — who took the money, for a notification. */
 function displayActor(user) {
@@ -689,6 +692,8 @@ function createAdminRouter(role) {
           registeredDetails,
           roster,
           assistantBranches: allBranches,
+          // Their own email change, while it waits on the code sent to the new address.
+          pendingEmail: isSelf ? pendingEmailOf(req, user.id) : null,
           query: req.query
         });
         return res.render('shells/dashboard', shell);
@@ -753,7 +758,8 @@ function createAdminRouter(role) {
           ? normalizeTutorYearLevels([user.year_level || '', ...normalizeArray(user.extra?.year_levels || [])])
           : [],
         timeSlots: FIXED_TIME_SLOTS,
-        preferredDayOptions: PREFERRED_DAYS
+        preferredDayOptions: PREFERRED_DAYS,
+        pendingEmail: isOwnAdminProfile ? pendingEmailOf(req, user.id) : null
       });
       res.render('shells/dashboard', shell);
     } catch (error) {
@@ -854,6 +860,92 @@ function createAdminRouter(role) {
       setFlash(req, 'error', error.message || 'Could not change password.');
       return res.redirect(`${basePath}/profile/${req.params.id}`);
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // The admin's and an assistant's own login email (lib/accountEmail.js): only
+  // a registered Gmail address, as a student's or a tutor's — and it changes
+  // only once the code sent to that address is entered here.
+  // -------------------------------------------------------------------------
+  const emailCardOf = (id) => `${basePath}/profile/${Number(id)}#change-email`;
+
+  /** The id when this is the signed-in admin's or assistant's own account; otherwise refuses. */
+  function ownStaffAccount(req, res) {
+    const id = Number(req.params.id);
+    if (Number(req.session.user.id) !== id || !['admin', 'admin_assistant'].includes(req.session.user.role)) {
+      setFlash(req, 'error', 'You can only change your own email.');
+      res.redirect(`${basePath}/profile/${id || ''}`);
+      return null;
+    }
+    return id;
+  }
+
+  /** The new address a change of this account is waiting on, if any. */
+  function pendingEmailOf(req, id) {
+    const pending = req.session.pendingEmailChange;
+    return pending && Number(pending.userId) === Number(id) ? pending.email : null;
+  }
+
+  router.post('/profile/:id/email', async (req, res) => {
+    const id = ownStaffAccount(req, res);
+    if (!id) return;
+    try {
+      const { email } = await accountEmail.requestEmailChange({
+        userId: id,
+        newEmail: req.body.new_email,
+        currentPassword: req.body.current_password
+      });
+      req.session.pendingEmailChange = { userId: id, email };
+      setFlash(req, 'success', `A 4-digit code was sent to ${email}. Enter it to finish changing your email.`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not start the email change.');
+    }
+    res.redirect(emailCardOf(id));
+  });
+
+  router.post('/profile/:id/email/verify', async (req, res) => {
+    const id = ownStaffAccount(req, res);
+    if (!id) return;
+    const pending = pendingEmailOf(req, id);
+    if (!pending) {
+      setFlash(req, 'error', 'Start again: enter your new email and your current password.');
+      return res.redirect(emailCardOf(id));
+    }
+    try {
+      const { email } = await accountEmail.confirmEmailChange({ userId: id, pendingEmail: pending, code: req.body.code });
+      delete req.session.pendingEmailChange;
+      req.session.user.email = email;
+      setFlash(req, 'success', `Your email is now ${email}. Use it the next time you log in.`);
+      return res.redirect(`${basePath}/profile/${id}`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not change your email.');
+      return res.redirect(emailCardOf(id));
+    }
+  });
+
+  router.post('/profile/:id/email/resend', async (req, res) => {
+    const id = ownStaffAccount(req, res);
+    if (!id) return;
+    const pending = pendingEmailOf(req, id);
+    if (!pending) {
+      setFlash(req, 'error', 'Start again: enter your new email and your current password.');
+      return res.redirect(emailCardOf(id));
+    }
+    try {
+      await accountEmail.resendEmailChange({ userId: id, pendingEmail: pending });
+      setFlash(req, 'success', `A new code was sent to ${pending}.`);
+    } catch (error) {
+      setFlash(req, 'error', error.message || 'Could not send a new code.');
+    }
+    res.redirect(emailCardOf(id));
+  });
+
+  router.post('/profile/:id/email/cancel', (req, res) => {
+    const id = ownStaffAccount(req, res);
+    if (!id) return;
+    delete req.session.pendingEmailChange;
+    setFlash(req, 'info', 'Email change cancelled. Your email was not changed.');
+    res.redirect(emailCardOf(id));
   });
 
   // Route handler: POST request

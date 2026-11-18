@@ -261,8 +261,34 @@
   .lpe-head-actions form { margin: 0; }
   .lpe-field { display: grid; gap: 4px; margin-top: 10px; }
   .lpe-field > span { font-size: 13px; font-weight: 700; color: var(--text-soft, #5f7084); }
-  .lpe-field textarea, .lpe-field input, .lpe-field select { width: 100%; }
-  .lpe-choice { grid-template-columns: 28px 1fr; align-items: center; }
+  /* The same field look in every role's section: the page is shared by the
+     tutor, the main admin and an assistant, whose sheets style bare inputs
+     differently — or not at all. */
+  .lpe-field textarea, .lpe-field input, .lpe-field select {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid var(--border, #d7e2ea);
+    border-radius: 10px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .lpe-field textarea { min-height: 76px; resize: vertical; }
+  .lpe-field textarea:focus, .lpe-field input:focus, .lpe-field select:focus {
+    outline: 3px solid rgba(34, 200, 22, .16);
+    border-color: rgba(26, 122, 58, .55);
+  }
+  .lpe-choice { grid-template-columns: 32px 1fr; align-items: center; }
+  .lpe-choice > span {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 9px;
+    background: var(--surface-muted, #eef4f8); color: var(--text, #102033); font-weight: 800;
+  }
+  .lpe-item .panel-card-head { margin-bottom: 2px; }
   .lpe-bar { display: flex; flex-wrap: wrap; gap: 10px; }
   .lpe-choices { margin: 8px 0 0; padding-left: 18px; }
   .lpe-choices li.is-key { font-weight: 700; color: var(--primary-700, #1c7a22); }
