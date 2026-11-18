@@ -178,6 +178,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use(methodOverride('_method'));
+
+// The student app's JSON API (routes/mobileApi.js). It is mounted HERE, before
+// express-session, on purpose: the app signs in with a bearer token, so no
+// session is looked up or created and no cookie is ever set for it. Every
+// /api/mobile request is answered inside it (its own JSON 404), so none falls
+// through to the website's routes below. The upload reader and the handout
+// guard are handed in so the app's files pass the very same checks.
+app.use('/api/mobile', require('./routes/mobileApi')({ serveUploadFolder, guardHandoutAccess }));
+
 // Middleware/route mount: attaches shared behavior or a route group to the application.
 app.use(session({
   secret: process.env.SESSION_SECRET || 'MindQuestTutorialCenterSecret',

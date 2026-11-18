@@ -36,8 +36,15 @@ The migration is safe to re-run: every step is guarded, so a second run reports 
 | `SMTP_*` / `RESEND_API_KEY` | OTP email at login |
 | **`SUPABASE_URL` + `SUPABASE_SERVICE_KEY`** | See below — without persistent storage, uploaded handouts are lost on every restart |
 | `UPLOAD_ROOT` | The alternative to Supabase, for a paid instance with a disk attached |
+| `MOBILE_TOKEN_SECRET` | Signs the student app's login tokens (`/api/mobile`, HMAC-SHA256). Use a long random value of its own, e.g. `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. Falls back to `SESSION_SECRET` when unset; with neither, the app's login answers "not set up" — there is deliberately no built-in fallback, because the repository is public. Changing it logs every phone out |
+| `MOBILE_TOKEN_DAYS` | How long an app login lasts, in days (default `30`). Logging out in the app ends it sooner |
+| `APP_URL` | The site's public address (`https://….onrender.com`). Already used for PayMongo's return page; the app API also uses it to tell its own links from PayMongo's |
 
 `PORT` is provided by Render and the server already reads it.
+
+### The student app (`mindquest-mobile/`)
+
+The Android app talks to `/api/mobile` on this same server and database — there is nothing extra to deploy. Set `MOBILE_TOKEN_SECRET` on Render before handing out the APK. Only students can sign in to it; staff accounts are told to use the website. How to build the APK is in `mindquest-mobile/README.md`.
 
 ---
 
