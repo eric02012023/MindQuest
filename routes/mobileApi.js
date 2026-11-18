@@ -273,13 +273,19 @@ async function requireToken(req, res, next) {
 // The JSON bridge in front of routes/student.js
 // ---------------------------------------------------------------------------
 
-/** The site's own host, so a redirect to it is not mistaken for an external one. */
-function ownOrigins(req) {
-  const origins = new Set([`${req.protocol}://${req.get('host')}`]);
+/**
+ * Is this host the site itself, so a redirect to it is not mistaken for an
+ * external one? Compared by host name only, with "www." ignored: behind
+ * Render's proxy the request looks like plain http, and the site answers on
+ * both mindquesttutorial.com and www.mindquesttutorial.com (APP_URL).
+ */
+function isOwnHost(req, host) {
+  const bare = (value) => String(value || '').toLowerCase().replace(/^www\./, '');
+  const mine = new Set([bare(req.get('host'))]);
   if (process.env.APP_URL) {
-    try { origins.add(new URL(process.env.APP_URL).origin); } catch (_error) { /* ignore a bad setting */ }
+    try { mine.add(bare(new URL(process.env.APP_URL).host)); } catch (_error) { /* ignore a bad setting */ }
   }
-  return origins;
+  return mine.has(bare(host));
 }
 
 /** Take the flash a route left for the next page, once. */
@@ -317,7 +323,7 @@ function jsonBridge(req, res, next) {
     if (/^https?:\/\//i.test(target)) {
       let parsed = null;
       try { parsed = new URL(target); } catch (_error) { parsed = null; }
-      if (parsed && ownOrigins(req).has(parsed.origin)) {
+      if (parsed && isOwnHost(req, parsed.host)) {
         target = `${parsed.pathname}${parsed.search}`;
       } else {
         return res.json({ ok: true, external: target, flash });

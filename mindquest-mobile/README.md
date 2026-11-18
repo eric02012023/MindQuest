@@ -26,11 +26,11 @@ Nasa `app.json`:
 
 ```json
 "extra": {
-  "apiUrl": "https://www.mindquesttutorial.com"
+  "apiUrl": "https://mindquesttutorial.com"
 }
 ```
 
-- **Live site** — iwan sa `https://www.mindquesttutorial.com`. Ito ang dapat sa APK.
+- **Live site** — iwan sa `https://mindquesttutorial.com` (**walang** `www.`). Ito ang dapat sa APK. Ang `www.` ay nire-redirect sa address na walang www, at sa redirect na iyon tinatanggal ng Android ang token — kaya laging mala-logout ang app.
 - **Sariling PC** — gamitin ang **LAN IP** ng PC, hindi `localhost`. Sa phone, ang `localhost` ay ang phone mismo, hindi ang PC.
   1. Sa PC, alamin ang IP: `ipconfig` → *IPv4 Address* (hal. `192.168.1.23`).
   2. `"apiUrl": "http://192.168.1.23:3000"` (dapat nasa iisang Wi-Fi ang phone at PC).

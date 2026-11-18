@@ -7,7 +7,7 @@
  */
 import Constants from 'expo-constants';
 
-/** "https://www.mindquesttutorial.com" (no trailing slash). */
+/** "https://mindquesttutorial.com" (no trailing slash, and no "www.": that address only redirects here, and Android drops the token on a redirect to another host). */
 export const API_URL = String((Constants.expoConfig && Constants.expoConfig.extra && Constants.expoConfig.extra.apiUrl) || '')
   .trim()
   .replace(/\/+$/, '');

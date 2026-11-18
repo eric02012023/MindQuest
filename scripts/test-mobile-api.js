@@ -164,7 +164,6 @@ require.cache[emailPath] = {
 // world above. Its other functions only ever meet the stubbed database.
 const realData = require('../lib/data');
 const dataPath = require.resolve('../lib/data');
-const student = () => userById(7);
 const ownAssignment = { subject_id: 2, subject_name: 'MATHEMATICS', tutor_internal_id: 30, tutor_name: 'Rico Bautista', time_slot: '1:00 PM - 2:00 PM', preferred_days: 'Mon, Wed' };
 require.cache[dataPath].exports = {
   ...realData,
@@ -189,6 +188,7 @@ require.cache[dataPath].exports = {
     { order_number: 1, module_title: 'Fractions', handout_name: 'fractions.pdf', correct: 1, total: 2, percentage: 50, is_weak: true }
   ],
   createPayMongoPayment: async () => ({ checkoutUrl: world.checkoutUrl }),
+  markStudentScheduleNotificationRead: async () => {},
   recordViolation: async () => ({ sessionCount: 1, totalCount: 1, limit: 3, shouldAutoSubmit: false, label: 'Left the app' })
 };
 
@@ -213,9 +213,10 @@ app.use('/api/mobile', createMobileApi({
 const bodies = [];      // every response body, to look for a password hash
 const cookies = [];     // every Set-Cookie header
 let base = '';
-async function call(method, path, { token, body, ua = 'MindQuestStudentApp (Android)' } = {}) {
+async function call(method, path, { token, body, ua = 'MindQuestStudentApp (Android)', referer } = {}) {
   const headers = { 'user-agent': ua, connection: 'close' };
   if (token) headers.authorization = `Bearer ${token}`;
+  if (referer) headers.referer = referer;
   if (body) headers['content-type'] = 'application/json';
   const response = await fetch(`${base}/api/mobile${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined, redirect: 'manual' });
   const text = await response.text();
@@ -375,6 +376,16 @@ async function main() {
     ok('Pay now: the PayMongo checkout comes back as { external }', r.status === 200 && r.json.external === world.checkoutUrl);
     r = await call('POST', '/student/billing/pay-online', { token, body: { amount: 0 } });
     ok('…a zero amount: back to Billing with the reason', r.json.redirect === '/billing' && /greater than zero/.test(r.json.flash.message));
+
+    // "Back to the page it came from" (Referer) is the site itself, never an
+    // outside link — also when the app uses the address without "www.".
+    const host = base.replace(/^http:\/\//, '');
+    r = await call('POST', '/student/notifications/5/read', { token, referer: `https://${host}/student/notifications` });
+    ok('back to the page it came from: an app path, even over https behind a proxy', r.json.redirect === '/notifications' && !r.json.external, JSON.stringify(r.json));
+    process.env.APP_URL = 'https://www.example-school.test';
+    r = await call('POST', '/student/notifications/5/read', { token, referer: 'https://example-school.test/student/notifications' });
+    ok('…and with or without "www." in the address', r.json.redirect === '/notifications' && !r.json.external, JSON.stringify(r.json));
+    delete process.env.APP_URL;
 
     console.log('\n== files and cookies ==');
     r = await call('GET', '/uploads/handouts/known.pdf');
