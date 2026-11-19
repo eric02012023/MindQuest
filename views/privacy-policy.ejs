@@ -1,0 +1,115 @@
+<%# File: views/privacy-policy.ejs | Purpose: The public Privacy Policy page, linked from the landing page footer. %>
+<!DOCTYPE html>
+<html lang="en">
+<%- include('partials/head', { pageTitle, pageCss: '/css/public/home.css' }) %>
+<body class="public-home-page landing-page-body design-scroll-body">
+  <header class="mq-sticky-header privacy-header">
+    <div class="mq-header-inner">
+      <div class="mq-header-left">
+        <a href="/" aria-label="MindQuest home">
+          <img src="/assets/logo.jpeg" alt="MindQuest Logo" class="mq-logo" />
+        </a>
+        <a href="/" class="mq-brand-btn">MindQuest Tutorial Center</a>
+      </div>
+      <a class="mq-login-btn" href="/">Back to Home</a>
+    </div>
+  </header>
+
+  <main class="mq-landing-main privacy-main">
+    <article class="privacy-card">
+      <h1>Privacy Policy</h1>
+      <p class="privacy-updated">Last updated: November 20, 2026</p>
+
+      <p>MindQuest Tutorial Center ("MindQuest", "we", "us") respects your privacy. This policy explains what personal information we collect through our website, mindquesttutorial.com, and the MindQuest student app, how we use it, and the choices you have. We handle personal information in line with the Data Privacy Act of 2012 (Republic Act No. 10173).</p>
+
+      <h2>1. Information We Collect</h2>
+      <h3>Learners</h3>
+      <ul>
+        <li>Full name, birth date and age</li>
+        <li>Name of parent or guardian and a contact number</li>
+        <li>Year level, grade level, chosen subjects, branch and schedule</li>
+        <li>Email address and password</li>
+        <li>Profile photo, if the learner adds one</li>
+      </ul>
+      <h3>Tutors</h3>
+      <ul>
+        <li>Full name, address and contact number</li>
+        <li>Year levels and subjects taught, branch and schedule</li>
+        <li>Email address and password</li>
+        <li>Profile photo, if the tutor adds one</li>
+      </ul>
+      <h3>Learning and billing records</h3>
+      <ul>
+        <li>Assessment answers and scores, module activities, learning progress and attendance</li>
+        <li>Monthly fees, payments and payment reminders</li>
+      </ul>
+
+      <h2>2. How We Use Your Information</h2>
+      <ul>
+        <li>To register learners and tutors and to manage their accounts</li>
+        <li>To match each learner with a tutor by subject and schedule</li>
+        <li>To run tutoring sessions, assessments and learning modules, and to track progress</li>
+        <li>To record fees and payments and to send payment reminders</li>
+        <li>To send verification codes and important notices by email or through the website</li>
+        <li>To answer questions and requests from learners, parents and tutors</li>
+      </ul>
+
+      <h2>3. Who Can See Your Information</h2>
+      <p>Only people who need it for tutoring can see your information:</p>
+      <ul>
+        <li><strong>MindQuest staff</strong> who manage enrolment, schedules and billing</li>
+        <li><strong>A learner's tutor</strong>, who sees that learner's name, level, subjects, schedule, email and learning records</li>
+        <li><strong>The learner</strong>, who sees their own records and progress</li>
+      </ul>
+      <p>We do not sell, rent or trade personal information. We share it only with the service providers that host our website, database, file storage and email, and only so that they can run those services for us. We may also disclose information when the law requires it.</p>
+
+      <h2>4. How We Protect Your Information</h2>
+      <ul>
+        <li>Passwords are stored in encrypted (hashed) form; no one at MindQuest can read them.</li>
+        <li>Pages with personal information open only after signing in, and each account sees only what its role allows.</li>
+        <li>Handouts and other study materials open only to signed-in users who are allowed to see them.</li>
+      </ul>
+
+      <h2>5. Cookies</h2>
+      <p>Our website uses a cookie only to keep you signed in. We do not use advertising or tracking cookies.</p>
+
+      <h2>6. The MindQuest Student App</h2>
+      <p>The student app uses the same account and information as the website. It keeps your sign-in in your phone's secure storage and asks for access to your photos only when you choose a profile picture. It does not use your camera or microphone.</p>
+
+      <h2>7. Learners Who Are Minors</h2>
+      <p>Many of our learners are minors. A learner's registration includes the name of a parent or guardian, and we ask parents or guardians to take part in the registration of learners under 18.</p>
+
+      <h2>8. How Long We Keep Your Information</h2>
+      <p>We keep personal information while the account is active and for as long as needed for the centre's academic and billing records. When it is no longer needed, we delete it or make it anonymous.</p>
+
+      <h2>9. Your Rights</h2>
+      <p>Under the Data Privacy Act of 2012, you have the right to:</p>
+      <ul>
+        <li>Be informed of how your personal information is used</li>
+        <li>Access your personal information</li>
+        <li>Correct information that is wrong or out of date</li>
+        <li>Object to processing, or ask for your information to be blocked or deleted</li>
+        <li>Get a copy of your information</li>
+        <li>File a complaint with the National Privacy Commission</li>
+      </ul>
+      <p>You can update most of your details on your Profile page. For any other request, contact us using the details below.</p>
+
+      <h2>10. Changes to This Policy</h2>
+      <p>We may update this policy from time to time. The date at the top of this page shows when it was last changed.</p>
+
+      <h2>11. Contact Us</h2>
+      <p>For questions about this policy or your personal information, contact MindQuest Tutorial Center:</p>
+      <ul>
+        <li>Phone: <button type="button" class="privacy-phone" data-copy-phone="<%= phoneNumber %>"><%= phoneNumber %></button></li>
+        <li>Facebook: <a href="https://www.facebook.com/profile.php?id=61565864290106" target="_blank" rel="noopener noreferrer">MindQuest Tutorial Center</a></li>
+        <li>Main Branch: Purok 4, Block 7, Brgy. Conel, General Santos City</li>
+      </ul>
+    </article>
+  </main>
+
+  <%- include('partials/landing-footer', { phoneNumber }) %>
+
+  <%- include('partials/flash-modal', { flash }) %>
+  <script src="/js/main.js"></script>
+</body>
+</html>

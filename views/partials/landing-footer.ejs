@@ -1,0 +1,23 @@
+<%# File: views/partials/landing-footer.ejs | Purpose: The green footer shared by the landing page and the Privacy Policy page. %>
+<%# The phone number sits inside the Contact Us box; pressing the box copies it
+    (data-copy-phone, handled in /js/main.js). %>
+<footer class="footer">
+  <div class="reserve-block">
+    <div class="reserve-text">
+      <h3>CONNECT WITH US</h3>
+      <ul class="footer-social-list" aria-label="Social Links">
+        <li><a href="https://www.facebook.com/profile.php?id=61565864290106" class="facebook-link" target="_blank" rel="noopener noreferrer" aria-label="MindQuest Facebook page">f</a></li>
+      </ul>
+      <button type="button" class="footer-contact-box" data-copy-phone="<%= phoneNumber %>" aria-label="Contact us: <%= phoneNumber %>">
+        <span class="footer-contact-label">CONTACT US</span>
+        <span class="footer-contact-number"><%= phoneNumber %></span>
+      </button>
+    </div>
+    <nav class="footer-legal-links" aria-label="Legal">
+      <a href="/privacy-policy">Privacy Policy</a>
+    </nav>
+    <p class="footer-copyright"> Copyright &copy; <script>document.write(new Date().getFullYear());</script> MindQuest Tutorial Center.
+      <span>All rights reserved.</span>
+    </p>
+  </div>
+</footer>

@@ -119,6 +119,16 @@ router.get('/', ensureGuest, async (req, res, next) => {
   }
 });
 
+// Route handler: GET /privacy-policy
+// Purpose: The Privacy Policy page linked from the landing page footer. Open to
+// everyone, signed in or not, so there is no ensureGuest here.
+router.get('/privacy-policy', (req, res) => {
+  res.render('privacy-policy', {
+    pageTitle: 'Privacy Policy',
+    phoneNumber: process.env.PHONE_NUMBER || '+639099879424'
+  });
+});
+
 // Route handler: GET request
 
 // Purpose: Processes this endpoint and returns the correct view or action result.
