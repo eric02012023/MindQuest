@@ -61,6 +61,8 @@ Pagkatapos ng build, may link at QR code para i-download ang APK. (Nasa `eas.jso
 
 Bago mag-build ng bagong bersyon: taasan ang `version` at `android.versionCode` sa `app.json`.
 
+**Para ma-download sa website:** palitan ang `public/downloads/MindQuest.apk` (sa root ng repo, parehong pangalan) ng bagong APK, tapos i-deploy. Ito ang dina-download ng **Install App** button; ang version at laki na nakikita sa dialog ay binabasa mula sa `app.json` at sa APK mismo.
+
 ## 5. Paano magdagdag ng bagong screen
 
 **Ang patakaran:** ang path ng screen sa app = ang path ng website ng student, wala lang ang `/student`.

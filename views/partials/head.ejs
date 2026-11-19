@@ -32,16 +32,7 @@
   <link rel="icon" type="image/jpeg" href="/assets/logo.jpeg" />
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
 
-  <!-- Installable app (PWA). Optional for everyone: the manifest is what lets a
-       browser offer "Install app", and /js/pwa.js only reveals the button when
-       the browser says an install is actually possible. Nobody is required to
-       install anything — the website keeps working exactly as it does now. -->
-  <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#064c02" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="MindQuest" />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,10 +55,11 @@
        ui-polish so it is the last word on the components it owns. -->
   <link rel="stylesheet" href="/css/mq-data.css" />
 
-  <!-- The install button and its instructions dialog. Self-contained, so it
-       looks the same on the landing page, the login page and every dashboard. -->
-  <link rel="stylesheet" href="/css/pwa.css" />
-  <script src="/js/pwa.js" defer></script>
+  <!-- The Install App button and its "for students only" dialog, which hands
+       out the student Android app. Self-contained, so it looks the same on the
+       landing page, the login page and the student's dashboard. -->
+  <link rel="stylesheet" href="/css/install-app.css" />
+  <script src="/js/install-app.js" defer></script>
 
   <!-- MindQuest's look: the centre's motifs (books, cap, lightbulb, A+) in each
        page's own colours, and the motion — cards rising in, buttons that lift,

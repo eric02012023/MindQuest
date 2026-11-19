@@ -29,11 +29,9 @@
         <a href="/forgot-password">Forgot Password?</a>
         <a href="/">Go Back</a>
       </div>
-      <%# Offered here because this is the one page every role passes through,
-          and installing before logging in means the account is already signed
-          in the first time the app icon is opened. %>
+      <%# The student Android app. Its dialog says it is for students only. %>
       <div class="login-install-row">
-        <%- include('partials/install-app-button', { variant: '' }) %>
+        <%- include('partials/install-app-button') %>
       </div>
     </div>
     <div class="login-panel login-info-panel">

@@ -6,6 +6,7 @@
  */
 
 require('dotenv').config();
+const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const os = require('os');
@@ -68,24 +69,12 @@ app.get('/sitemap.xml', (req, res) => {
 });
 
 /**
- * Installable app (PWA).
- *
- * These three files are served from the site root rather than from the /assets
- * or /js mounts below, because their location is what makes them work:
- *
- *   /sw.js                 a service worker only controls pages at or below its
- *                          own path. Served from /js/sw.js it could speak for
- *                          /js/ and nothing else; served from the root it covers
- *                          the whole site, which is what `scope: "/"` in the
- *                          manifest asks for.
- *   /manifest.webmanifest  kept beside it so the scope it declares and the path
- *                          it is fetched from agree.
- *   /offline.html          the page the service worker shows when the network is
- *                          gone, so it has to be reachable at a stable URL.
- *
- * `no-cache` on the worker means the browser revalidates it on every check
- * instead of possibly sitting on a stale copy — the difference between a bad
- * worker being replaced by the next deploy and it lingering on someone's phone.
+ * The old browser-installed app (PWA) is withdrawn: the "Install App" button
+ * now hands out the real student Android app instead. Phones that installed the
+ * PWA still have its service worker, and a worker does not go away just because
+ * its file stops being served — so /sw.js keeps answering, with a worker that
+ * clears its caches and unregisters itself (public/sw.js). `no-cache` makes
+ * every browser fetch that replacement instead of trusting a stale copy.
  */
 app.get('/sw.js', (req, res) => {
   res.type('application/javascript');
@@ -93,13 +82,36 @@ app.get('/sw.js', (req, res) => {
   res.setHeader('Service-Worker-Allowed', '/');
   res.sendFile(path.join(__dirname, 'public', 'sw.js'));
 });
-app.get('/manifest.webmanifest', (req, res) => {
-  res.type('application/manifest+json');
-  res.sendFile(path.join(__dirname, 'public', 'manifest.webmanifest'));
-});
-app.get('/offline.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'offline.html'));
-});
+
+/**
+ * The student Android app (mindquest-mobile/), downloaded from the Install App
+ * button. To publish a new build, replace public/downloads/MindQuest.apk and
+ * raise `version` in mindquest-mobile/app.json — the button reads both here.
+ * The link never changes, so a link someone already shared keeps working.
+ */
+const STUDENT_APK_FILE = path.join(__dirname, 'public', 'downloads', 'MindQuest.apk');
+app.locals.studentApp = (() => {
+  try {
+    const { size } = fs.statSync(STUDENT_APK_FILE);
+    const { expo } = require('./mindquest-mobile/app.json');
+    return {
+      href: '/downloads/MindQuest.apk',
+      version: expo.version,
+      sizeMb: Math.round(size / (1024 * 1024))
+    };
+  } catch (error) {
+    // No APK in this checkout: the button is left out rather than linking to a 404.
+    return null;
+  }
+})();
+app.use('/downloads', express.static(path.join(__dirname, 'public', 'downloads'), {
+  setHeaders(res, filePath) {
+    if (!filePath.endsWith('.apk')) return;
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="MindQuest.apk"');
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 
 app.use('/assets', express.static(path.join(__dirname, 'public', 'assets')));
 // Middleware/route mount: attaches shared behavior or a route group to the application.

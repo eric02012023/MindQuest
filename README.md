@@ -35,7 +35,7 @@ Default admin login: `admin@mindquest.local` / `Admin@12345`
 - Student dashboard, tutor dashboard, attendance, subjects, messages
 - Basic chat with file upload and WebRTC signaling buttons
 - Pre/post assessments for students, created and managed by tutors
-- Installable app (PWA) — optional for every role, see below
+- Student Android app, downloaded from the **Install App** button — see below
 
 
 ## Admin reset and login
@@ -75,42 +75,27 @@ Example Gmail SMTP settings:
 
 Use an App Password for Gmail SMTP.
 
-## Installing MindQuest as an app
+## The student app (Install App)
 
-MindQuest is installable straight from the browser — there is no separate
-download, no app store, and nothing extra to pay for. It is the same website in
-its own window, with its own icon, so an installed user and a browser user are
-looking at exactly the same pages and the same account.
-
-It is optional for everyone. Students, tutors, admins and admin assistants all
-see the **Install App** button, and anyone who ignores it keeps using the site
-in a normal tab with nothing changed.
+The **Install App** button hands out the student Android app built in
+[mindquest-mobile/](mindquest-mobile/). Only students can log in to it; tutors,
+assistant admins and the admin use the website.
 
 Where the button appears:
 
-- the landing page header
+- the landing page header (inside the ☰ menu on a phone)
 - the login page, under *Forgot Password / Go Back*
-- the topbar of every dashboard, next to the notification bell
+- the student's dashboard topbar (not shown to the other roles)
 
-It stays hidden unless the browser confirms an install is possible, and hides
-itself again once the app is installed.
+Pressing it opens a dialog first: **For students only**, the app's version and
+size, then **Download the app**. On an iPhone or iPad the dialog says the app is
+for Android and offers no download.
 
-The installed app opens on `/login` rather than the landing page — the marketing
-page is for visitors arriving from a search, not for someone who pressed their
-own app icon. `/login` is behind `ensureGuest`, so anyone still signed in is
-redirected to their own dashboard and never sees the form at all.
+The APK is `public/downloads/MindQuest.apk`, served at `/downloads/MindQuest.apk`.
+To publish a new build: replace that file (same name), raise `version` in
+`mindquest-mobile/app.json`, and deploy. The dialog reads the version and size
+from those two files.
 
-| Device | How | Notes |
-|---|---|---|
-| Android (Chrome) | Press **Install App** | Full install, icon in the app drawer |
-| Windows / macOS (Chrome, Edge) | Press **Install App** | Opens in its own window |
-| iPhone / iPad (Safari) | Press **Install App**, then follow the steps shown | Apple offers no install button, so the app explains *Share → Add to Home Screen* |
-| Firefox desktop | Not offered | The button stays hidden; the website works normally |
-
-Requires HTTPS, which the live domain already has. On a developer machine
-`http://localhost` also counts as secure, so installing can be tested locally —
-but `http://<your-LAN-ip>:3000` cannot.
-
-Deployment notes for this feature, including how to withdraw it, are in
-[DEPLOYMENT.md](DEPLOYMENT.md).
+The browser-installed version of the site (PWA) that this button used to offer
+is withdrawn; see [DEPLOYMENT.md](DEPLOYMENT.md).
 

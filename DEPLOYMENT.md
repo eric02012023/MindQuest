@@ -46,6 +46,8 @@ The migration is safe to re-run: every step is guarded, so a second run reports 
 
 The Android app talks to `/api/mobile` on this same server and database — there is nothing extra to deploy. Set `MOBILE_TOKEN_SECRET` on Render before handing out the APK. Only students can sign in to it; staff accounts are told to use the website. How to build the APK is in `mindquest-mobile/README.md`.
 
+The website hands the APK out itself: `public/downloads/MindQuest.apk`, served at `/downloads/MindQuest.apk` (as a download, `Cache-Control: no-cache`) and linked from the **Install App** button. To publish a new build, replace that file under the same name, raise `version` in `mindquest-mobile/app.json`, and deploy. If the file is missing, the button is left out rather than linking to a 404.
+
 ---
 
 ## ⚠️ Uploaded files and Render's ephemeral filesystem
@@ -119,97 +121,24 @@ FROM sys.database_files;
 
 ---
 
-## The installable app (PWA)
+## The withdrawn browser app (PWA)
 
-Users can install MindQuest from the browser. It needs no build step, no store
-account and no extra hosting — the files ship with the app and Render serves
-them like any other route. See the README for what users see and press.
+MindQuest used to be installable from the browser (a manifest plus a service
+worker). That is withdrawn: the **Install App** button now hands out the real
+student Android app instead (see *The student app* above).
 
-Three files must be reachable at the **site root**, and `server.js` serves them
-there on purpose:
+A service worker already on someone's device stays there until it is told to
+go, so two things remove it:
 
-| URL | Why the root matters |
-|---|---|
-| `/sw.js` | A service worker only controls pages at or below its own path. Under `/js/` it would speak for `/js/` alone. |
-| `/manifest.webmanifest` | Kept beside it so the `scope: "/"` it declares matches where it is served from. |
-| `/offline.html` | Shown by the worker when the network is gone, so it needs a stable URL. |
+- `/sw.js` is still served (with `Cache-Control: no-cache`), but it is now a
+  worker that deletes its caches and unregisters itself.
+- `/js/install-app.js`, loaded on every page, unregisters any service worker
+  and deletes the old `mindquest-*` caches.
 
-### What the service worker will and will not do
-
-It **never caches a page**. Every HTML page here is rendered for one logged-in
-person, so a cached page would be replayed to whoever opens the app next on that
-device and would keep showing stale figures. HTML is always fetched live.
-
-It also does not touch `/uploads/`, `/download/`, `/socket.io/`, `/webhook/`, or
-any `POST`. Handouts stay gated by the server, messaging stays live, and logins,
-payments and assessment submissions behave exactly as they do in a normal tab.
-
-What it does cache is small and deliberate:
-
-- `/css/` and `/js/` — **network-first**. These ship under fixed names with no
-  content hash, so cache-first would serve the previous deploy's stylesheet for
-  one more load after every release. Network-first keeps them current online and
-  still works offline.
-- `/assets/` — **stale-while-revalidate**. The logo and landing artwork are the
-  heavy files and almost never change.
-
-### Verifying it after a deploy
-
-```bash
-curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://mindquesttutorial.com/sw.js
-curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://mindquesttutorial.com/manifest.webmanifest
-```
-
-Both must be `200`. Then open the site in Chrome → DevTools → **Application**:
-*Manifest* lists MindQuest with its icons and no errors, and *Service Workers*
-shows one **activated and running**. An install icon appears in the address bar,
-and the in-page **Install App** button becomes visible.
-
-### When the site shows the offline page and your internet is fine
-
-The offline page appearing does **not** mean the visitor lost their connection.
-The worker shows it whenever a page load fails, and a host that is asleep, down
-or suspended fails in exactly the same way a dead Wi-Fi does. On the free Render
-instance this is the common case, not the rare one: it spins down when idle and
-takes up to a minute to wake, and the request that arrives while it is waking
-can fail outright.
-
-Find out which it is before changing anything — from a terminal, not a browser,
-because the browser is the thing being misled:
-
-```bash
-nslookup mindquesttutorial.com      # must answer with Render's IPs (216.24.57.x)
-curl -s -o /dev/null -w "%{http_code} in %{time_total}s\n" --max-time 90 https://mindquesttutorial.com/
-```
-
-| What you get | What it means |
-|---|---|
-| `200` | The server is up. The problem is the copy of the worker on that one device — unregister it in DevTools → Application → Service Workers. |
-| `000` / timeout, DNS fine | The server is not answering. Render dashboard → the service → check it is not suspended, and read the deploy log. Nothing in this repo can fix it. |
-| DNS fails | The custom domain is the problem, not the app. Render → Settings → Custom Domains. |
-
-`000` with DNS resolving is the one to recognise: **the app is not broken, the
-host is not serving it.** Redeploying the code changes nothing until the service
-is running again.
-
-The page itself no longer guesses. It checks `navigator.onLine` to tell the two
-apart, says which one it is, and then polls the server on a backoff until it
-answers — so a waking instance reloads the page on its own with nobody watching
-it. The worker also retries a failed navigation twice before falling back, which
-absorbs a single cold-start failure without the visitor ever seeing this page.
-
-### If the worker ever misbehaves
-
-Bump `CACHE_VERSION` in `public/sw.js` and deploy. The worker calls
-`skipWaiting()` and `clients.claim()`, and its `activate` step deletes every
-cache that is not the current one — so one deploy replaces it everywhere on the
-next page load. `/sw.js` is served with `Cache-Control: no-cache` so no browser
-sits on a stale copy of the worker itself.
-
-To withdraw the feature entirely, replace the body of `public/sw.js` with a
-worker that unregisters itself, and deploy that before removing anything else —
-a service worker already on someone's phone does not disappear just because the
-file stops being served.
+Keep `/sw.js` and its route in `server.js` for a few months before deleting
+them, so devices that are opened only rarely still receive the clean-up. A PWA
+icon someone already added to a home screen keeps opening the website, like a
+bookmark; they can remove it like any other icon.
 
 ---
 

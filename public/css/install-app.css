@@ -1,22 +1,20 @@
 /* =============================================================================
-   MindQuest — installable app (PWA) layer
+   MindQuest — the "Install App" button and its dialog
    -----------------------------------------------------------------------------
-   Loaded by views/partials/head.ejs on every page, and driven by /js/pwa.js.
+   Loaded by views/partials/head.ejs on every page, and driven by
+   /js/install-app.js.
 
-   Two things live here and nothing else:
-     .mq-install-btn   the optional "Install App" button, hidden until the
-                       browser confirms an install is actually possible
-     .mq-pwa-sheet     the small dialog that explains Add to Home Screen on
-                       iPhone and iPad, where the browser offers no button
+     .mq-install-btn   the button, on the landing page, the login page and the
+                       student's dashboard topbar
+     .mq-app-sheet     the dialog it opens: "for students only", then the
+                       download of the student Android app
 
-   Both are deliberately self-contained. The install button appears on the
-   landing page, the login page and inside all four role dashboards, and those
-   pages do not share a modal stylesheet — so this file borrows nothing from
-   them and leaks nothing into them.
+   Self-contained on purpose: those pages do not share a modal stylesheet, so
+   this file borrows nothing from them and leaks nothing into them.
    ========================================================================== */
 
 /* -------------------------------------------------------------------------
-   The install button
+   The button
    ---------------------------------------------------------------------- */
 
 .mq-install-btn {
@@ -37,12 +35,6 @@
   transition: background .15s ease, border-color .15s ease, transform .15s ease;
 }
 
-/* pwa.js toggles the `hidden` attribute; without this the flex display above
-   would win and the button would show on browsers that cannot install. */
-.mq-install-btn[hidden] {
-  display: none;
-}
-
 .mq-install-btn:hover {
   background: #fff;
   border-color: rgba(6, 76, 2, .45);
@@ -60,30 +52,15 @@
   flex: 0 0 auto;
 }
 
-/* On the dark landing-page header and the dark sidebar the outlined version
-   disappears, so those two spots opt into a solid fill instead. */
-.mq-install-btn.on-dark {
-  background: rgba(255, 255, 255, .14);
-  border-color: rgba(255, 255, 255, .35);
-  color: #fff;
-}
-
-.mq-install-btn.on-dark:hover {
-  background: rgba(255, 255, 255, .24);
-  border-color: rgba(255, 255, 255, .6);
-}
-
-/* The login page has room for the full label, so it keeps one even on a phone
-   and sits centred under the Forgot Password / Go Back row. The row itself
-   collapses when the button inside it is hidden, so an unsupported browser
-   sees no stray gap. */
+/* The login page sits it centred under the Forgot Password / Go Back row. */
 .login-install-row {
   display: flex;
   justify-content: center;
   margin-top: 14px;
 }
 
-.login-install-row:not(:has(.mq-install-btn:not([hidden]))) {
+.login-install-row:empty,
+.login-install-row:not(:has(.mq-install-btn)) {
   display: none;
 }
 
@@ -99,34 +76,39 @@
 }
 
 /* -------------------------------------------------------------------------
-   The "how to install" dialog
+   The dialog
    ---------------------------------------------------------------------- */
 
-.mq-pwa-sheet {
+html.mq-app-sheet-open,
+html.mq-app-sheet-open body {
+  overflow: hidden;
+}
+
+.mq-app-sheet {
   position: fixed;
   inset: 0;
   z-index: 99999;
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 24px 18px;
+  padding: 24px 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: rgba(4, 30, 8, .55);
   backdrop-filter: blur(3px);
 }
 
-.mq-pwa-sheet.is-open {
+.mq-app-sheet.is-open {
   display: flex;
 }
 
-.mq-pwa-card {
+.mq-app-card {
   position: relative;
   width: 100%;
-  max-width: 420px;
+  max-width: 400px;
   max-height: calc(100vh - 48px);
   overflow: auto;
-  padding: 30px 28px 26px;
+  padding: 30px 26px 24px;
   border-radius: 24px;
   background: #fff;
   box-shadow: 0 24px 60px rgba(4, 30, 8, .3);
@@ -135,61 +117,130 @@
   text-align: center;
 }
 
-.mq-pwa-logo {
+.mq-app-logo {
   width: 66px;
   height: 66px;
-  margin: 0 auto 14px;
+  margin: 0 auto 12px;
   display: block;
+  border-radius: 16px;
 }
 
-.mq-pwa-card h3 {
-  margin: 0 0 8px;
+.mq-app-card h3 {
+  margin: 0 0 16px;
   font-size: 20px;
   line-height: 1.25;
   letter-spacing: -.01em;
 }
 
-.mq-pwa-lead {
-  margin: 0 0 20px;
+/* "For students only" — the part nobody should miss. */
+.mq-app-notice {
+  margin: 0 0 14px;
+  padding: 14px 16px 12px;
+  border: 1px solid #f1c56b;
+  border-radius: 16px;
+  background: #fff8e6;
+  color: #5c3b00;
+}
+
+.mq-app-badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #b45309;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.mq-app-notice p {
+  margin: 0;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.55;
+}
+
+.mq-app-notice p + p {
+  margin-top: 4px;
+  color: #7a5410;
+}
+
+.mq-app-meta {
+  margin: 0 0 18px;
+  font-size: 13px;
   color: #5f7084;
 }
 
-.mq-pwa-steps {
-  margin: 0 0 22px;
-  padding: 0 0 0 22px;
-  text-align: left;
-  font-size: 14.5px;
-  line-height: 1.65;
+.mq-app-apple {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.55;
   color: #263b52;
 }
 
-.mq-pwa-steps li + li {
-  margin-top: 9px;
+.mq-app-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.mq-pwa-steps strong {
-  color: #064c02;
-}
-
-.mq-pwa-done {
+.mq-app-primary,
+.mq-app-secondary {
   appearance: none;
-  border: 0;
-  cursor: pointer;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 999px;
+  padding: 12px 24px;
   font: inherit;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mq-app-primary {
+  border: 0;
   color: #fff;
   background: linear-gradient(180deg, #19791b 0%, #064c02 100%);
-  border-radius: 999px;
-  padding: 12px 32px;
 }
 
-.mq-pwa-done:hover {
+.mq-app-primary:hover {
   filter: brightness(1.06);
 }
 
-.mq-pwa-close {
+.mq-app-secondary {
+  border: 1px solid #d5e0e8;
+  color: #263b52;
+  background: #fff;
+}
+
+.mq-app-secondary:hover {
+  background: #f7fafc;
+}
+
+.mq-app-primary:focus-visible,
+.mq-app-secondary:focus-visible,
+.mq-app-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(25, 121, 27, .3);
+}
+
+.mq-app-hint {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #5f7084;
+}
+
+.mq-app-hint strong {
+  color: #064c02;
+}
+
+.mq-app-close {
   position: absolute;
   top: 14px;
   right: 14px;
@@ -208,7 +259,7 @@
   transition: background .15s ease, color .15s ease;
 }
 
-.mq-pwa-close:hover {
+.mq-app-close:hover {
   background: #e5eef3;
   color: #102033;
 }

@@ -1,19 +1,23 @@
-<%# ANNOTATED COPY FOR DEFENSE REVIEW | File: views/partials/install-app-button.ejs | Purpose: The optional "Install App" button, shared by the landing page, the login page and every dashboard topbar. %>
+<%# File: views/partials/install-app-button.ejs | Purpose: The "Install App" button on the landing page, the login page and the student's topbar. %>
 <%#
-  Rendered hidden. /js/pwa.js removes the `hidden` attribute only when the
-  browser has confirmed MindQuest can be installed on this device — and leaves
-  it hidden when the app is already installed, or when the browser has no way to
-  install it at all. That way nobody is shown a button that would do nothing.
+  Hands out the student Android app (mindquest-mobile/). Pressing it does not
+  download anything yet: /js/install-app.js first opens a dialog saying the app
+  is for students only, and the download starts from that dialog's button.
 
-  Pass `variant: 'on-dark'` where the button sits on a dark header.
+  studentApp comes from app.locals (server.js) — the APK's link, version and
+  size. With no APK on the server it is null, and the button is left out rather
+  than offering a download that would fail.
 %>
-<% const installVariant = typeof variant === 'undefined' ? '' : variant; %>
+<% const installApp = typeof studentApp === 'undefined' ? null : studentApp; %>
+<% if (installApp) { %>
 <button
   type="button"
-  class="mq-install-btn <%= installVariant %>"
-  data-pwa-install
-  hidden
-  title="Install MindQuest as an app on this device"
+  class="mq-install-btn"
+  data-install-app
+  data-app-href="<%= installApp.href %>"
+  data-app-version="<%= installApp.version %>"
+  data-app-size="<%= installApp.sizeMb %>"
+  title="Download the MindQuest app for students"
 >
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 3v12" />
@@ -22,3 +26,4 @@
   </svg>
   <span class="mq-install-label">Install App</span>
 </button>
+<% } %>
