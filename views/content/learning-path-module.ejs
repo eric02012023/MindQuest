@@ -51,6 +51,20 @@
     </div>
   </div>
 
+  <%# The module's approved learning objectives (lib/objectives.js), to read. %>
+  <% const moduleObjectives = typeof objectives === 'undefined' ? [] : (objectives || []); %>
+  <% if (moduleObjectives.length) { %>
+    <section class="panel-card">
+      <div class="panel-card-head">
+        <h3>Learning Objectives</h3>
+        <span class="badge badge-info"><%= moduleObjectives.length %></span>
+      </div>
+      <ol class="lpm-objectives">
+        <% moduleObjectives.forEach((o) => { %><li><%= o.text %></li><% }) %>
+      </ol>
+    </section>
+  <% } %>
+
   <section class="panel-card">
     <div class="panel-card-head">
       <h3>Weak Points</h3>
@@ -259,4 +273,5 @@
   .lpmod-table td { vertical-align: top; }
   .lpmod-table .module-card-meta { margin-left: 4px; }
   .module-card-meta { color: var(--text-soft, #5f7084); font-size: 12.5px; }
+  .lpm-objectives { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; line-height: 1.5; }
 </style>

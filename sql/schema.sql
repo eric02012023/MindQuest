@@ -2247,3 +2247,52 @@ BEGIN
     CONSTRAINT uq_spa_student UNIQUE (student_id, subject_id, grade_level)
   );
 END;
+
+-- ---------------------------------------------------------------------------
+-- 50. MindQuest's own learning objectives, per module (lib/objectives.js).
+--
+-- The AI drafts three to five from a module's handouts; the main admin edits
+-- them and approves them. Each question then says which objective it measures,
+-- so a result reads per objective — mastered at 60% — and a learning path adds
+-- lessons for the objectives not mastered yet.
+--
+--   module_objectives               the objectives, in order. One is never
+--                                   deleted, only archived (is_archived): the
+--                                   questions that measured it keep pointing at it.
+--                                   status is the module's: every live objective
+--                                   is a draft until the admin approves them, and
+--                                   a draft again once edited.
+--   tutor_assessment_questions.objective_id
+--                                   the objective a question measures; empty for
+--                                   the questions from before, and for a module
+--                                   with no approved objectives.
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('dbo.module_objectives', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.module_objectives (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    module_id INT NOT NULL,
+    position INT NOT NULL,
+    objective_text NVARCHAR(500) NOT NULL,
+    status NVARCHAR(20) NOT NULL CONSTRAINT df_mo_status DEFAULT 'draft',
+    written_by NVARCHAR(10) NOT NULL CONSTRAINT df_mo_written_by DEFAULT 'ai',
+    approved_by INT NULL,
+    approved_at DATETIME2 NULL,
+    is_archived BIT NOT NULL CONSTRAINT df_mo_archived DEFAULT 0,
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_mo_module FOREIGN KEY (module_id) REFERENCES dbo.modules(id),
+    CONSTRAINT ck_mo_status CHECK (status IN ('draft', 'approved')),
+    CONSTRAINT ck_mo_written_by CHECK (written_by IN ('ai', 'admin'))
+  );
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_mo_module' AND object_id = OBJECT_ID('dbo.module_objectives'))
+  CREATE INDEX IX_mo_module ON dbo.module_objectives(module_id, position);
+
+IF COL_LENGTH('dbo.tutor_assessment_questions', 'objective_id') IS NULL
+  ALTER TABLE dbo.tutor_assessment_questions ADD objective_id INT NULL;
+
+IF COL_LENGTH('dbo.tutor_assessment_questions', 'objective_id') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_taq_objective' AND object_id = OBJECT_ID('dbo.tutor_assessment_questions'))
+  EXEC sp_executesql N'CREATE INDEX IX_taq_objective ON dbo.tutor_assessment_questions(objective_id) WHERE objective_id IS NOT NULL;';

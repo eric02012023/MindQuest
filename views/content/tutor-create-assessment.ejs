@@ -154,6 +154,7 @@
         </div>
         <input type="hidden" class="q-type" value="${type}" />
         <input type="hidden" class="q-source-handout" value="${q.source_handout_id || ''}" />
+        <input type="hidden" class="q-objective" value="${q.objective_id || ''}" />
         <div class="form-group">
           <label>Points</label>
           <input type="number" class="q-points" value="${Number(q.points) || 1}" min="1" max="10" />
@@ -252,7 +253,10 @@
         question_type: type,
         points: Number(card.querySelector('.q-points').value) || 1,
         explanation: (card.querySelector('.q-explanation') || {}).value || '',
-        source_handout_id: Number(card.querySelector('.q-source-handout').value) || null
+        source_handout_id: Number(card.querySelector('.q-source-handout').value) || null,
+        // The learning objective the AI drafted it for, if any: checked again
+        // against the module's approved objectives when it is saved.
+        objective_id: Number((card.querySelector('.q-objective') || {}).value) || null
       };
 
       // Both types keep their answer key in .q-answer: a letter for multiple

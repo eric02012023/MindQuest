@@ -109,6 +109,94 @@
     </div>
   </section>
 
+  <%# The module's learning objectives (lib/objectives.js): drafted by the AI
+      from its handouts, edited and approved by the main admin; an assistant
+      reads them. Approving them writes this grade's Pre-Assessment again, every
+      question measuring one of them. %>
+  <% const objectiveList = typeof objectives === 'undefined' ? [] : (objectives || []); %>
+  <% const objectiveState = typeof objectiveStatus === 'undefined' ? 'none' : objectiveStatus; %>
+  <section class="panel-card" id="objectives">
+    <div class="panel-card-head">
+      <h3>Learning Objectives</h3>
+      <% if (objectiveState === 'approved') { %>
+        <span class="badge badge-success">Approved</span>
+      <% } else if (objectiveState === 'draft') { %>
+        <span class="badge badge-warning">Draft</span>
+      <% } else { %>
+        <span class="badge badge-info">None yet</span>
+      <% } %>
+    </div>
+
+    <% if (currentUser.role === 'admin') { %>
+      <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/objectives" id="mo-form">
+        <ol class="mo-list" id="mo-list" data-next="<%= objectiveList.length %>">
+          <% objectiveList.forEach((o, i) => { %>
+            <li class="mo-item">
+              <input type="hidden" name="objectives[<%= i %>][id]" value="<%= o.id %>" />
+              <input type="text" name="objectives[<%= i %>][text]" value="<%= o.objective_text %>" maxlength="300" required />
+              <button type="button" class="btn btn-secondary btn-sm mo-remove">Remove</button>
+            </li>
+          <% }) %>
+        </ol>
+        <div class="mo-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="mo-add">Add Objective</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="mo-save" <%= objectiveList.length ? '' : 'hidden' %>>Save Objectives</button>
+        </div>
+      </form>
+      <div class="mo-actions">
+        <% if (objectiveState === 'draft') { %>
+          <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/objectives/approve"
+                data-confirm-message="Approve these objectives? The <%= mod.grade_level || '' %> Pre-Assessment is written again from them.">
+            <button type="submit" class="btn btn-primary btn-sm">Approve Objectives</button>
+          </form>
+        <% } %>
+        <form method="post" action="<%= basePath %>/modules/<%= mod.id %>/objectives/draft"
+              data-confirm-message="<%= objectiveList.length ? 'Replace these objectives with a new draft from the AI? They have to be approved again.' : 'Draft this module\'s objectives from its handouts with AI?' %>">
+          <button type="submit" class="btn btn-secondary btn-sm"><%= objectiveList.length ? 'Write Again with AI' : 'Write with AI' %></button>
+        </form>
+      </div>
+
+      <template id="mo-template">
+        <li class="mo-item">
+          <input type="hidden" data-field="id" value="" />
+          <input type="text" data-field="text" value="" maxlength="300" required />
+          <button type="button" class="btn btn-secondary btn-sm mo-remove">Remove</button>
+        </li>
+      </template>
+      <script>
+        (function () {
+          var list = document.getElementById('mo-list');
+          var save = document.getElementById('mo-save');
+          var next = Number(list.getAttribute('data-next')) || 0;
+          function refresh() { save.hidden = !list.querySelector('.mo-item'); }
+          function wire(item) {
+            item.querySelector('.mo-remove').addEventListener('click', function () {
+              item.parentNode.removeChild(item);
+              refresh();
+            });
+          }
+          Array.prototype.forEach.call(list.querySelectorAll('.mo-item'), wire);
+          document.getElementById('mo-add').addEventListener('click', function () {
+            var node = document.getElementById('mo-template').content.firstElementChild.cloneNode(true);
+            node.querySelector('[data-field="id"]').name = 'objectives[' + next + '][id]';
+            node.querySelector('[data-field="text"]').name = 'objectives[' + next + '][text]';
+            next += 1;
+            list.appendChild(node);
+            wire(node);
+            refresh();
+            node.querySelector('[data-field="text"]').focus();
+          });
+        })();
+      </script>
+    <% } else if (!objectiveList.length) { %>
+      <p class="empty-state">No objectives yet.</p>
+    <% } else { %>
+      <ol class="mo-read">
+        <% objectiveList.forEach((o) => { %><li><%= o.objective_text %></li><% }) %>
+      </ol>
+    <% } %>
+  </section>
+
   <%# The module written again for each level (lib/levelModules.js). A level
       appears once a student of it finishes the Pre-Assessment, or when made
       here; the main admin can have one written again. %>
@@ -217,3 +305,14 @@
     </section>
   <% } %>
 </section>
+
+<style>
+  .mo-list, .mo-read { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 8px; }
+  .mo-list { padding-left: 0; list-style: none; counter-reset: mo; }
+  .mo-item { display: flex; gap: 8px; align-items: center; counter-increment: mo; }
+  .mo-item::before { content: counter(mo) "."; min-width: 18px; font-weight: 700; color: var(--text-soft, #5f7084); }
+  .mo-item input[type="text"] { flex: 1; min-width: 0; min-height: 38px; padding: 8px 12px; border: 1px solid var(--border, #d7e2ea); border-radius: 10px; font: inherit; font-size: 14px; }
+  .mo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  .mo-actions form { margin: 0; }
+  .mo-read { line-height: 1.5; }
+</style>

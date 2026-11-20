@@ -11,7 +11,11 @@
     around the screen and two people looking at the same result saw a different
     order. Rows, worst first, do not move.
 
-    Locals: submission (with answers), weakAreas, viewerRole %>
+    When the questions measured learning objectives (lib/objectives.js), a
+    row per objective follows the topics: Mastered at 60% right and above.
+
+    Locals: submission (with answers), weakAreas, viewerRole,
+            objectiveResults (optional) %>
 <%
   const pct = Number(submission.percentage || 0);
   const level = submission.level || 'Beginner';
@@ -159,6 +163,40 @@
       <% }) %>
     </div>
   </section>
+
+  <%# ------------------------------------------------- learning objectives %>
+  <% const objectiveRows = typeof objectiveResults === 'undefined' ? [] : (objectiveResults || []); %>
+  <% if (objectiveRows.length) { %>
+    <section class="mq-panel">
+      <div class="mq-panel-head">
+        <div>
+          <h3>Learning objectives</h3>
+        </div>
+        <span class="mq-count"><%= objectiveRows.filter((o) => o.mastered).length %>/<%= objectiveRows.length %> mastered</span>
+      </div>
+
+      <div class="mq-table" style="--mq-cols: minmax(220px, 3fr) minmax(130px, 1.2fr) 110px 120px;">
+        <div class="mq-head">
+          <span>Objective</span>
+          <span>Module</span>
+          <span class="mq-num">Right</span>
+          <span>Status</span>
+        </div>
+        <% objectiveRows.forEach((o) => { %>
+          <div class="mq-row">
+            <span class="mq-cell mq-cell-primary" data-label="Objective">
+              <span class="mq-name"><%= o.text %></span>
+            </span>
+            <span class="mq-cell mq-sub" data-label="Module"><%= o.moduleLabel || '—' %></span>
+            <span class="mq-cell mq-num" data-label="Right"><%= o.correct %>/<%= o.total %></span>
+            <span class="mq-cell" data-label="Status">
+              <span class="mq-status mq-status-<%= o.mastered ? 'paid' : 'unpaid' %>"><%= o.mastered ? 'Mastered' : 'Not yet' %></span>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+  <% } %>
 
   <%# ----------------------------------------------------------- item rows %>
   <section class="mq-panel">

@@ -77,6 +77,37 @@
       </tbody>
     </table>
   </div>
+
+  <%# Learning objective by learning objective (lib/objectives.js): Mastered at
+      60% right and above. Only when the questions measured objectives. %>
+  <% const objectiveRows = sc.objectives || []; %>
+  <% if (objectiveRows.length) { %>
+    <div class="table-wrap ps-objectives">
+      <table class="ps-table">
+        <thead>
+          <tr><th>Learning objective</th><th>Pre-Assessment</th><th>Post-Assessment</th></tr>
+        </thead>
+        <tbody>
+          <% objectiveRows.forEach((o) => { %>
+            <tr>
+              <td>
+                <strong><%= o.text %></strong>
+                <% if (o.moduleLabel) { %><span class="ps-sub"><%= o.moduleLabel %></span><% } %>
+              </td>
+              <% [o.pre, o.post].forEach((r) => { %>
+                <td>
+                  <% if (r) { %>
+                    <span class="badge <%= r.mastered ? 'badge-success' : 'badge-warning' %>"><%= r.mastered ? 'Mastered' : 'Not yet' %></span>
+                    <span class="ps-sub"><%= r.correct %>/<%= r.total %></span>
+                  <% } else { %>&mdash;<% } %>
+                </td>
+              <% }) %>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
 </section>
 
 <section class="panel-card ps-card">
@@ -141,5 +172,6 @@
   .ps-delta { font-size: 13px; font-weight: 700; color: var(--text-soft, #5f7084); white-space: nowrap; }
   .ps-delta.is-up { color: #1a7a3a; }
   .ps-delta.is-down { color: #a43030; }
+  .ps-objectives { margin-top: 14px; }
 </style>
 <% } %>

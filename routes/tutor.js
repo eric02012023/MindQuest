@@ -722,6 +722,7 @@ router.get('/path-attempts/:attemptId', async (req, res, next) => {
       contentView: '../content/student-assessment-breakdown',
       submission: page.submission,
       weakAreas: page.weakAreas,
+      objectiveResults: page.objectiveResults,
       viewerRole: 'tutor',
       backHref: pathModule ? `/tutor/path-modules/${Number(pathModule.id)}` : pathPageOf(page.studentId, page.subjectId),
       backLabel: pathModule ? `Back to Module ${pathModule.order_number || pathModule.position}` : 'Back to modules'
@@ -1571,7 +1572,11 @@ router.post('/level-modules/:id/draft-assessment', async (req, res, next) => {
         order_number: mod.order_number,
         module_title: mod.title
       }));
-    const sources = lessonTexts.length ? lessonTexts : await getModuleHandoutTexts(mod.id);
+    // With the module's approved learning objectives (lib/objectives.js), so each
+    // drafted question measures one of them.
+    const sources = await require('../lib/objectives').withObjectives(
+      lessonTexts.length ? lessonTexts : await getModuleHandoutTexts(mod.id)
+    );
     if (!sources.length) {
       setFlash(req, 'error', 'This module has no lesson or handout with readable text yet, so there is nothing to draft from.');
       return res.redirect(backToForm);
@@ -1821,6 +1826,8 @@ router.get('/results/:submissionId', async (req, res, next) => {
       contentView: '../content/student-assessment-breakdown',
       submission,
       weakAreas,
+      // How the student did on each learning objective (lib/objectives.js).
+      objectiveResults: await require('../lib/objectives').objectiveResultsFor({ submissionId: submission.id }),
       viewerRole: 'tutor',
       ...(pathModule ? {
         backHref: `/tutor/path-modules/${Number(pathModule.id)}`,

@@ -182,6 +182,8 @@ const { query } = require('../config/db');
 const paths = require('../lib/learningPaths');
 // Each student's own Pre-Assessment, checked and opened before they take it.
 const studentPre = require('../lib/studentPre');
+// MindQuest's own learning objectives, per module.
+const objectives = require('../lib/objectives');
 // The admin's and an assistant's own login email: a registered Gmail address,
 // changed only with a code sent to it.
 const accountEmail = require('../lib/accountEmail');
@@ -2366,6 +2368,7 @@ function createAdminRouter(role) {
         return res.redirect(`${basePath}/subjects`);
       }
       const handouts = await getModuleHandouts(mod.id);
+      const moduleObjectives = await objectives.getObjectives(mod.id);
       // The other live modules in this subject, so the settings form can say
       // which numbers are already spoken for in each grade before the admin
       // submits.
@@ -2388,10 +2391,78 @@ function createAdminRouter(role) {
         // The module written for each level (a level not made yet is null),
         // flagged when its handouts changed after it was written.
         levelModules: await levelModulesWithStaleFlags(mod.id),
-        levels: LEVELS
+        levels: LEVELS,
+        // Its learning objectives (lib/objectives.js), and whether they are approved.
+        objectives: moduleObjectives,
+        objectiveStatus: objectives.statusOf(moduleObjectives)
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }
+  });
+
+  // -------------------------------------------------------------------------
+  // A module's learning objectives (lib/objectives.js). The AI drafts them from
+  // the handouts; the main admin edits them and approves them. An assistant
+  // reads them.
+  // -------------------------------------------------------------------------
+
+  /** The objectives a save posted, in order: objectives[n][id] and objectives[n][text]. */
+  function readObjectiveItems(body = {}) {
+    const posted = body.objectives;
+    const list = Array.isArray(posted) ? posted : Object.values(posted || {});
+    return list.map((item) => ({ id: item && item.id, text: item && item.text }));
+  }
+
+  /** The module the objectives belong to, for the main admin; otherwise flashes and redirects. */
+  async function requireObjectivesModule(req, res) {
+    const back = `${basePath}/modules/${Number(req.params.id) || ''}`;
+    if (refuseUnlessMainAdmin(req, res, back)) return null;
+    const mod = await getModuleById(req.params.id);
+    if (!mod) {
+      setFlash(req, 'error', 'Module not found.');
+      res.redirect(`${basePath}/subjects`);
+      return null;
+    }
+    return mod;
+  }
+
+  router.post('/modules/:id/objectives', async (req, res) => {
+    const back = `${basePath}/modules/${Number(req.params.id) || ''}#objectives`;
+    try {
+      const mod = await requireObjectivesModule(req, res);
+      if (!mod) return;
+      const saved = await objectives.saveObjectives(mod.id, readObjectiveItems(req.body));
+      setFlash(req, 'success', saved.changed
+        ? 'Objectives saved as a draft. Approve them to use them.'
+        : 'Nothing was changed.');
+      res.redirect(back);
+    } catch (error) { failBack(req, res, error, back); }
+  });
+
+  router.post('/modules/:id/objectives/approve', async (req, res) => {
+    const back = `${basePath}/modules/${Number(req.params.id) || ''}#objectives`;
+    try {
+      const mod = await requireObjectivesModule(req, res);
+      if (!mod) return;
+      await objectives.approveObjectives(mod.id, req.session.user.id);
+      // The grade's Pre-Assessment master is written again, every question
+      // measuring one of the approved objectives.
+      if (mod.grade_level) schedulePreAssessmentWarmup(mod.subject_id, mod.grade_level, 'objectives approved');
+      const grade = mod.grade_level ? `${mod.grade_level} ` : '';
+      setFlash(req, 'success', `Objectives approved. The ${grade}Pre-Assessment is being written again from them.`);
+      res.redirect(back);
+    } catch (error) { failBack(req, res, error, back); }
+  });
+
+  router.post('/modules/:id/objectives/draft', async (req, res) => {
+    const back = `${basePath}/modules/${Number(req.params.id) || ''}#objectives`;
+    try {
+      const mod = await requireObjectivesModule(req, res);
+      if (!mod) return;
+      const drafted = await objectives.draftWithAI(mod.id, { replace: true });
+      setFlash(req, 'success', `The AI drafted ${drafted.objectives.length} objective${drafted.objectives.length === 1 ? '' : 's'}. Check them, then approve them.`);
+      res.redirect(back);
+    } catch (error) { failBack(req, res, error, back); }
   });
 
   /** One module's level modules by level, each flagged when its handouts changed since. */
@@ -2570,6 +2641,9 @@ function createAdminRouter(role) {
       // has to wait on it later. Debounced, so uploading several handouts in a row
       // costs one generation rather than one per file.
       schedulePreAssessmentWarmup(mod.subject_id, mod.grade_level, 'handouts uploaded');
+      // A module with no learning objectives yet gets a draft of them from its
+      // handouts, in the background, for the admin to check and approve.
+      if (result.inserted > unusable) objectives.draftIfMissing(mod.id);
 
       const rejected = describeUploadRejection(req);
       const parts = [`${result.inserted} handout${result.inserted === 1 ? '' : 's'} uploaded.`];
@@ -2621,6 +2695,8 @@ function createAdminRouter(role) {
       if (extraction.usable) {
         await bumpSubjectHandoutVersion(handout.subject_id);
         schedulePreAssessmentWarmup(handout.subject_id, handout.grade_level, 'handout re-read');
+        // Now readable: a module with no learning objectives yet gets a draft.
+        objectives.draftIfMissing(Number(req.params.id));
         const how = extraction.method === 'ocr' ? ' by reading the scanned pages with AI' : '';
         setFlash(
           req,
@@ -3047,6 +3123,7 @@ function createAdminRouter(role) {
         contentView: '../content/student-assessment-breakdown',
         submission,
         weakAreas,
+        objectiveResults: await objectives.objectiveResultsFor({ submissionId: submission.id }),
         viewerRole: 'admin'
       });
       res.render('shells/dashboard', shell);
@@ -3363,6 +3440,7 @@ function createAdminRouter(role) {
         contentView: '../content/student-assessment-breakdown',
         submission: page.submission,
         weakAreas: page.weakAreas,
+        objectiveResults: page.objectiveResults,
         viewerRole: 'admin'
       });
       res.render('shells/dashboard', shell);

@@ -411,6 +411,11 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
   const source = allowedHandouts.get(sourceId);
   if (!source) return null;
 
+  // The learning objective it measures (lib/objectives.js): one of its module's
+  // approved objectives, or none — never one the AI made up.
+  const objectiveIds = (Array.isArray(source.objectives) ? source.objectives : []).map((o) => Number(o.id));
+  const objectiveId = Number(raw.objective_id);
+
   const base = {
     question_text: questionText,
     question_type: type,
@@ -418,6 +423,7 @@ function validateGeneratedQuestion(raw, allowedHandouts, allowedTypes = MODULE_Q
     explanation: String(raw.explanation || '').trim() || null,
     source_handout_id: source.handout_id,
     source_module_id: source.module_id,
+    objective_id: objectiveIds.includes(objectiveId) ? objectiveId : null,
     choices: [],
     answer_rubric: null,
     correct_answer: ''
@@ -817,6 +823,21 @@ function buildHandoutPrompts({
   if (LEVEL_QUESTION_GUIDES[level]) extraRules.push(`- ${LEVEL_QUESTION_GUIDES[level]}`);
   if (focus) extraRules.push(`- ${String(focus).trim()}`);
 
+  // The module's approved learning objectives (lib/objectives.js): every
+  // question measures one of them, and they are covered as evenly as the
+  // questions allow.
+  const objectives = (Array.isArray(handout.objectives) ? handout.objectives : [])
+    .filter((o) => o && Number(o.id) && String(o.text || '').trim());
+  if (objectives.length) {
+    extraRules.push('- Every question measures exactly ONE of the learning objectives listed with the handout. Spread the questions across the objectives as evenly as you can.');
+  }
+  const objectiveField = objectives.length
+    ? `\n- "objective_id": the id of the learning objective the question measures, one of ${objectives.map((o) => Number(o.id)).join(', ')}`
+    : '';
+  const objectiveList = objectives.length
+    ? `\n\nLEARNING OBJECTIVES OF THIS MODULE\n${objectives.map((o) => `### objective_id ${Number(o.id)}: ${String(o.text).trim()}`).join('\n')}`
+    : '';
+
   const systemPrompt = `You write assessment questions for a tutorial centre, using ONLY the handout text provided.
 
 Return a JSON object with a single key "questions", an array of exactly ${itemCount} objects.
@@ -825,7 +846,7 @@ Produce this mix of question types: ${mixText}.
 Every question object must have:
 - "question_text": the question, answerable purely from the handout
 - "question_type": one of ${typeList}. Use NO other value.
-- "source_handout_id": always the integer ${handout.handout_id}
+- "source_handout_id": always the integer ${handout.handout_id}${objectiveField}
 - "correct_answer":
 ${answerLines}
 - "choices": for multiple_choice ONLY, an array of 4 distinct answer strings in A,B,C,D order. Omit for other types.
@@ -859,7 +880,7 @@ Number of questions: ${itemCount}
 
 HANDOUT
 ### handout_id: ${handout.handout_id}
-### source: ${label}
+### source: ${label}${objectiveList}
 
 ${String(handout.extracted_text).trim()}`;
 
@@ -1172,8 +1193,22 @@ function missedQuestionsForPrompt(missed = []) {
     const lines = [`${i + 1}. ${String(q.question_text || '').trim()}`];
     if (q.correct_text) lines.push(`   Correct answer: ${String(q.correct_text).trim()}`);
     if (q.explanation) lines.push(`   Why: ${String(q.explanation).trim()}`);
+    if (q.objective_text) lines.push(`   Learning objective: ${String(q.objective_text).trim()}`);
     return lines.join('\n');
   }).join('\n');
+}
+
+/**
+ * The rule that makes a learner's weak points their learning objectives not
+ * mastered yet (lib/objectives.js) — empty when the module has none.
+ */
+function objectiveRules(objectives = []) {
+  const list = (objectives || []).filter((o) => o && String(o.text || '').trim());
+  if (!list.length) return '';
+  return `\nThe learner has NOT mastered these learning objectives of the module yet:
+${list.map((o, i) => `  ${i + 1}. ${String(o.text).trim()}`).join('\n')}
+- Make one weak point for each of these objectives that the missed questions are about, and name it after the objective: its "title" a short form of the objective, its "focus" the objective itself.
+- A missed question marked with a learning objective belongs to that objective's weak point.`;
 }
 
 /**
@@ -1267,7 +1302,7 @@ ${WEAK_POINT_FIELDS(pagesInfo)}
 Rules:
 - One weak point per distinct idea. Missed questions about the same idea belong to the same weak point.
 - Every missed question, 1 to ${missed.length}, is in the "covers" of exactly one weak point. Check this before you answer.
-${WEAK_POINT_RULES}`;
+${WEAK_POINT_RULES}${objectiveRules(context.objectives)}`;
 
   const userPrompt = `${promptHeader(context)}
 
@@ -1536,13 +1571,15 @@ ${pagesInfo.sourceText}`;
 async function generateModuleAdditions(options = {}) {
   const {
     pages = [], pageCount = 0, fallbackText = '', missed = [],
-    level, subject, gradeLevel, moduleTitle
+    level, subject, gradeLevel, moduleTitle, objectives = []
   } = options;
   if (!missed.length) return { weakPoints: [], errors: [], corrected: 0, tokensUsed: 0 };
   if (!isOpenAIConfigured()) throw new Error('The AI service is not configured, so the added lessons cannot be written.');
 
+  // objectives: the module's learning objectives this learner has not mastered
+  // (lib/objectives.js) — each becomes a weak point of its own.
   const context = {
-    missed, level, subject, gradeLevel, moduleTitle,
+    missed, level, subject, gradeLevel, moduleTitle, objectives,
     pagesInfo: modulePagesForPrompt({ pages, pageCount, fallbackText })
   };
   const plan = await planWeakPoints(context);
@@ -1563,6 +1600,7 @@ async function generateModuleAdditions(options = {}) {
           title: point.title,
           focus: point.focus,
           after_page: point.after_page,
+          objective_id: objectiveOfPoint(point, missed),
           questions: point.covers.map((n) => missed[n - 1]).filter(Boolean).map((q) => ({
             q: oneLine(q.question_text, 500),
             a: oneLine(q.correct_text, 300)
@@ -1580,5 +1618,90 @@ async function generateModuleAdditions(options = {}) {
   return { weakPoints, errors, corrected, tokensUsed };
 }
 
+/** The objective most of a weak point's missed questions measure, or null when none of them has one. */
+function objectiveOfPoint(point, missed = []) {
+  const counts = new Map();
+  for (const n of point.covers || []) {
+    const id = Number((missed[n - 1] || {}).objective_id);
+    if (id) counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  let best = null;
+  let most = 0;
+  for (const [id, count] of counts) {
+    if (count > most) { best = id; most = count; }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// A module's learning objectives, drafted for the admin (lib/objectives.js)
+// ---------------------------------------------------------------------------
+
+const OBJECTIVES_MIN = 3;
+const OBJECTIVES_MAX = 5;
+const OBJECTIVE_SOURCE_CHARS = 16000;
+
+/** One objective as the AI wrote it, without numbering, bullets or trailing punctuation. */
+function cleanObjective(text) {
+  return String(text || '')
+    .replace(/^\s*(?:[-•*]|\d+[.)]|[a-e][.)])\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[;,]+$/, '')
+    .slice(0, 300);
+}
+
+/**
+ * Three to five learning objectives for one module, from its own handouts: each
+ * one thing a learner can show they can do, starting with an action verb, that
+ * a question can check. A draft — the admin edits and approves them.
+ *
+ * @param {object} options { subject, gradeLevel, moduleTitle, text }
+ * @returns {Promise<{ objectives: string[], tokensUsed: number, model: string }>}
+ */
+async function generateModuleObjectives(options = {}) {
+  const { subject, gradeLevel, moduleTitle, text } = options;
+  const source = String(text || '').trim();
+  if (source.length < 50) throw new Error('This module has no readable handout text to write objectives from.');
+  if (!isOpenAIConfigured()) throw new Error('The AI service is not configured, so the objectives cannot be drafted.');
+
+  const systemPrompt = `You write the learning objectives of ONE module of a tutorial centre, from the module's own handouts.
+
+Return a JSON object with one key, "objectives": an array of ${OBJECTIVES_MIN} to ${OBJECTIVES_MAX} strings.
+
+Rules:
+- Each objective is ONE thing a learner can show they can do after the module, which a test question can check.
+- Start each one with an action verb, for example: identify, describe, compare, classify, solve, explain.
+- Use only what the handout teaches. Never add a topic it does not cover.
+- Pitch them for a ${gradeLevel || 'general'} learner.
+- Write them in the same language as the handout.
+- Keep each under 150 characters. No numbering, and no "Students will" or "The learner will".
+- Output strict JSON only. No commentary, no markdown.`;
+
+  const userPrompt = `Subject: ${subject || 'General'}
+Grade: ${gradeLevel || 'General'}
+Module: ${moduleTitle || 'Module'}
+
+HANDOUT TEXT
+${source.slice(0, OBJECTIVE_SOURCE_CHARS)}`;
+
+  const call = await callOpenAI(systemPrompt, userPrompt, { maxTokens: 800, temperature: 0.3 });
+  const raw = Array.isArray(call.result && call.result.objectives) ? call.result.objectives : [];
+  const seen = new Set();
+  const objectives = [];
+  for (const item of raw) {
+    const cleaned = cleanObjective(typeof item === 'object' && item ? item.text || item.objective : item);
+    if (cleaned.length < 8 || seen.has(cleaned.toLowerCase())) continue;
+    seen.add(cleaned.toLowerCase());
+    objectives.push(cleaned);
+    if (objectives.length >= OBJECTIVES_MAX) break;
+  }
+  if (!objectives.length) throw new Error('The AI returned no objective that could be used.');
+  return { objectives, tokensUsed: call.tokensUsed || 0, model: call.model || AI_MODEL };
+}
+
 // Defined after module.exports above, so added here (a const is not hoisted).
-Object.assign(module.exports, { MAX_WEAK_POINTS, TOPICS_PER_WEAK_POINT, tidyTopicText });
+Object.assign(module.exports, {
+  MAX_WEAK_POINTS, TOPICS_PER_WEAK_POINT, tidyTopicText,
+  OBJECTIVES_MAX, generateModuleObjectives, cleanObjective
+});

@@ -1524,6 +1524,8 @@ router.get('/results/:submissionId', async (req, res, next) => {
       contentView: '../content/student-assessment-breakdown',
       submission,
       weakAreas,
+      // How they did on each learning objective (lib/objectives.js).
+      objectiveResults: await require('../lib/objectives').objectiveResultsFor({ submissionId: submission.id }),
       viewerRole: 'student'
     });
     res.render('shells/dashboard', shell);

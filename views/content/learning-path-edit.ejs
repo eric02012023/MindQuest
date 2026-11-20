@@ -6,15 +6,21 @@
     each question then belongs to one of the student's grade's modules
     (moduleChoices), and a draft that was edited before the AI wrote a newer
     version can take it (newVersionAction).
+    Each question can name the learning objective it measures (lib/objectives.js):
+    one of its module's approved objectives (objectiveChoices, module id ->
+    [{ id, text }]); the list follows the question's module.
     Locals: assessment (with questions and options), editable, reason,
             allowedTypes, saveAction, backHref, edits, studentLabel,
-            openAction, openConfirm, moduleChoices, newVersionAction (optional) %>
+            openAction, openConfirm, moduleChoices, newVersionAction,
+            objectiveChoices (optional) %>
 <% const questions = assessment.questions || []; %>
 <% const typeName = (t) => t === 'multiple_choice' ? 'Multiple Choice' : t === 'true_false' ? 'True or False' : t; %>
 <% const openHere = typeof openAction === 'undefined' ? null : openAction; %>
 <% const modulesHere = typeof moduleChoices === 'undefined' || !moduleChoices ? [] : moduleChoices; %>
 <% const newVersionHere = typeof newVersionAction === 'undefined' ? null : newVersionAction; %>
 <% const moduleLabel = (q) => q.source_module_title ? `Module ${q.source_order_number || '?'}: ${q.source_module_title}` : 'No module'; %>
+<% const objectivesHere = typeof objectiveChoices === 'undefined' || !objectiveChoices ? {} : objectiveChoices; %>
+<% const hasObjectives = Object.keys(objectivesHere).some((key) => (objectivesHere[key] || []).length); %>
 <section class="page-stack">
   <div class="panel-card">
     <div class="panel-card-head">
@@ -60,6 +66,7 @@
             <div>
               <strong>Q<%= i + 1 %>. <%= q.question_text %></strong>
               <span class="module-card-meta"><%= typeName(q.question_type) %><% if (modulesHere.length) { %> &middot; <%= moduleLabel(q) %><% } %></span>
+              <% if (q.objective_text) { %><span class="module-card-meta lpe-objective-read">Objective: <%= q.objective_text %></span><% } %>
               <% if (q.question_type === 'multiple_choice') { %>
                 <ul class="lpe-choices">
                   <% (q.options || []).forEach((o) => { %>
@@ -104,6 +111,17 @@
                   <option value="">Choose a module</option>
                   <% modulesHere.forEach((m) => { %>
                     <option value="<%= m.id %>" <%= Number(q.source_module_id) === Number(m.id) ? 'selected' : '' %>><%= m.label %></option>
+                  <% }) %>
+                </select>
+              </label>
+            <% } %>
+            <% if (hasObjectives) { %>
+              <label class="lpe-field">
+                <span>Objective</span>
+                <select class="lpe-objective">
+                  <option value="">No objective</option>
+                  <% (objectivesHere[q.source_module_id] || []).forEach((o) => { %>
+                    <option value="<%= o.id %>" <%= Number(q.objective_id) === Number(o.id) ? 'selected' : '' %>><%= o.text %></option>
                   <% }) %>
                 </select>
               </label>
@@ -177,6 +195,14 @@
             </select>
           </label>
         <% } %>
+        <% if (hasObjectives) { %>
+          <label class="lpe-field">
+            <span>Objective</span>
+            <select class="lpe-objective">
+              <option value="">No objective</option>
+            </select>
+          </label>
+        <% } %>
         <label class="lpe-field">
           <span>Question</span>
           <textarea class="lpe-text" rows="3" required></textarea>
@@ -212,9 +238,23 @@
       (function () {
         var list = document.getElementById('lpe-list');
         var form = document.getElementById('lpe-form');
+        // The approved learning objectives of each module, by module id.
+        var OBJECTIVES = <%- JSON.stringify(objectivesHere).replace(/</g, '\\u003c') %>;
         function renumber() {
           var items = list.querySelectorAll('.lpe-item');
           for (var i = 0; i < items.length; i++) items[i].querySelector('.lpe-number').textContent = 'Question ' + (i + 1);
+        }
+        // A question's objectives are its module's: choosing another module
+        // offers that module's, none chosen yet.
+        function fillObjectives(select, moduleId) {
+          while (select.options.length > 1) select.remove(1);
+          (OBJECTIVES[moduleId] || []).forEach(function (objective) {
+            var option = document.createElement('option');
+            option.value = objective.id;
+            option.textContent = objective.text;
+            select.appendChild(option);
+          });
+          select.value = '';
         }
         function wire(item) {
           var type = item.querySelector('.lpe-type');
@@ -222,6 +262,11 @@
             item.querySelector('.lpe-mc').hidden = type.value !== 'multiple_choice';
             item.querySelector('.lpe-tf').hidden = type.value !== 'true_false';
           });
+          var moduleSelect = item.querySelector('.lpe-module');
+          var objectiveSelect = item.querySelector('.lpe-objective');
+          if (moduleSelect && objectiveSelect) {
+            moduleSelect.addEventListener('change', function () { fillObjectives(objectiveSelect, moduleSelect.value); });
+          }
           item.querySelector('.lpe-remove').addEventListener('click', function () {
             if (list.querySelectorAll('.lpe-item').length <= 1) return;
             item.parentNode.removeChild(item);
@@ -267,6 +312,7 @@
             var moduleSelect = item.querySelector('.lpe-module');
             var originalModule = item.getAttribute('data-source-module') || null;
             var chosenModule = moduleSelect ? (moduleSelect.value || null) : originalModule;
+            var objectiveSelect = item.querySelector('.lpe-objective');
             var q = {
               question_type: type,
               question_text: item.querySelector('.lpe-text').value,
@@ -274,7 +320,8 @@
               source_module_id: chosenModule,
               source_handout_id: chosenModule && chosenModule === originalModule
                 ? (item.getAttribute('data-source-handout') || null)
-                : null
+                : null,
+              objective_id: objectiveSelect ? (objectiveSelect.value || null) : null
             };
             if (type === 'multiple_choice') {
               var inputs = item.querySelectorAll('.lpe-choice-text');
@@ -341,4 +388,5 @@
   .lpe-new-version { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
   .lpe-new-version .lock-note { margin: 0; }
   .lpe-new-version form { margin: 0; }
+  .lpe-objective-read { display: block; margin-top: 2px; }
 </style>
