@@ -180,6 +180,8 @@ const { slipCode, parseSlipCode } = require('../lib/paymentSlip');
 const { query } = require('../config/db');
 // Learning paths: each student's own modules and the assessments written for them.
 const paths = require('../lib/learningPaths');
+// Each student's own Pre-Assessment, checked and opened before they take it.
+const studentPre = require('../lib/studentPre');
 // The admin's and an assistant's own login email: a registered Gmail address,
 // changed only with a code sent to it.
 const accountEmail = require('../lib/accountEmail');
@@ -3098,7 +3100,9 @@ function createAdminRouter(role) {
       const subjects = assignments
         .filter((a) => !seen.has(Number(a.subject_id)) && seen.add(Number(a.subject_id)))
         .map((a) => ({ subject_id: a.subject_id, subject_name: a.subject_name }));
-      const entries = await paths.managePageEntries(student.id, subjects);
+      // A subject whose Pre-Assessment is not taken yet shows the student's own
+      // copy, made here when the master is ready; their tutor is told it waits.
+      const entries = await paths.managePageEntries(student.id, subjects, { pre: { create: true, notifyTutor: true } });
       const shell = await buildShellData(req, {
         pageTitle: `${student.first_name} ${student.last_name || ''} — Learning Path`,
         section: 'assessment_monitoring',
@@ -3207,13 +3211,17 @@ function createAdminRouter(role) {
 
   router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
     try {
-      const page = await paths.editPageData(Number(req.params.assessmentId));
+      const page = await paths.editPageData(Number(req.params.assessmentId), { follow: true });
       if (!page) {
         setFlash(req, 'error', 'Assessment not found.');
         return res.redirect(`${basePath}/assessment-monitoring`);
       }
       if (!(await requireMonitoredStudent(req, res, page.studentId))) return;
       const isMain = req.session.user.role === 'admin';
+      // A student's own Pre-Assessment is opened from here by the main admin;
+      // the module assessments and the Post are opened from the learning path.
+      const preCopy = page.owner.kind === 'pre' ? page.owner.copy : null;
+      const preDraft = !!(isMain && preCopy && preCopy.status === 'draft');
       const shell = await buildShellData(req, {
         pageTitle: page.assessment.title,
         section: 'assessment_monitoring',
@@ -3223,10 +3231,49 @@ function createAdminRouter(role) {
         editable: page.editable && isMain,
         reason: page.editable && !isMain ? '' : page.reason,
         saveAction: `${basePath}/path-assessments/${page.assessment.id}/edit`,
+        openAction: preDraft ? `${basePath}/pre-assessments/${Number(preCopy.id)}/open` : null,
+        openConfirm: preDraft ? `Open the Pre-Assessment for ${page.studentLabel}? It can no longer be edited after that.` : '',
+        newVersionAction: preDraft && page.newerMaster ? `${basePath}/pre-assessments/${Number(preCopy.id)}/new-version` : null,
         backHref: monitoringOf(page.studentId)
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }
+  });
+
+  /** A student's own Pre-Assessment the main admin may act on; otherwise flashes and redirects. */
+  async function requireMonitoredPreCopy(req, res, id) {
+    const copy = await studentPre.getCopyById(Number(id));
+    if (!copy) {
+      setFlash(req, 'error', 'Pre-Assessment not found.');
+      res.redirect(`${basePath}/assessment-monitoring`);
+      return null;
+    }
+    if (refuseUnlessMainAdmin(req, res, monitoringOf(copy.student_id))) return null;
+    if (!(await requireMonitoredStudent(req, res, copy.student_id))) return null;
+    return copy;
+  }
+
+  // Main admin: open a student's own Pre-Assessment for them — when their tutor
+  // is away, or they have no tutor yet.
+  router.post('/pre-assessments/:id/open', async (req, res) => {
+    try {
+      const copy = await requireMonitoredPreCopy(req, res, req.params.id);
+      if (!copy) return;
+      await studentPre.openCopy(copy.id, req.session.user.id);
+      setFlash(req, 'success', 'The Pre-Assessment is open for the student.');
+      res.redirect(monitoringOf(copy.student_id));
+    } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
+  });
+
+  // Main admin: an edited Pre-Assessment takes the newest version the AI wrote.
+  router.post('/pre-assessments/:id/new-version', async (req, res) => {
+    try {
+      const copy = await requireMonitoredPreCopy(req, res, req.params.id);
+      if (!copy) return;
+      await studentPre.useNewVersion(copy.id, req.session.user.id);
+      setFlash(req, 'success', 'The Pre-Assessment now has the new version of its questions.');
+      res.redirect(`${basePath}/path-assessments/${Number(copy.assessment_id)}/edit`);
+    } catch (error) { failBack(req, res, error, `${basePath}/assessment-monitoring`); }
   });
 
   router.post('/path-assessments/:assessmentId/edit', async (req, res) => {
@@ -3297,7 +3344,7 @@ function createAdminRouter(role) {
       if (refuseUnlessMainAdmin(req, res, monitoringOf(studentId))) return;
       if (!(await requireMonitoredStudent(req, res, studentId))) return;
       await paths.resetPreAssessmentFor(studentId, subjectId);
-      setFlash(req, 'success', 'The Pre-Assessment was reset. The student can take it again, and their learning path starts from it.');
+      setFlash(req, 'success', 'The Pre-Assessment was reset. A new copy goes to their tutor to check; the student takes it once it is opened, and their learning path starts from it.');
       res.redirect(monitoringOf(studentId));
     } catch (error) { failBack(req, res, error, monitoringOf(studentId)); }
   });

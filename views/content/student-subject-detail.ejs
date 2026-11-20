@@ -89,7 +89,16 @@
           <a class="btn btn-primary" href="/student/billing">Go to Billing Data</a>
         <% } %>
       <% } else if (handoutsReady) { %>
-        <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/pre-assessment">Start Pre-Assessment</a>
+        <%# Their own copy (lib/studentPre.js): their tutor checks and opens it
+            first. Enforced in routes/student.js; this only reports it. %>
+        <% const preNow = typeof preState === 'undefined' || !preState ? 'preparing' : preState.state; %>
+        <% if (preNow === 'open') { %>
+          <a class="btn btn-primary" href="/student/subjects/<%= assignment.subject_id %>/pre-assessment">Start Pre-Assessment</a>
+        <% } else if (preNow === 'draft') { %>
+          <p class="lock-note">Your tutor is checking your Pre-Assessment. You can take it once they open it.</p>
+        <% } else { %>
+          <p class="lock-note">Your Pre-Assessment is being prepared. Please check again in a minute.</p>
+        <% } %>
       <% } else { %>
         <p class="lock-note">Your <%= myGrade %> modules have no handout yet, so the Pre-Assessment is not ready. It opens once the office uploads them.</p>
       <% } %>

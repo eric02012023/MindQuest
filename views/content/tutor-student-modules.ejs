@@ -11,9 +11,13 @@
     their grade with the lesson written for their level instead, and their
     Post-Assessment is opened here too.
 
+    A student who has not taken the Pre-Assessment yet has their own copy of it
+    here instead, for the tutor to check and open first (lib/studentPre.js).
+
     Locals: student, studentLabel, subjectId, subjectName, kind ('path' |
             'legacy' | 'none'), level, entry ({ view, scores, completion }),
-            cards (legacy: [{ module, handouts, levelModule, opened }])
+            cards (legacy: [{ module, handouts, levelModule, opened }]),
+            preState (none: { state, grade, copy })
             — lib/learningPaths.js, tutorStudentModules %>
 <%
   const pct = (value) => `${Number(value || 0).toFixed(1)}%`;
@@ -41,8 +45,38 @@
   </section>
 
   <% if (kind === 'none') { %>
+    <%# ---- Their own Pre-Assessment, checked and opened here first (lib/studentPre.js) ---- %>
+    <% const ps = typeof preState === 'undefined' || !preState ? { state: 'not_ready' } : preState; %>
+    <% const preCopy = ps.copy || null; %>
     <section class="panel-card">
-      <p class="empty-state"><%= studentLabel %> has not taken the <%= subjectName %> Pre-Assessment yet.</p>
+      <div class="panel-card-head">
+        <h3>Pre-Assessment</h3>
+        <% if (ps.state === 'draft') { %>
+          <span class="badge badge-warning">Ready to check</span>
+        <% } else if (ps.state === 'open') { %>
+          <span class="badge badge-success">Open &middot; not taken yet</span>
+        <% } else if (ps.state === 'preparing') { %>
+          <span class="badge badge-info">Being prepared</span>
+        <% } else if (!ps.grade) { %>
+          <span class="badge badge-info">No grade level on record</span>
+        <% } else { %>
+          <span class="badge badge-info">No readable <%= ps.grade %> handout yet</span>
+        <% } %>
+      </div>
+      <% if (preCopy) { %>
+        <div class="tsm-post">
+          <span class="module-card-meta"><%= Number(preCopy.item_count) || 0 %> questions</span>
+          <a class="btn btn-secondary btn-sm" href="/tutor/path-assessments/<%= preCopy.assessment_id %>/edit">
+            <%= ps.state === 'draft' ? 'Check / Edit' : 'View Questions' %>
+          </a>
+          <% if (ps.state === 'draft') { %>
+            <form method="post" action="/tutor/pre-assessments/<%= preCopy.id %>/open"
+                  data-confirm-message="Open the Pre-Assessment for <%= studentLabel %>? It can no longer be edited after that.">
+              <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+            </form>
+          <% } %>
+        </div>
+      <% } %>
     </section>
   <% } %>
 

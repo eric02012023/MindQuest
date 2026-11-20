@@ -2,12 +2,19 @@
     Purpose: Check — and, until it is opened, edit — an assessment written for
     one student on their learning path (lib/learningPaths.js). The tutor opens
     it for the student from here too (openAction), once it is checked.
+    A student's own Pre-Assessment (lib/studentPre.js) is checked here too:
+    each question then belongs to one of the student's grade's modules
+    (moduleChoices), and a draft that was edited before the AI wrote a newer
+    version can take it (newVersionAction).
     Locals: assessment (with questions and options), editable, reason,
             allowedTypes, saveAction, backHref, edits, studentLabel,
-            openAction, openConfirm (optional) %>
+            openAction, openConfirm, moduleChoices, newVersionAction (optional) %>
 <% const questions = assessment.questions || []; %>
 <% const typeName = (t) => t === 'multiple_choice' ? 'Multiple Choice' : t === 'true_false' ? 'True or False' : t; %>
 <% const openHere = typeof openAction === 'undefined' ? null : openAction; %>
+<% const modulesHere = typeof moduleChoices === 'undefined' || !moduleChoices ? [] : moduleChoices; %>
+<% const newVersionHere = typeof newVersionAction === 'undefined' ? null : newVersionAction; %>
+<% const moduleLabel = (q) => q.source_module_title ? `Module ${q.source_order_number || '?'}: ${q.source_module_title}` : 'No module'; %>
 <section class="page-stack">
   <div class="panel-card">
     <div class="panel-card-head">
@@ -34,6 +41,15 @@
         <% if (edits[0].first_name) { %>by <%= edits[0].first_name %> <%= edits[0].last_name || '' %><% } %>
       </p>
     <% } %>
+    <% if (newVersionHere) { %>
+      <div class="lpe-new-version">
+        <p class="lock-note">The AI wrote a new version from the module handouts after these questions were edited.</p>
+        <form method="post" action="<%= newVersionHere %>"
+              data-confirm-message="Replace these questions with the new version? The edits made here are given up.">
+          <button type="submit" class="btn btn-secondary btn-sm">Use the New Version</button>
+        </form>
+      </div>
+    <% } %>
   </div>
 
   <% if (!editable) { %>
@@ -43,7 +59,7 @@
           <article class="list-card lpe-read">
             <div>
               <strong>Q<%= i + 1 %>. <%= q.question_text %></strong>
-              <span class="module-card-meta"><%= typeName(q.question_type) %></span>
+              <span class="module-card-meta"><%= typeName(q.question_type) %><% if (modulesHere.length) { %> &middot; <%= moduleLabel(q) %><% } %></span>
               <% if (q.question_type === 'multiple_choice') { %>
                 <ul class="lpe-choices">
                   <% (q.options || []).forEach((o) => { %>
@@ -81,6 +97,17 @@
                 <% }) %>
               </select>
             </label>
+            <% if (modulesHere.length) { %>
+              <label class="lpe-field">
+                <span>Module</span>
+                <select class="lpe-module" required>
+                  <option value="">Choose a module</option>
+                  <% modulesHere.forEach((m) => { %>
+                    <option value="<%= m.id %>" <%= Number(q.source_module_id) === Number(m.id) ? 'selected' : '' %>><%= m.label %></option>
+                  <% }) %>
+                </select>
+              </label>
+            <% } %>
             <label class="lpe-field">
               <span>Question</span>
               <textarea class="lpe-text" rows="3" required><%= q.question_text %></textarea>
@@ -139,6 +166,17 @@
             <% }) %>
           </select>
         </label>
+        <% if (modulesHere.length) { %>
+          <label class="lpe-field">
+            <span>Module</span>
+            <select class="lpe-module" required>
+              <option value="">Choose a module</option>
+              <% modulesHere.forEach((m) => { %>
+                <option value="<%= m.id %>"><%= m.label %></option>
+              <% }) %>
+            </select>
+          </label>
+        <% } %>
         <label class="lpe-field">
           <span>Question</span>
           <textarea class="lpe-text" rows="3" required></textarea>
@@ -224,12 +262,19 @@
           for (var i = 0; i < items.length; i++) {
             var item = items[i];
             var type = item.querySelector('.lpe-type').value;
+            // A Pre-Assessment question names its module here; its handout is
+            // kept only while it stays in the module it came from.
+            var moduleSelect = item.querySelector('.lpe-module');
+            var originalModule = item.getAttribute('data-source-module') || null;
+            var chosenModule = moduleSelect ? (moduleSelect.value || null) : originalModule;
             var q = {
               question_type: type,
               question_text: item.querySelector('.lpe-text').value,
               explanation: item.querySelector('.lpe-explanation').value,
-              source_module_id: item.getAttribute('data-source-module') || null,
-              source_handout_id: item.getAttribute('data-source-handout') || null
+              source_module_id: chosenModule,
+              source_handout_id: chosenModule && chosenModule === originalModule
+                ? (item.getAttribute('data-source-handout') || null)
+                : null
             };
             if (type === 'multiple_choice') {
               var inputs = item.querySelectorAll('.lpe-choice-text');
@@ -293,4 +338,7 @@
   .lpe-choices { margin: 8px 0 0; padding-left: 18px; }
   .lpe-choices li.is-key { font-weight: 700; color: var(--primary-700, #1c7a22); }
   .lpe-key { margin: 6px 0 0; font-weight: 700; }
+  .lpe-new-version { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
+  .lpe-new-version .lock-note { margin: 0; }
+  .lpe-new-version form { margin: 0; }
 </style>

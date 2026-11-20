@@ -1,15 +1,18 @@
 <%# File: views/content/tutor-modules.ejs
     Purpose: Modules & Assessments — per subject the tutor teaches, one box per
-    student of theirs who has taken its Pre-Assessment: the student's name, grade
-    and the level of their modules. A box opens that student's own modules
-    (Module 1, 2, 3, edited for them), where the tutor checks and opens their
-    assessments and writes activities for them (tutor-student-modules.ejs).
+    student of theirs: the student's name, grade and the level of their modules.
+    A box opens that student's own modules (Module 1, 2, 3, edited for them),
+    where the tutor checks and opens their assessments and writes activities for
+    them (tutor-student-modules.ejs). A student who has not taken the
+    Pre-Assessment yet shows where their own copy of it stands instead: the
+    tutor checks and opens it there first (lib/studentPre.js).
 
     The admin's modules, unedited, are opened from My Subjects.
 
     Locals: subjectsWithBoxes [{ subject_id, subject_name, boxes: [{ studentId,
             subjectId, name, code, grade, level, imagePath, onPath, passed,
-            total, toCheck, href }] }] (lib/learningPaths.js, tutorModuleBoxes) %>
+            total, toCheck, preTaken, preStatus, href }] }]
+            (lib/learningPaths.js, tutorModuleBoxes) %>
 <link rel="stylesheet" href="/css/level-modules.css" />
 <% const subjects = typeof subjectsWithBoxes === 'undefined' ? [] : (subjectsWithBoxes || []); %>
 <section class="page-stack">
@@ -27,7 +30,7 @@
       </div>
 
       <% if (!subject.boxes.length) { %>
-        <p class="empty-state">No student of yours has taken the <%= subject.subject_name %> Pre-Assessment yet.</p>
+        <p class="empty-state">You have no students in <%= subject.subject_name %> yet.</p>
       <% } else { %>
         <div class="tm-box-grid">
           <% subject.boxes.forEach((box) => { %>
@@ -44,7 +47,19 @@
               </div>
               <div class="tm-box-facts">
                 <span class="tm-box-fact"><small>Grade level</small><b><%= box.grade || '—' %></b></span>
-                <span class="tm-box-fact"><small>Level of module</small><span class="lm-level lm-level-<%= String(box.level).toLowerCase() %>"><%= box.level %></span></span>
+                <% if (box.preTaken === false) { %>
+                  <span class="tm-box-fact"><small>Pre-Assessment</small>
+                    <% if (box.preStatus === 'draft') { %>
+                      <span class="badge badge-warning">To check</span>
+                    <% } else if (box.preStatus === 'open') { %>
+                      <span class="badge badge-success">Open</span>
+                    <% } else { %>
+                      <b>Not taken yet</b>
+                    <% } %>
+                  </span>
+                <% } else { %>
+                  <span class="tm-box-fact"><small>Level of module</small><span class="lm-level lm-level-<%= String(box.level).toLowerCase() %>"><%= box.level %></span></span>
+                <% } %>
               </div>
             </a>
           <% }) %>

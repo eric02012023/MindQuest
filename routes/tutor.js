@@ -107,6 +107,8 @@ function attendanceLogFilters(source = {}) {
 const { todayDate } = require('../lib/utils');
 // Learning paths: each student's own modules, assessments the tutor checks and opens.
 const paths = require('../lib/learningPaths');
+// Each student's own Pre-Assessment, which the tutor checks and opens first.
+const studentPre = require('../lib/studentPre');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
 const { TUTOR_ASSESSMENT_MIN_ITEMS, TUTOR_ASSESSMENT_MAX_ITEMS } = require('../config/assessmentDefaults');
 
@@ -212,6 +214,15 @@ async function alertDestination(alert) {
       return path.post_assessment_id && path.post_status === 'draft'
         ? `/tutor/path-assessments/${Number(path.post_assessment_id)}/edit`
         : paths.tutorModulesHref(path.student_id, path.subject_id);
+    }
+  } else if (alert.ref_type === studentPre.REF_TYPE && refId) {
+    // A student's own Pre-Assessment: still to check, its page; opened since,
+    // the student's modules.
+    const copy = await studentPre.getCopyById(refId);
+    if (copy) {
+      return copy.status === 'draft'
+        ? `/tutor/path-assessments/${Number(copy.assessment_id)}/edit`
+        : paths.tutorModulesHref(copy.student_id, copy.subject_id);
     }
   } else if (alert.ref_type === 'focus_handout' && refId) {
     return `/tutor/focus-handouts/${refId}`;
@@ -558,7 +569,7 @@ router.post('/path-modules/:id/create-assessment', async (req, res) => {
 // then open it for them from here.
 router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
   try {
-    const page = await paths.editPageData(Number(req.params.assessmentId));
+    const page = await paths.editPageData(Number(req.params.assessmentId), { follow: true });
     if (!page) {
       setFlash(req, 'error', 'Assessment not found.');
       return res.redirect('/tutor/modules');
@@ -566,6 +577,7 @@ router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
     if (!(await requireMyStudent(req, res, page.studentId, page.subjectId))) return;
     const pathModule = page.owner.kind === 'module' ? page.owner.pathModule : null;
     const path = page.owner.kind === 'post' ? page.owner.path : null;
+    const preCopy = page.owner.kind === 'pre' ? page.owner.copy : null;
     let openAction = null;
     let openConfirm = '';
     if (pathModule && pathModule.assessment_status === 'draft' && pathModule.status === 'open') {
@@ -574,6 +586,9 @@ router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
     } else if (path && path.post_status === 'draft') {
       openAction = `/tutor/paths/${Number(path.id)}/post/open`;
       openConfirm = `Open the Post-Assessment for ${page.studentLabel}? It can no longer be edited after that.`;
+    } else if (preCopy && preCopy.status === 'draft') {
+      openAction = `/tutor/pre-assessments/${Number(preCopy.id)}/open`;
+      openConfirm = `Open the Pre-Assessment for ${page.studentLabel}? It can no longer be edited after that.`;
     }
     const shell = await buildShell(req, {
       pageTitle: page.assessment.title,
@@ -583,11 +598,51 @@ router.get('/path-assessments/:assessmentId/edit', async (req, res, next) => {
       saveAction: `/tutor/path-assessments/${page.assessment.id}/edit`,
       openAction,
       openConfirm,
+      // An edited Pre-Assessment whose master was written again since.
+      newVersionAction: preCopy && page.newerMaster ? `/tutor/pre-assessments/${Number(preCopy.id)}/new-version` : null,
       backHref: pathModule ? `/tutor/path-modules/${Number(pathModule.id)}` : pathPageOf(page.studentId, page.subjectId),
-      readRefs: pathModule ? [['learning_path_module', pathModule.id]] : path ? [['learning_path', path.id]] : []
+      readRefs: pathModule ? [['learning_path_module', pathModule.id]]
+        : path ? [['learning_path', path.id]]
+          : preCopy ? [[studentPre.REF_TYPE, preCopy.id]] : []
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }
+});
+
+/** A student's own Pre-Assessment, when it is one of this tutor's students'; otherwise flashes and redirects. */
+async function requireMyPreCopy(req, res, id) {
+  const copy = await studentPre.getCopyById(Number(id));
+  if (!copy) {
+    setFlash(req, 'error', 'Pre-Assessment not found.');
+    res.redirect('/tutor/modules');
+    return null;
+  }
+  if (!(await requireMyStudent(req, res, copy.student_id, copy.subject_id))) return null;
+  return copy;
+}
+
+// Open a student's own Pre-Assessment for them, once it is checked.
+router.post('/pre-assessments/:id/open', async (req, res) => {
+  try {
+    const copy = await requireMyPreCopy(req, res, req.params.id);
+    if (!copy) return;
+    await studentPre.openCopy(copy.id, req.session.user.id);
+    await notices.markRefReadFor(studentPre.REF_TYPE, copy.id, req.session.user)
+      .catch((error) => console.error('[tutor] could not mark the notice read:', error.message));
+    setFlash(req, 'success', 'The Pre-Assessment is open for the student.');
+    res.redirect(pathPageOf(copy.student_id, copy.subject_id));
+  } catch (error) { failBack(req, res, error, '/tutor/modules'); }
+});
+
+// An edited Pre-Assessment takes the newest version the AI wrote, its edits given up.
+router.post('/pre-assessments/:id/new-version', async (req, res) => {
+  try {
+    const copy = await requireMyPreCopy(req, res, req.params.id);
+    if (!copy) return;
+    await studentPre.useNewVersion(copy.id, req.session.user.id);
+    setFlash(req, 'success', 'The Pre-Assessment now has the new version of its questions.');
+    res.redirect(`/tutor/path-assessments/${Number(copy.assessment_id)}/edit`);
+  } catch (error) { failBack(req, res, error, '/tutor/modules'); }
 });
 
 router.post('/path-assessments/:assessmentId/edit', async (req, res) => {

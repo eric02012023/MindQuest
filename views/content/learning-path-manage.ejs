@@ -3,8 +3,10 @@
     (lib/learningPaths.js): each module with its weak points and topics, its
     assessment and every take, the Post-Assessment — with what can be done next —
     and every score, the Pre-Assessment set against the Post-Assessment.
-    Locals: student, entries [{ subjectId, subjectName, view, scores, completion }],
-            basePath, canAct, isMainAdmin, backHref %>
+    A subject whose Pre-Assessment is not taken yet shows the student's own copy
+    of it (lib/studentPre.js), which the main admin can check and open too.
+    Locals: student, entries [{ subjectId, subjectName, view, scores, completion,
+            preState }], basePath, canAct, isMainAdmin, backHref %>
 <% const pct = (value) => `${Number(value || 0).toFixed(1)}%`; %>
 <% const studentLabel = [student.first_name, student.last_name].filter(Boolean).join(' '); %>
 <link rel="stylesheet" href="/css/level-modules.css" />
@@ -41,7 +43,7 @@
           <% } %>
           <% if (isMainAdmin && preTaken && !postTaken) { %>
             <form method="post" action="<%= basePath %>/students/<%= student.id %>/subjects/<%= entry.subjectId %>/pre/reset"
-                  data-confirm-message="Reset the <%= entry.subjectName %> Pre-Assessment of <%= studentLabel %>? Their Pre-Assessment result, focus areas, learning path and the assessments written for them in this subject are removed, and they can take the Pre-Assessment again. Activities they answered stay.">
+                  data-confirm-message="Reset the <%= entry.subjectName %> Pre-Assessment of <%= studentLabel %>? Their Pre-Assessment result, focus areas, learning path and the assessments written for them in this subject are removed, and a new copy of the Pre-Assessment goes to their tutor to check. Activities they answered stay.">
               <button type="submit" class="btn btn-secondary btn-sm">Reset Pre-Assessment</button>
             </form>
           <% } %>
@@ -51,7 +53,35 @@
       <% if (!view) { %>
         <% const c = entry.completion; %>
         <% if (!c || !c.preDone) { %>
-          <p class="table-note">Pre-Assessment not taken yet.</p>
+          <%# Their own Pre-Assessment (lib/studentPre.js): checked and opened before they take it. %>
+          <% const ps = entry.preState || { state: 'not_ready' }; %>
+          <% const preCopy = ps.copy || null; %>
+          <div class="lpm-post">
+            <strong>Pre-Assessment:</strong>
+            <% if (ps.state === 'draft') { %>
+              <span class="badge badge-warning">Ready to check</span>
+            <% } else if (ps.state === 'open') { %>
+              <span class="badge badge-success">Open &middot; not taken yet</span>
+            <% } else if (ps.state === 'preparing') { %>
+              <span class="badge badge-info">Being prepared</span>
+            <% } else if (!ps.grade) { %>
+              <span class="badge badge-info">No grade level on record</span>
+            <% } else { %>
+              <span class="badge badge-info">No readable <%= ps.grade %> handout yet</span>
+            <% } %>
+            <% if (preCopy) { %>
+              <span class="module-card-meta"><%= Number(preCopy.item_count) || 0 %> questions</span>
+              <a class="btn btn-secondary btn-sm" href="<%= basePath %>/path-assessments/<%= preCopy.assessment_id %>/edit">
+                <%= canAct && ps.state === 'draft' ? 'Check / Edit' : 'View Questions' %>
+              </a>
+            <% } %>
+            <% if (canAct && preCopy && ps.state === 'draft') { %>
+              <form method="post" action="<%= basePath %>/pre-assessments/<%= preCopy.id %>/open"
+                    data-confirm-message="Open the Pre-Assessment for <%= studentLabel %>? It can no longer be edited after that.">
+                <button type="submit" class="btn btn-primary btn-sm">Open for Student</button>
+              </form>
+            <% } %>
+          </div>
         <% } else { %>
           <p class="table-note">
             Pre-Assessment taken before learning paths &middot;

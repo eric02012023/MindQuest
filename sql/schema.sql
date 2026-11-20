@@ -2185,3 +2185,65 @@ IF OBJECT_ID('dbo.app_markers', 'U') IS NOT NULL AND OBJECT_ID('dbo.learning_pat
 
       INSERT INTO dbo.app_markers (name) VALUES (''path-weak-points-v2'');
     END';
+
+-- ---------------------------------------------------------------------------
+-- 48. A Pre-Assessment the tutor checks before the student takes it.
+--
+-- The AI still writes one Pre-Assessment per subject and grade: the master. No
+-- student answers the master any more. Each student gets their own copy as a
+-- draft; their tutor (or the main admin) checks it, may edit it, and opens it
+-- (lib/studentPre.js).
+--
+--   uq_ta_pre_per_grade        still one live master per subject and grade, but
+--                              the students' copies (for_student_id) are left
+--                              out of it. Made again here, after section 46 adds
+--                              for_student_id; section 43 makes the first form.
+--   student_pre_assessments    one row per student, subject and grade: their
+--                              copy, the master it came from, draft or open, who
+--                              opened it and when, and when it last took its
+--                              master's questions (synced_at) — an edit after
+--                              that keeps a newer master from replacing it.
+-- ---------------------------------------------------------------------------
+IF EXISTS (SELECT 1 FROM sys.indexes
+            WHERE name = 'uq_ta_pre_per_grade'
+              AND object_id = OBJECT_ID('dbo.tutor_assessments')
+              AND filter_definition NOT LIKE '%for_student_id%')
+  DROP INDEX uq_ta_pre_per_grade ON dbo.tutor_assessments;
+
+IF COL_LENGTH('dbo.tutor_assessments', 'for_student_id') IS NOT NULL
+   AND COL_LENGTH('dbo.tutor_assessments', 'grade_level') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'uq_ta_pre_per_grade' AND object_id = OBJECT_ID('dbo.tutor_assessments'))
+BEGIN
+  BEGIN TRY
+    EXEC sp_executesql N'CREATE UNIQUE INDEX uq_ta_pre_per_grade
+      ON dbo.tutor_assessments(subject_id, grade_level)
+      WHERE assessment_kind = ''pre_assessment'' AND is_archived = 0
+        AND grade_level IS NOT NULL AND for_student_id IS NULL;';
+  END TRY
+  BEGIN CATCH
+    PRINT 'Warning: could not create uq_ta_pre_per_grade: ' + ERROR_MESSAGE();
+  END CATCH
+END;
+
+IF OBJECT_ID('dbo.student_pre_assessments', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.student_pre_assessments (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    student_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    grade_level NVARCHAR(30) NOT NULL,
+    master_assessment_id INT NULL,
+    assessment_id INT NOT NULL,
+    status NVARCHAR(20) NOT NULL CONSTRAINT df_spa_status DEFAULT 'draft',
+    opened_by INT NULL,
+    opened_at DATETIME2 NULL,
+    synced_at DATETIME2 NOT NULL CONSTRAINT df_spa_synced DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    created_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    updated_at DATETIME2 NOT NULL DEFAULT DATEADD(hour, 8, GETUTCDATE()),
+    CONSTRAINT fk_spa_student FOREIGN KEY (student_id) REFERENCES dbo.users(id),
+    CONSTRAINT fk_spa_subject FOREIGN KEY (subject_id) REFERENCES dbo.subjects(id),
+    CONSTRAINT fk_spa_assessment FOREIGN KEY (assessment_id) REFERENCES dbo.tutor_assessments(id),
+    CONSTRAINT ck_spa_status CHECK (status IN ('draft', 'open')),
+    CONSTRAINT uq_spa_student UNIQUE (student_id, subject_id, grade_level)
+  );
+END;

@@ -59,6 +59,7 @@ function answer(text, params = []) {
     if (sql.startsWith('SELECT DISTINCT usa.subject_id')) return db.boxes.enrolled;
     if (sql.includes("WHERE ta.assessment_kind = 'pre_assessment' AND ta.subject_id IN")) return db.boxes.sittings;
     if (sql.includes('WHERE lp.pre_submission_id IN')) return db.boxes.paths;
+    if (sql.includes('FROM student_pre_assessments WHERE student_id IN')) return db.boxes.copies || [];
   }
   if (db.post) {
     if (sql.startsWith('UPDATE learning_paths SET post_status = \'generating\'')) return [{ id: db.post.path.id }];
@@ -644,7 +645,7 @@ async function main() {
   db.assignedTutor = null;
   db.pathModule = null;
 
-  console.log('\n== Modules & Assessments: a box per student who took the Pre-Assessment ==');
+  console.log('\n== Modules & Assessments: a box per student, their own Pre-Assessment until they take it ==');
   db.boxes = {
     enrolled: [
       { subject_id: 5, student_id: 352, student_code: 'STD-0901', first_name: 'Mark', last_name: 'Santos', grade_level: 'Grade 1', image_path: null },
@@ -662,6 +663,10 @@ async function main() {
     paths: [
       { id: 5, student_id: 352, subject_id: 5, pre_submission_id: 1147, placement_level: 'Beginner', post_status: 'waiting', total: 3, passed: 0, to_check: 1 },
       { id: 4, student_id: 352, subject_id: 4, pre_submission_id: 1145, placement_level: 'Beginner', post_status: 'draft', total: 2, passed: 2, to_check: 0 }
+    ],
+    // Ben's own Pre-Assessment waits for the tutor (lib/studentPre.js); Carla has none yet.
+    copies: [
+      { id: 3, student_id: 77, subject_id: 5, grade_level: 'Grade 2', status: 'draft', assessment_id: 990 }
     ]
   };
   const withBoxes = await paths.tutorModuleBoxes(353, [
@@ -669,18 +674,28 @@ async function main() {
   ]);
   const science = withBoxes.find((s) => s.subject_id === 5);
   const english = withBoxes.find((s) => s.subject_id === 4);
+  const boxOf = (subject, code) => subject.boxes.find((b) => b.code === code);
   ok('every subject the tutor teaches is listed, in order', withBoxes.map((s) => s.subject_name).join(',') === 'ENGLISH,SCIENCE,FILIPINO');
-  ok('only a student who took the Pre-Assessment gets a box, by name', science.boxes.map((b) => b.code).join(',') === 'STD-0902,STD-0901',
+  ok('every student of the tutor gets a box, by name', science.boxes.map((b) => b.code).join(',') === 'STD-0902,STD-0077,STD-0901',
     science.boxes.map((b) => b.code).join(','));
-  ok('a Pre-Assessment of another grade does not count', english.boxes.map((b) => b.code).join(',') === 'STD-0901');
-  const mark = science.boxes.find((b) => b.code === 'STD-0901');
+  const ben = boxOf(science, 'STD-0077');
+  ok('one who has not taken the Pre-Assessment shows their own copy, not a level',
+    ben.preTaken === false && ben.level === null && ben.preStatus === 'draft' && !ben.onPath,
+    JSON.stringify({ preTaken: ben.preTaken, level: ben.level, preStatus: ben.preStatus }));
+  ok('…and a copy waiting to be checked counts as one to check', ben.toCheck === 1);
+  const carla = boxOf(english, 'STD-0903');
+  ok('a Pre-Assessment of another grade does not count: their own is not made yet',
+    !!carla && carla.preTaken === false && carla.preStatus === 'none' && carla.toCheck === 0);
+  const mark = boxOf(science, 'STD-0901');
   ok('a box says whose modules: the name, the grade and the level of the module',
-    mark.name === 'Mark Santos' && mark.grade === 'Grade 1' && mark.level === 'Beginner' && mark.onPath);
-  ok('on a learning path the level is the path\'s placement', english.boxes[0].level === 'Beginner');
-  ok('before learning paths: the level of their Pre-Assessment', science.boxes[0].level === 'Intermediate' && !science.boxes[0].onPath);
-  ok('what waits for the tutor to check is counted, the Post included', mark.toCheck === 1 && english.boxes[0].toCheck === 1);
-  ok('a box opens the student\'s own modules', mark.href === '/tutor/modules/students/352/5');
-  ok('a subject where nobody took it has no box', withBoxes.find((s) => s.subject_id === 9).boxes.length === 0);
+    mark.name === 'Mark Santos' && mark.grade === 'Grade 1' && mark.level === 'Beginner' && mark.onPath && mark.preTaken === true);
+  const markEnglish = boxOf(english, 'STD-0901');
+  ok('on a learning path the level is the path\'s placement', markEnglish.level === 'Beginner');
+  const ana = boxOf(science, 'STD-0902');
+  ok('before learning paths: the level of their Pre-Assessment', ana.level === 'Intermediate' && !ana.onPath);
+  ok('what waits for the tutor to check is counted, the Post included', mark.toCheck === 1 && markEnglish.toCheck === 1);
+  ok('a box opens the student\'s own modules', mark.href === '/tutor/modules/students/352/5' && ben.href === '/tutor/modules/students/77/5');
+  ok('a subject with no student of theirs has no box', withBoxes.find((s) => s.subject_id === 9).boxes.length === 0);
   db.boxes = null;
   db.statements = [];
   const noSubjects = await paths.tutorModuleBoxes(353, []);

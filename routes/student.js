@@ -43,7 +43,6 @@ const {
   getStudentSubmissions,
   getStudentProgress,
   // Module -> Handout -> Assessment overhaul (Phases 5-6)
-  getOrCreatePreAssessment,
   getAssessmentWithQuestions,
   gradeAndSubmitAssessment,
   hasCompletedPreAssessment,
@@ -113,6 +112,8 @@ const { monthOf, addedInMonth } = require('../lib/postWindow');
 const { buildSlipModel, renderSlipPdf, slipFilename, slipCode, formatSlipDate } = require('../lib/paymentSlip');
 // Learning paths: each student's own modules, opened one after another as they pass.
 const paths = require('../lib/learningPaths');
+// Each student's own Pre-Assessment, checked and opened by their tutor first.
+const studentPre = require('../lib/studentPre');
 
 const router = express.Router();
 const profileUploader = createUploader('profiles');
@@ -374,6 +375,21 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
     // enforces it; this is only so the page can say so before they click.
     const downPayment = await getDownPaymentStatus(req.session.user.id);
 
+    // Their own copy of the Pre-Assessment (lib/studentPre.js): made here when
+    // the master is ready, and their tutor is told it waits to be checked. They
+    // can start it only once their tutor opens it.
+    let preState = null;
+    if (!preAssessmentDone && gradeLevel && newModules.length && handoutsReady && !viewOnlyMessage(assignment)) {
+      preState = await studentPre.preStateFor(req.session.user.id, Number(req.params.subjectId), {
+        create: true,
+        notifyTutor: true,
+        student: studentRecord
+      }).catch((error) => {
+        console.error('[student] the Pre-Assessment could not be prepared:', error.message);
+        return { state: 'preparing' };
+      });
+    }
+
     // ---- Post-Assessment (Phase 8) ---------------------------------------
     // It opens when the student's tutor (or the main admin) opens it. The page
     // says where they stand, and shows pre-vs-post once both exist.
@@ -395,6 +411,7 @@ router.get('/subjects/:subjectId', async (req, res, next) => {
       placementLevel: placementLevelOf(preAssessmentDone),
       preAssessmentDone,
       handoutsReady,
+      preState,
       gradeLevel,
       downPayment,
       completion,
@@ -1181,15 +1198,19 @@ router.get('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
       return res.redirect(`/student/subjects/${subjectId}`);
     }
 
-    let assessment;
-    try {
-      // Size comes from config/assessmentDefaults.js (30), never a literal here.
-      const result = await getOrCreatePreAssessment(subjectId, gradeLevel);
-      assessment = result.assessment;
-    } catch (error) {
-      // No readable handout for this grade yet, or generation failed. Say so
-      // plainly instead of showing an empty exam.
-      setFlash(req, 'error', error.message || 'The Pre-Assessment is not ready yet.');
+    // Their own copy, once their tutor has checked and opened it
+    // (lib/studentPre.js). The master the AI writes is never answered as it is.
+    // Not made yet: the subject page makes it and says where it stands.
+    const own = await studentPre.openCopyFor(req.session.user.id, subjectId, gradeLevel);
+    if (!own.copy || own.reason) {
+      if (own.reason === 'draft') {
+        setFlash(req, 'info', 'Your tutor is checking your Pre-Assessment. You can take it once they open it.');
+      }
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+    const assessment = await getAssessmentWithQuestions(Number(own.copy.assessment_id));
+    if (!assessment || !assessment.questions.length) {
+      setFlash(req, 'error', 'Your Pre-Assessment has no questions yet. Please ask your tutor.');
       return res.redirect(`/student/subjects/${subjectId}`);
     }
 
@@ -1250,6 +1271,15 @@ router.post('/subjects/:subjectId/pre-assessment', async (req, res, next) => {
     const gradeLevel = studentGradeOf(await getUserById(req.session.user.id));
     if (!gradeLevel || assessment.grade_level !== gradeLevel) {
       setFlash(req, 'error', 'That Pre-Assessment is for another grade level.');
+      return res.redirect(`/student/subjects/${subjectId}`);
+    }
+    // ...and their own copy, opened for them by their tutor (lib/studentPre.js):
+    // never the master, never another student's, never one still being checked.
+    const own = await studentPre.openCopyFor(req.session.user.id, subjectId, gradeLevel);
+    if (!own.copy || own.reason || Number(own.copy.assessment_id) !== assessmentId) {
+      setFlash(req, 'error', own.reason === 'draft'
+        ? 'Your tutor has not opened your Pre-Assessment yet.'
+        : 'That is not your Pre-Assessment.');
       return res.redirect(`/student/subjects/${subjectId}`);
     }
     if (await hasCompletedPreAssessment(req.session.user.id, subjectId, gradeLevel)) {
