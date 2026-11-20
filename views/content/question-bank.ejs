@@ -1,0 +1,242 @@
+<%# File: views/content/question-bank.ejs
+    Purpose: The Question Bank (lib/questionBank.js): every question the system
+    holds — the AI's Pre-Assessment masters, each student's own copies, the
+    Post-Assessments, the module assessments and the activities — one row per
+    question, with where it is used and how students did on it. The main admin,
+    an assistant (their branch) and a tutor (their subjects and students) all
+    open it; a question in one student's draft links to its page to edit.
+
+    THE FILTER BAR narrows the list: words in the question, subject, grade, the
+    subject's module and learning objective, type, who made it, draft or open,
+    and difficulty.
+
+    Locals: rows, pager, summary, filters, bankQuery, subjectOptions,
+            moduleOptions, objectiveOptions, gradeOptions, bankPath %>
+<%
+  const list = rows || [];
+  const f = filters || {};
+  const totals = summary || { total: 0, answered: 0, easy: 0, average: 0, hard: 0 };
+  const objectiveChoices = typeof objectiveOptions === 'undefined' ? [] : (objectiveOptions || []);
+  const narrowed = !!(f.search || f.subjectId !== 'all' || f.grade !== 'all' || f.moduleId !== 'all'
+    || (f.objectiveId && f.objectiveId !== 'all')
+    || f.type !== 'all' || f.madeBy !== 'all' || f.status !== 'all' || f.difficulty !== 'all');
+  // Choosing another subject, grade or module starts its narrower choices over.
+  const resetBelow = (names) => names.map((name) => `this.form.${name} && (this.form.${name}.value = 'all');`).join(' ');
+  const meterClass = (value) => (value < 50 ? 'mq-meter-low' : value < 75 ? 'mq-meter-mid' : 'mq-meter-high');
+  const difficultyStatus = { easy: 'paid', average: 'partial', hard: 'unpaid' };
+  const selected = (value, current) => (String(value) === String(current) ? 'selected' : '');
+%>
+<section class="mq-page">
+
+  <div class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h2>Question Bank</h2>
+      </div>
+    </div>
+  </div>
+
+  <%# ---------------------------------------------------------------- filters %>
+  <form class="mq-toolbar" method="get" action="<%= bankPath %>">
+    <div class="mq-filters">
+      <label class="mq-field mq-field-search">
+        <span>Search</span>
+        <input type="search" name="search" value="<%= f.search || '' %>" placeholder="Words in the question" />
+      </label>
+      <label class="mq-field">
+        <span>Subject</span>
+        <select name="subject_id" onchange="<%= resetBelow(['module_id', 'objective_id']) %> this.form.submit()">
+          <option value="all">All subjects</option>
+          <% (subjectOptions || []).forEach((subject) => { %>
+            <option value="<%= subject.id %>" <%= selected(subject.id, f.subjectId) %>><%= subject.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Grade</span>
+        <select name="grade" onchange="<%= resetBelow(['module_id', 'objective_id']) %> this.form.submit()">
+          <option value="all">All grades</option>
+          <% (gradeOptions || []).forEach((grade) => { %>
+            <option value="<%= grade %>" <%= selected(grade, f.grade) %>><%= grade %></option>
+          <% }) %>
+        </select>
+      </label>
+      <% if ((moduleOptions || []).length) { %>
+        <label class="mq-field">
+          <span>Module</span>
+          <select name="module_id" onchange="<%= resetBelow(['objective_id']) %> this.form.submit()">
+            <option value="all">All modules</option>
+            <% moduleOptions.forEach((mod) => { %>
+              <option value="<%= mod.id %>" <%= selected(mod.id, f.moduleId) %>><%= mod.label %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <% if (objectiveChoices.length) { %>
+        <label class="mq-field">
+          <span>Objective</span>
+          <select name="objective_id" onchange="this.form.submit()">
+            <option value="all">All objectives</option>
+            <% objectiveChoices.forEach((objective) => { %>
+              <option value="<%= objective.id %>" <%= selected(objective.id, f.objectiveId) %>><%= objective.label %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } %>
+      <label class="mq-field">
+        <span>Type</span>
+        <select name="type" onchange="this.form.submit()">
+          <option value="all">All types</option>
+          <option value="pre" <%= selected('pre', f.type) %>>Pre-Assessment</option>
+          <option value="post" <%= selected('post', f.type) %>>Post-Assessment</option>
+          <option value="module" <%= selected('module', f.type) %>>Module Assessment</option>
+          <option value="activity" <%= selected('activity', f.type) %>>Activity</option>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Made by</span>
+        <select name="made_by" onchange="this.form.submit()">
+          <option value="all">Anyone</option>
+          <option value="ai" <%= selected('ai', f.madeBy) %>>AI</option>
+          <option value="tutor" <%= selected('tutor', f.madeBy) %>>Tutor</option>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Status</span>
+        <select name="status" onchange="this.form.submit()">
+          <option value="all">Any</option>
+          <option value="draft" <%= selected('draft', f.status) %>>Draft</option>
+          <option value="open" <%= selected('open', f.status) %>>Open</option>
+        </select>
+      </label>
+      <label class="mq-field">
+        <span>Difficulty</span>
+        <select name="difficulty" onchange="this.form.submit()">
+          <option value="all">Any</option>
+          <option value="easy" <%= selected('easy', f.difficulty) %>>Easy</option>
+          <option value="average" <%= selected('average', f.difficulty) %>>Average</option>
+          <option value="hard" <%= selected('hard', f.difficulty) %>>Hard</option>
+          <option value="none" <%= selected('none', f.difficulty) %>>Not answered yet</option>
+        </select>
+      </label>
+      <button class="mq-btn mq-btn-primary" type="submit"><%- icon('search') %> Apply</button>
+      <a class="mq-btn" href="<%= bankPath %>">Clear</a>
+    </div>
+  </form>
+
+  <%# ------------------------------------------------------------ at a glance %>
+  <div class="mq-summary">
+    <div class="mq-summary-item is-accent">
+      <span>Questions</span><strong><%= totals.total %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Answered</span><strong><%= totals.answered %></strong>
+    </div>
+    <div class="mq-summary-item is-positive">
+      <span>Easy</span><strong><%= totals.easy %></strong>
+    </div>
+    <div class="mq-summary-item">
+      <span>Average</span><strong><%= totals.average %></strong>
+    </div>
+    <div class="mq-summary-item is-negative">
+      <span>Hard</span><strong><%= totals.hard %></strong>
+    </div>
+  </div>
+
+  <%# ---------------------------------------------------------------- questions %>
+  <section class="mq-panel">
+    <div class="mq-panel-head">
+      <div>
+        <h3>Questions</h3>
+      </div>
+      <span class="mq-count"><%= totals.total %></span>
+    </div>
+
+    <div class="mq-table" style="--mq-min-width: 1000px; --mq-cols: minmax(240px, 3fr) minmax(120px, 1.3fr) minmax(140px, 1.3fr) 150px 120px 130px 72px;">
+      <div class="mq-head">
+        <span>Question</span>
+        <span>Answer</span>
+        <span>Module / Objective</span>
+        <span>Type &amp; made by</span>
+        <span>Used in</span>
+        <span>% Correct</span>
+        <span></span>
+      </div>
+
+      <% if (!list.length) { %>
+        <div class="mq-empty">
+          <% if (narrowed) { %>
+            <strong>No question matches these filters</strong>
+            Clear the filters above to see every question.
+          <% } else { %>
+            <strong>No questions yet</strong>
+            Questions appear here once the AI writes a Pre-Assessment or a tutor writes an activity.
+          <% } %>
+        </div>
+      <% } %>
+
+      <% list.forEach((r) => { %>
+        <div class="mq-row">
+          <span class="mq-cell mq-cell-primary" data-label="Question">
+            <span><%= r.text %></span>
+            <span class="mq-sub"><%= r.subjectName %></span>
+            <% if (r.choices.length) { %>
+              <details class="qb-choices">
+                <summary>Choices</summary>
+                <ol>
+                  <% r.choices.forEach((choice) => { %>
+                    <li class="<%= choice.isKey ? 'is-key' : '' %>"><%= choice.label %>. <%= choice.text %></li>
+                  <% }) %>
+                </ol>
+              </details>
+            <% } %>
+          </span>
+          <span class="mq-cell" data-label="Answer"><%= r.answer %></span>
+          <span class="mq-cell mq-cell-stack" data-label="Module / Objective">
+            <span><%= r.moduleLabel %></span>
+            <% if (r.objective) { %><span class="mq-sub qb-objective"><%= r.objective %></span><% } %>
+            <% if (r.handoutName) { %><span class="mq-sub"><%= r.handoutName %></span><% } %>
+          </span>
+          <span class="mq-cell mq-cell-stack" data-label="Type &amp; made by">
+            <% r.types.forEach((type) => { %><span class="mq-chip"><%= type %></span><% }) %>
+            <span class="mq-sub"><%= r.madeBy.join(' · ') %></span>
+          </span>
+          <span class="mq-cell mq-cell-stack" data-label="Used in">
+            <span><%= r.usedIn %></span>
+            <% if (r.drafts) { %><span class="mq-sub"><%= r.drafts %> draft<%= r.drafts === 1 ? '' : 's' %></span><% } %>
+          </span>
+          <span class="mq-cell mq-cell-stack" data-label="% Correct">
+            <% if (r.percent === null) { %>
+              <span class="mq-sub">Not answered yet</span>
+            <% } else { %>
+              <strong><%= r.percent %>%</strong>
+              <span class="mq-meter <%= meterClass(r.percent) %>">
+                <i style="width: <%= Math.max(0, Math.min(100, r.percent)) %>%;"></i>
+              </span>
+              <span class="mq-status mq-status-<%= difficultyStatus[r.difficulty] %>"><%= r.difficultyLabel %></span>
+              <span class="mq-sub"><%= r.correct %>/<%= r.answered %> right</span>
+            <% } %>
+          </span>
+          <span class="mq-cell mq-cell-actions">
+            <% if (r.link) { %>
+              <a class="mq-btn mq-btn-sm" href="<%= r.link.href %>"><%= r.link.label %></a>
+            <% } %>
+          </span>
+        </div>
+      <% }) %>
+
+      <%- include('../partials/mq-pager', {
+        pager, baseUrl: bankPath, params: bankQuery, noun: 'question'
+      }) %>
+    </div>
+  </section>
+
+</section>
+
+<style>
+  .qb-choices { margin-top: 6px; }
+  .qb-choices summary { cursor: pointer; font-size: 12.5px; color: var(--text-soft, #5f7084); }
+  .qb-choices ol { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 13px; }
+  .qb-choices li.is-key { font-weight: 700; color: var(--primary-700, #1c7a22); }
+  .qb-objective { font-style: italic; }
+</style>

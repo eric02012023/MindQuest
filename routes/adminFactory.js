@@ -182,8 +182,11 @@ const { query } = require('../config/db');
 const paths = require('../lib/learningPaths');
 // Each student's own Pre-Assessment, checked and opened before they take it.
 const studentPre = require('../lib/studentPre');
+// The Question Bank: every question the system holds, grouped, with how each did.
+const questionBank = require('../lib/questionBank');
 // MindQuest's own learning objectives, per module.
 const objectives = require('../lib/objectives');
+const { GRADE_LEVELS } = require('../lib/moduleGrades');
 // The admin's and an assistant's own login email: a registered Gmail address,
 // changed only with a code sent to it.
 const accountEmail = require('../lib/accountEmail');
@@ -3098,6 +3101,39 @@ function createAdminRouter(role) {
         subjectOptions,
         selectedBranch: req.query.branch_id || 'all',
         everything: { results: everyResult.length, assessments: everyAssessment.length }
+      });
+      res.render('shells/dashboard', shell);
+    } catch (error) { next(error); }
+  });
+
+  // The Question Bank (lib/questionBank.js): every question the system holds —
+  // the AI's masters, each student's own copies, the Post-Assessments, the module
+  // assessments and the activities — one row per question, with how it did. The
+  // main admin sees all and edits a draft from it; an assistant views their
+  // branch's.
+  router.get('/question-bank', async (req, res, next) => {
+    try {
+      const filters = questionBank.readBankFilters(req.query);
+      const isMain = req.session.user.role === 'admin';
+      const viewer = isMain ? { role: 'admin' } : { role: 'assistant', branchId: getScopeBranchId(req) };
+      const [bank, subjectOptions, moduleOptions, objectiveOptions] = await Promise.all([
+        questionBank.getQuestionBank(viewer, filters, { linkBase: basePath, canEdit: isMain }),
+        getSubjects(false),
+        questionBank.moduleOptionsFor(filters),
+        questionBank.objectiveOptionsFor(filters)
+      ]);
+      const shell = await buildShellData(req, {
+        pageTitle: 'Question Bank',
+        section: 'question_bank',
+        contentView: '../content/question-bank',
+        ...bank,
+        filters,
+        bankQuery: req.query,
+        subjectOptions: subjectOptions.map((subject) => ({ id: subject.id, name: subject.name })),
+        moduleOptions,
+        objectiveOptions,
+        gradeOptions: GRADE_LEVELS,
+        bankPath: `${basePath}/question-bank`
       });
       res.render('shells/dashboard', shell);
     } catch (error) { next(error); }

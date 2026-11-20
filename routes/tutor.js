@@ -109,6 +109,9 @@ const { todayDate } = require('../lib/utils');
 const paths = require('../lib/learningPaths');
 // Each student's own Pre-Assessment, which the tutor checks and opens first.
 const studentPre = require('../lib/studentPre');
+// The Question Bank: every question in the tutor's subjects, grouped, with how each did.
+const questionBank = require('../lib/questionBank');
+const { GRADE_LEVELS } = require('../lib/moduleGrades');
 const { generateAssessmentFromHandouts, SPEC_QUESTION_TYPES } = require('../services/aiService');
 const { TUTOR_ASSESSMENT_MIN_ITEMS, TUTOR_ASSESSMENT_MAX_ITEMS } = require('../config/assessmentDefaults');
 
@@ -1394,6 +1397,43 @@ router.get('/modules', async (req, res, next) => {
       section: 'modules',
       contentView: '../content/tutor-modules',
       subjectsWithBoxes
+    });
+    res.render('shells/dashboard', shell);
+  } catch (error) { next(error); }
+});
+
+// The Question Bank (lib/questionBank.js) of the subjects this tutor teaches:
+// the AI's masters and other shared questions, and what was written for their
+// own students — one row per question, with how it did. A draft of one of their
+// students is edited from here.
+router.get('/question-bank', async (req, res, next) => {
+  try {
+    const filters = questionBank.readBankFilters(req.query);
+    const subjects = await getTutorAssignedSubjects(req.session.user.id);
+    // A subject they do not teach is no filter of theirs.
+    if (filters.subjectId !== 'all' && !subjects.some((s) => Number(s.subject_id) === Number(filters.subjectId))) {
+      filters.subjectId = 'all';
+      filters.moduleId = 'all';
+      filters.objectiveId = 'all';
+    }
+    const viewer = { role: 'tutor', tutorId: req.session.user.id, subjectIds: subjects.map((s) => s.subject_id) };
+    const [bank, moduleOptions, objectiveOptions] = await Promise.all([
+      questionBank.getQuestionBank(viewer, filters, { linkBase: '/tutor', canEdit: true }),
+      questionBank.moduleOptionsFor(filters),
+      questionBank.objectiveOptionsFor(filters)
+    ]);
+    const shell = await buildShell(req, {
+      pageTitle: 'Question Bank',
+      section: 'question_bank',
+      contentView: '../content/question-bank',
+      ...bank,
+      filters,
+      bankQuery: req.query,
+      subjectOptions: subjects.map((s) => ({ id: s.subject_id, name: s.subject_name })),
+      moduleOptions,
+      objectiveOptions,
+      gradeOptions: GRADE_LEVELS,
+      bankPath: '/tutor/question-bank'
     });
     res.render('shells/dashboard', shell);
   } catch (error) { next(error); }

@@ -2249,6 +2249,31 @@ BEGIN
 END;
 
 -- ---------------------------------------------------------------------------
+-- 49. The Question Bank (lib/questionBank.js).
+--
+-- Nothing new is stored: the bank reads the questions every assessment keeps
+-- and counts, per question, every answer ever given to it. These indexes make
+-- those reads a seek instead of a scan of every answer and every choice.
+--
+--   IX_taq_assessment   an assessment's questions
+--   IX_tqo_question     a question's choices (the bank reads each key's words)
+--   IX_tsa_question     a question's answers in submissions, right or wrong
+--   IX_taaa_question    a question's answers in module-assessment takes
+-- ---------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_taq_assessment' AND object_id = OBJECT_ID('dbo.tutor_assessment_questions'))
+  CREATE INDEX IX_taq_assessment ON dbo.tutor_assessment_questions(assessment_id);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tqo_question' AND object_id = OBJECT_ID('dbo.tutor_question_options'))
+  CREATE INDEX IX_tqo_question ON dbo.tutor_question_options(question_id);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tsa_question' AND object_id = OBJECT_ID('dbo.tutor_student_answers'))
+  CREATE INDEX IX_tsa_question ON dbo.tutor_student_answers(question_id) INCLUDE (is_correct);
+
+IF OBJECT_ID('dbo.tutor_assessment_attempt_answers', 'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_taaa_question' AND object_id = OBJECT_ID('dbo.tutor_assessment_attempt_answers'))
+  CREATE INDEX IX_taaa_question ON dbo.tutor_assessment_attempt_answers(question_id) INCLUDE (is_correct);
+
+-- ---------------------------------------------------------------------------
 -- 50. MindQuest's own learning objectives, per module (lib/objectives.js).
 --
 -- The AI drafts three to five from a module's handouts; the main admin edits

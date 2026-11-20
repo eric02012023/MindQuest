@@ -37,6 +37,7 @@
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="<%= basePath %>/subjects"><span class="sidebar-icon"><%- icon('book', 18) %></span><span class="sidebar-label">All Subjects</span></a>
       <%# One entry, not two: Student Results is now a section of this page. %>
       <a class="<%= section === 'assessment_monitoring' ? 'active' : '' %>" href="<%= basePath %>/assessment-monitoring"><span class="sidebar-icon"><%- icon('clipboard', 18) %></span><span class="sidebar-label">Assessment Monitoring</span></a>
+      <a class="<%= section === 'question_bank' ? 'active' : '' %>" href="<%= basePath %>/question-bank"><span class="sidebar-icon"><%- icon('file', 18) %></span><span class="sidebar-label">Question Bank</span></a>
       <a class="<%= section === 'analytics' ? 'active' : '' %>" href="<%= basePath %>/analytics"><span class="sidebar-icon"><%- icon('chart', 18) %></span><span class="sidebar-label">Analytics &amp; Reports</span></a>
       <a class="<%= section === 'profile' ? 'active' : '' %>" href="<%= basePath %>/profile/<%= currentUser.id %>"><span class="sidebar-icon"><%- icon('user', 18) %></span><span class="sidebar-label">My Profile</span></a>
     </nav>
@@ -62,6 +63,7 @@
       <a class="<%= section === 'students' ? 'active' : '' %>" href="/tutor/students"><span class="sidebar-icon"><%- icon('users', 18) %></span><span class="sidebar-label">My Students</span></a>
       <a class="<%= section === 'subjects' ? 'active' : '' %>" href="/tutor/subjects"><span class="sidebar-icon"><%- icon('book', 18) %></span><span class="sidebar-label">My Subjects</span></a>
       <a class="<%= section === 'modules' ? 'active' : '' %>" href="/tutor/modules"><span class="sidebar-icon"><%- icon('layers', 18) %></span><span class="sidebar-label">Modules &amp; Assessments</span></a>
+      <a class="<%= section === 'question_bank' ? 'active' : '' %>" href="/tutor/question-bank"><span class="sidebar-icon"><%- icon('file', 18) %></span><span class="sidebar-label">Question Bank</span></a>
       <%# Auto-generated from a student's Pre-Assessment: the topics to teach
           first. Badged with the ones the tutor has not opened yet. %>
       <a class="<%= section === 'focus' ? 'active' : '' %>" href="/tutor/focus-handouts">
